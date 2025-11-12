@@ -1,0 +1,3 @@
+待办
+1.修改在mysql创建知识库和milvus创建collection保持原子性 internal/controller/rag/rag_v1_kb.go
+2.添加QA切分

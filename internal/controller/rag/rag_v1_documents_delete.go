@@ -1,0 +1,102 @@
+package rag
+
+import (
+	"context"
+
+	v1 "github.com/Malowking/kbgo/api/rag/v1"
+	gorag "github.com/Malowking/kbgo/core"
+	"github.com/Malowking/kbgo/core/common"
+	"github.com/Malowking/kbgo/internal/dao"
+	"github.com/Malowking/kbgo/internal/logic/knowledge"
+	"github.com/Malowking/kbgo/internal/logic/rag"
+	"github.com/Malowking/kbgo/internal/model/do"
+	"github.com/gogf/gf/v2/errors/gerror"
+	"github.com/gogf/gf/v2/frame/g"
+)
+
+func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDeleteReq) (res *v1.DocumentsDeleteRes, err error) {
+	svr := rag.GetRagSvr()
+
+	// 开始事务
+	tx := dao.GetDB().Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			err = gerror.Newf("panic occurred during DocumentsDelete: %v", r)
+		}
+	}()
+
+	// 从数据库获取文档信息，包括 collection_name
+	document, err := knowledge.GetDocumentById(ctx, req.DocumentId)
+	if err != nil {
+		g.Log().Errorf(ctx, "DocumentsDelete: GetDocumentById failed for id %s, err: %v", req.DocumentId, err)
+		tx.Rollback()
+		return nil, err
+	}
+
+	var needDeleteFromRustFS bool
+	var rustfsBucket, rustfsLocation string
+
+	// 检查是否有其他知识库引用了相同的 SHA256 文件
+	if document.SHA256 != "" {
+		// 查询是否还有其他文档引用相同的 SHA256（使用事务）
+		count, err := tx.WithContext(ctx).Model(&do.KnowledgeDocuments{}).Where("sha256 = ?", document.SHA256).Count()
+		if err != nil {
+			g.Log().Errorf(ctx, "DocumentsDelete: failed to count documents with same SHA256, err: %v", err)
+			tx.Rollback()
+			return nil, err
+		}
+
+		// 如果只有当前这一个文档，则需要删除 RustFS 中的文件
+		if count == 1 {
+			needDeleteFromRustFS = true
+			rustfsBucket = document.RustfsBucket
+			rustfsLocation = document.RustfsLocation
+		} else {
+			g.Log().Infof(ctx, "DocumentsDelete: file is referenced by %d documents, skipping RustFS deletion", count)
+		}
+	}
+
+	// 检查 CollectionName 是否存在
+	if document.CollectionName == "" {
+		g.Log().Warningf(ctx, "DocumentsDelete: CollectionName is empty for document id %s, skipping Milvus deletion", req.DocumentId)
+	} else {
+		// 使用 DeleteDocument 函数删除 Milvus 中所有该文档的分片
+		err = svr.DeleteDocument(ctx, document.CollectionName, req.DocumentId)
+		if err != nil {
+			g.Log().Errorf(ctx, "DocumentsDelete: Milvus DeleteDocument failed for documentId %s in collection %s, err: %v", req.DocumentId, document.CollectionName, err)
+			tx.Rollback()
+			return nil, err
+		}
+	}
+
+	// 从数据库删除文档记录（会级联删除相关的 chunks）使用事务版本
+	err = knowledge.DeleteDocumentWithTx(ctx, tx, req.DocumentId)
+	if err != nil {
+		g.Log().Errorf(ctx, "DocumentsDelete: DeleteDocument failed for id %s, err: %v", req.DocumentId, err)
+		tx.Rollback()
+		return nil, err
+	}
+
+	// 提交事务
+	if err = tx.Commit().Error; err != nil {
+		g.Log().Errorf(ctx, "DocumentsDelete: transaction commit failed, err: %v", err)
+		return nil, gerror.Newf("failed to commit transaction: %v", err)
+	}
+
+	// 事务成功提交后，删除 RustFS 文件（这个操作失败不影响数据一致性）
+	if needDeleteFromRustFS && rustfsBucket != "" && rustfsLocation != "" {
+		g.Log().Infof(ctx, "DocumentsDelete: deleting file from RustFS, bucket=%s, location=%s", rustfsBucket, rustfsLocation)
+
+		rustfsConfig := gorag.GetRustfsConfig()
+		err = common.DeleteObject(ctx, rustfsConfig.Client, rustfsBucket, rustfsLocation)
+		if err != nil {
+			g.Log().Errorf(ctx, "DocumentsDelete: failed to delete from RustFS, bucket=%s, location=%s, err: %v", rustfsBucket, rustfsLocation, err)
+			// 不返回错误，因为数据库操作已经成功
+		} else {
+			g.Log().Infof(ctx, "DocumentsDelete: successfully deleted from RustFS, bucket=%s, location=%s", rustfsBucket, rustfsLocation)
+		}
+	}
+
+	return &v1.DocumentsDeleteRes{}, nil
+}

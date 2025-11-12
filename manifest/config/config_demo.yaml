@@ -1,0 +1,62 @@
+server:
+  address:     ":8000"
+  openapiPath: "/api.json"
+  swaggerPath: "/swagger"
+
+logger:
+  level : "all"
+  stdout: true
+
+database:
+  default:
+    host: "localhost" # 地址
+    port: "3306" # 端口
+    user: "root" # 账号
+    pass: "your_password" # 密码
+    name: "kbgo" # 数据库名称
+    type: "mysql" # 数据库类型
+    charset: "utf8mb4" # 数据库编码，一定要加上，因为文档里面经常出现特殊字符
+
+# Milvus向量数据库配置
+milvus:
+  address: "http://localhost:19530"
+  database: "kbgo"
+  dim: 1024
+
+# rustfs文件存储配置（可选）
+rustfs:
+  endpoint: "http://localhost:9000"
+  accessKey: "your_access_key"
+  secretKey: "your_secret_key"
+  bucketName: ""
+  ssl: false
+
+# Embedding模型配置
+embedding:
+  apiKey: "sk-your-api-key-here"
+  baseURL: "https://api.agicto.cn/v1"
+  model: "text-embedding-v3"
+
+# Rerank模型配置
+rerank:
+  apiKey: "sk-your-api-key-here"
+  baseURL: "https://api.agicto.cn/v1"
+  model: "gte-rerank-v2"
+
+# Query Rewrite模型配置
+rewrite:
+  apiKey: "sk-your-api-key-here"
+  baseURL: "https://api.agicto.cn/v1"
+  model: "qwen3-32b" # 测试下来14b速度最快
+
+# QA生成模型配置
+qa:
+  apiKey: "sk-your-api-key-here"
+  baseURL: "https://api.agicto.cn/v1"
+  model: "qwen3-32b" # 测试下来14b速度最快
+
+# Chat对话模型配置
+chat:
+  apiKey: "sk-your-api-key-here"
+  baseURL: "https://api.agicto.cn/v1"
+  model: "qwen3-32b"
