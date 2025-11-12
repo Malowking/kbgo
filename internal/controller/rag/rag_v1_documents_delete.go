@@ -9,7 +9,7 @@ import (
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
 	"github.com/Malowking/kbgo/internal/logic/rag"
-	"github.com/Malowking/kbgo/internal/model/do"
+	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 )
@@ -40,7 +40,8 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 	// 检查是否有其他知识库引用了相同的 SHA256 文件
 	if document.SHA256 != "" {
 		// 查询是否还有其他文档引用相同的 SHA256（使用事务）
-		count, err := tx.WithContext(ctx).Model(&do.KnowledgeDocuments{}).Where("sha256 = ?", document.SHA256).Count()
+		var count int64
+		err := tx.WithContext(ctx).Model(&gormModel.KnowledgeDocuments{}).Where("sha256 = ?", document.SHA256).Count(&count).Error
 		if err != nil {
 			g.Log().Errorf(ctx, "DocumentsDelete: failed to count documents with same SHA256, err: %v", err)
 			tx.Rollback()

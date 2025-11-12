@@ -780,6 +780,20 @@
                         <div class="helper-text">QA切分适用于问答对格式的文档</div>
                     </div>
 
+                    <div class="inline-group">
+                        <div class="form-group">
+                            <label class="form-label">Chunk Size</label>
+                            <input type="number" class="form-input" id="indexer_upload_chunk_size" value="1000" min="1">
+                            <div class="helper-text">文档分块大小，默认1000</div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Overlap Size</label>
+                            <input type="number" class="form-input" id="indexer_upload_overlap_size" value="100" min="0">
+                            <div class="helper-text">分块重叠大小，默认100</div>
+                        </div>
+                    </div>
+
                     <button class="btn btn-primary" onclick="uploadIndexer()">上传并索引</button>
                     <button class="btn btn-secondary" onclick="clearForm('indexer-upload')">清空</button>
 
@@ -816,6 +830,20 @@
                             <option value="0">否</option>
                             <option value="1">是</option>
                         </select>
+                    </div>
+
+                    <div class="inline-group">
+                        <div class="form-group">
+                            <label class="form-label">Chunk Size</label>
+                            <input type="number" class="form-input" id="indexer_url_chunk_size" value="1000" min="1">
+                            <div class="helper-text">文档分块大小，默认1000</div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Overlap Size</label>
+                            <input type="number" class="form-input" id="indexer_url_overlap_size" value="100" min="0">
+                            <div class="helper-text">分块重叠大小，默认100</div>
+                        </div>
                     </div>
 
                     <button class="btn btn-primary" onclick="urlIndexer()">索引URL文档</button>
@@ -1370,6 +1398,8 @@
             const kbId = document.getElementById('indexer_upload_kb_id').value.trim();
             const fileInput = document.getElementById('indexer_upload_file');
             const isQA = document.getElementById('indexer_upload_is_qa').value;
+            const chunkSize = document.getElementById('indexer_upload_chunk_size').value;
+            const overlapSize = document.getElementById('indexer_upload_overlap_size').value;
 
             if (!kbId) {
                 alert('请输入知识库ID');
@@ -1388,6 +1418,8 @@
                 formData.append('file', fileInput.files[0]);
                 formData.append('knowledge_id', kbId);
                 formData.append('is_qa', isQA);
+                formData.append('chunk_size', chunkSize);
+                formData.append('overlap_size', overlapSize);
 
                 const response = await fetch(getBaseUrl() + '/api/v1/indexer', {
                     method: 'POST',
@@ -1406,6 +1438,8 @@
             const kbId = document.getElementById('indexer_url_kb_id').value.trim();
             const url = document.getElementById('indexer_url_url').value.trim();
             const isQA = document.getElementById('indexer_url_is_qa').value;
+            const chunkSize = document.getElementById('indexer_url_chunk_size').value;
+            const overlapSize = document.getElementById('indexer_url_overlap_size').value;
 
             if (!kbId || !url) {
                 alert('请填写必填字段');
@@ -1419,6 +1453,8 @@
                 formData.append('url', url);
                 formData.append('knowledge_id', kbId);
                 formData.append('is_qa', isQA);
+                formData.append('chunk_size', chunkSize);
+                formData.append('overlap_size', overlapSize);
 
                 const response = await fetch(getBaseUrl() + '/api/v1/indexer', {
                     method: 'POST',

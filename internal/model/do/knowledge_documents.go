@@ -21,6 +21,6 @@ type KnowledgeDocuments struct {
 	RustfsLocation interface{} //
 	IsQA           interface{} //
 	Status         interface{} //
-	CreatedAt      *gtime.Time //
-	UpdatedAt      *gtime.Time //
+	CreateTime     *gtime.Time //
+	UpdateTime     *gtime.Time //
 }

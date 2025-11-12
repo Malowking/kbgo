@@ -19,6 +19,6 @@ type KnowledgeChunks struct {
 	CollectionName interface{} //
 	Ext            interface{} //
 	Status         interface{} //
-	CreatedAt      *gtime.Time //
-	UpdatedAt      *gtime.Time //
+	CreateTime     *gtime.Time //
+	UpdateTime     *gtime.Time //
 }

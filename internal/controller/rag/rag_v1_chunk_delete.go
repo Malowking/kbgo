@@ -10,7 +10,6 @@ import (
 	"github.com/Malowking/kbgo/internal/logic/rag"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
-	"gorm.io/gorm"
 )
 
 func (c *ControllerV1) ChunkDelete(ctx context.Context, req *v1.ChunkDeleteReq) (res *v1.ChunkDeleteRes, err error) {

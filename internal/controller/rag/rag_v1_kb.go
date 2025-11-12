@@ -10,9 +10,9 @@ import (
 	"github.com/Malowking/kbgo/internal/logic/rag"
 	_ "github.com/Malowking/kbgo/internal/logic/rag"
 	"github.com/Malowking/kbgo/internal/model/do"
+	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 )
 
 func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *v1.KBCreateRes, err error) {
@@ -27,15 +27,14 @@ func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *
 		}
 	}()
 
-	// 先创建数据库记录
-	kb := do.KnowledgeBase{
-		Id:             id,
+	// 先创建数据库记录（GORM 会自动设置 CreateTime 和 UpdateTime）
+	kb := gormModel.KnowledgeBase{
+		ID:             id,
 		Name:           req.Name,
 		CollectionName: id,
-		//QACollectionName: "qa_" + id,
-		Status:      v1.StatusOK,
-		Description: req.Description,
-		Category:    req.Category,
+		Status:         int(v1.StatusOK),
+		Description:    req.Description,
+		Category:       req.Category,
 	}
 	result := tx.WithContext(ctx).Create(&kb)
 	if result.Error != nil {
@@ -101,7 +100,7 @@ func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *
 	}()
 
 	// 先从数据库删除记录
-	result := tx.WithContext(ctx).Where("id = ?", req.Id).Delete(&do.KnowledgeBase{})
+	result := tx.WithContext(ctx).Where("id = ?", req.Id).Delete(&gormModel.KnowledgeBase{})
 	if result.Error != nil {
 		tx.Rollback()
 		return nil, result.Error
@@ -162,7 +161,7 @@ func (c *ControllerV1) KBUpdate(ctx context.Context, req *v1.KBUpdateReq) (res *
 		"description": req.Description,
 		"category":    req.Category,
 	}
-	result := tx.WithContext(ctx).Model(&do.KnowledgeBase{}).Where("id = ?", req.Id).Updates(updateData)
+	result := tx.WithContext(ctx).Model(&gormModel.KnowledgeBase{}).Where("id = ?", req.Id).Updates(updateData)
 	if result.Error != nil {
 		tx.Rollback()
 		return nil, result.Error

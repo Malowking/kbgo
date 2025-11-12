@@ -7,6 +7,7 @@ import (
 
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/model/entity"
+	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/google/uuid"
@@ -35,7 +36,21 @@ func SaveDocumentsInfo(ctx context.Context, documents entity.KnowledgeDocuments)
 func SaveDocumentsInfoWithTx(ctx context.Context, tx *gorm.DB, documents entity.KnowledgeDocuments) (documentsSave entity.KnowledgeDocuments, err error) {
 	id := strings.ReplaceAll(uuid.New().String(), "-", "")
 	documents.Id = id
-	result := tx.WithContext(ctx).Create(&documents)
+
+	// 转换为 GORM 模型（GORM 会自动设置 CreateTime 和 UpdateTime）
+	gormDoc := gormModel.KnowledgeDocuments{
+		ID:             documents.Id,
+		KnowledgeId:    documents.KnowledgeId,
+		FileName:       documents.FileName,
+		CollectionName: documents.CollectionName,
+		SHA256:         documents.SHA256,
+		RustfsBucket:   documents.RustfsBucket,
+		RustfsLocation: documents.RustfsLocation,
+		IsQA:           int8(documents.IsQA),
+		Status:         int8(documents.Status),
+	}
+
+	result := tx.WithContext(ctx).Create(&gormDoc)
 	if result.Error != nil {
 		g.Log().Errorf(ctx, "保存文档信息失败: %+v, 错误: %v", documents, result.Error)
 		return documents, fmt.Errorf("保存文档信息失败: %w", result.Error)
@@ -147,14 +162,14 @@ func DeleteDocumentWithTx(ctx context.Context, tx *gorm.DB, id string) error {
 	g.Log().Debugf(ctx, "删除文档: ID=%s", id)
 
 	// 先删除文档块
-	result := tx.WithContext(ctx).Where("knowledge_doc_id = ?", id).Delete(&entity.KnowledgeChunks{})
+	result := tx.WithContext(ctx).Where("knowledge_doc_id = ?", id).Delete(&gormModel.KnowledgeChunks{})
 	if result.Error != nil {
 		g.Log().Errorf(ctx, "删除文档块失败: ID=%s, 错误: %v", id, result.Error)
 		return fmt.Errorf("删除文档块失败: %w", result.Error)
 	}
 
 	// 再删除文档
-	result = tx.WithContext(ctx).Where("id = ?", id).Delete(&entity.KnowledgeDocuments{})
+	result = tx.WithContext(ctx).Where("id = ?", id).Delete(&gormModel.KnowledgeDocuments{})
 	if result.Error != nil {
 		g.Log().Errorf(ctx, "删除文档失败: ID=%s, 错误: %v", id, result.Error)
 		return fmt.Errorf("删除文档失败: %w", result.Error)

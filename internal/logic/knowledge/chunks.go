@@ -6,6 +6,7 @@ import (
 	v1 "github.com/Malowking/kbgo/api/rag/v1"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/model/entity"
+	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
 	"gorm.io/gorm"
 )
@@ -15,17 +16,37 @@ func SaveChunksData(ctx context.Context, documentsId string, chunks []entity.Kno
 	if len(chunks) == 0 {
 		return nil
 	}
+
+	// 使用GORM方式保存，以支持自动填充create_time和update_time字段
+	gormChunks := make([]gormModel.KnowledgeChunks, len(chunks))
+	for i, chunk := range chunks {
+		gormChunks[i] = gormModel.KnowledgeChunks{
+			ID:             chunk.Id,
+			KnowledgeDocID: chunk.KnowledgeDocId,
+			Content:        chunk.Content,
+			CollectionName: chunk.CollectionName,
+			Ext:            chunk.Ext,
+			Status:         int8(chunk.Status),
+		}
+	}
+
+	// 获取GORM数据库实例
+	db := dao.GetDB()
+
+	result := db.WithContext(ctx).CreateInBatches(&gormChunks, len(gormChunks))
+
 	status := int(v1.StatusIndexing)
-	_, err := dao.KnowledgeChunks.Ctx(ctx).Data(chunks).Save()
-	if err != nil {
-		g.Log().Errorf(ctx, "SaveChunksData err=%+v", err)
+	if result.Error != nil {
+		g.Log().Errorf(ctx, "SaveChunksData err=%+v", result.Error)
 		status = int(v1.StatusFailed)
 	}
-	err = UpdateDocumentsStatus(ctx, documentsId, status)
+
+	err := UpdateDocumentsStatus(ctx, documentsId, status)
 	if err != nil {
-		g.Log().Errorf(ctx, "更新文档状态失败: ID=%d, 错误: %v", documentsId, err)
+		g.Log().Errorf(ctx, "更新文档状态失败: ID=%s, 错误: %v", documentsId, err)
 	}
-	return err
+
+	return result.Error
 }
 
 // GetChunksList 查询知识块列表
@@ -74,19 +95,6 @@ func DeleteChunkById(ctx context.Context, id string) error {
 func DeleteChunkByIdWithTx(ctx context.Context, tx *gorm.DB, id string) error {
 	result := tx.WithContext(ctx).Where("id = ?", id).Delete(&entity.KnowledgeChunks{})
 	return result.Error
-}
-
-// UpdateChunkById 根据ID更新知识块
-func UpdateChunkByIds(ctx context.Context, ids []string, data entity.KnowledgeChunks) error {
-	model := dao.KnowledgeChunks.Ctx(ctx).WhereIn("id", ids)
-	if data.Content != "" {
-		model = model.Data("content", data.Content)
-	}
-	if data.Status != 0 {
-		model = model.Data("status", data.Status)
-	}
-	_, err := model.Update()
-	return err
 }
 
 // UpdateChunkByIdsWithTx 根据ID更新知识块（事务版本）

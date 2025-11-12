@@ -16,6 +16,6 @@ type KnowledgeChunks struct {
 	Ext            string      `json:"ext"            orm:"ext"              description:""`         //
 	CollectionName string      `json:"collectionName" orm:"collection_name"  description:""`         // milvus collection name
 	Status         int         `json:"status"         orm:"status"           description:""`         //
-	CreatedAt      *gtime.Time `json:"createdAt"      orm:"created_at"       description:""`         //
-	UpdatedAt      *gtime.Time `json:"updatedAt"      orm:"updated_at"       description:""`         //
+	CreateTime     *gtime.Time `json:"createTime"     orm:"create_time"      description:""`         //
+	UpdateTime     *gtime.Time `json:"updateTime"     orm:"update_time"      description:""`         //
 }

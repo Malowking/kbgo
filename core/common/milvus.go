@@ -36,7 +36,7 @@ import (
 
 func CreateCollection(ctx context.Context, MilvusClient *milvusclient.Client, CollectionName string) error {
 	// 使用标准 text collection schema
-	textSchema := &entity.Schema{
+	Schema := &entity.Schema{
 		CollectionName: CollectionName,
 		Description:    "存储文档分片及其向量",
 		AutoID:         false,
@@ -44,7 +44,7 @@ func CreateCollection(ctx context.Context, MilvusClient *milvusclient.Client, Co
 	}
 
 	// 创建文档片段集合，并设置vector为索引
-	err := MilvusClient.CreateCollection(ctx, milvusclient.NewCreateCollectionOption(CollectionName, textSchema).WithIndexOptions(
+	err := MilvusClient.CreateCollection(ctx, milvusclient.NewCreateCollectionOption(CollectionName, Schema).WithIndexOptions(
 		milvusclient.NewCreateIndexOption(CollectionName, "vector", index.NewHNSWIndex(entity.L2, 64, 128))))
 	if err != nil {
 		fmt.Printf("failed to create Milvus collection: %v\n", err)

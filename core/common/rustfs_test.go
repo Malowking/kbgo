@@ -89,12 +89,12 @@ func TestRustFSUploadDownload(t *testing.T) {
 	}
 	t.Logf("Deleted object %s", objectName)
 
-	//删除 bucket
-	err = minioClient.RemoveBucket(ctx, bucketName)
-	if err != nil {
-		t.Fatalf("delete bucket failed: %v", err)
-	}
-	t.Logf("Deleted bucket %s", bucketName)
-
-	fmt.Println("✅ RustFS upload/download/delete test passed.")
+	////删除 bucket
+	//err = minioClient.RemoveBucket(ctx, bucketName)
+	//if err != nil {
+	//	t.Fatalf("delete bucket failed: %v", err)
+	//}
+	//t.Logf("Deleted bucket %s", bucketName)
+	//
+	//fmt.Println("✅ RustFS upload/download/delete test passed.")
 }

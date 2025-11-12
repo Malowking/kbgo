@@ -130,6 +130,11 @@ func DownloadFile(ctx context.Context, client *minio.Client, bucketName, objectN
 	return nil
 }
 
+// DownloadFileToPath 从 bucket 下载文件到指定的本地路径（公共函数）
+func DownloadFileToPath(ctx context.Context, client *minio.Client, bucketName, objectName, filePath string) error {
+	return DownloadFile(ctx, client, bucketName, objectName, filePath)
+}
+
 // DeleteObject 删除指定的对象
 func DeleteObject(ctx context.Context, client *minio.Client, bucketName, objectName string) error {
 	err := client.RemoveObject(ctx, bucketName, objectName, minio.RemoveObjectOptions{})
@@ -160,4 +165,24 @@ func GetObjectInfo(ctx context.Context, client *minio.Client, bucketName, object
 	}
 
 	return objInfo, nil
+}
+
+// GetObject 获取对象的内容作为io.Reader
+func GetObject(ctx context.Context, client *minio.Client, bucketName, objectName string) (io.ReadCloser, error) {
+	reader, err := client.GetObject(ctx, bucketName, objectName, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get object: %w", err)
+	}
+	return reader, nil
+}
+
+// ReadRustFSObject 读取RustFS对象内容并返回字节数据
+func ReadRustFSObject(ctx context.Context, client *minio.Client, bucketName, objectName string) ([]byte, error) {
+	reader, err := GetObject(ctx, client, bucketName, objectName)
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+
+	return io.ReadAll(reader)
 }

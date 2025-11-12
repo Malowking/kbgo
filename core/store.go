@@ -36,6 +36,13 @@ func init() {
 		g.Log().Fatalf(ctx, "failed to create MinIO client: %w", err)
 		return
 	}
+
+	// 设置全局配置（无论 bucket 是否已存在）
+	rustfsConfig = RustfsConfig{
+		Client:     client,
+		BucketName: rustfsBucketName,
+	}
+
 	// CreateBucketIfNotExists 创建 bucket，如果已存在则跳过
 	exists, err := client.BucketExists(ctx, rustfsBucketName)
 	if err != nil {
@@ -54,10 +61,6 @@ func init() {
 		return
 	}
 	g.Log().Printf(ctx, "Created bucket '%s'", rustfsBucketName)
-	rustfsConfig = RustfsConfig{
-		Client:     client,
-		BucketName: rustfsBucketName,
-	}
 }
 
 func GetRustfsConfig() *RustfsConfig {

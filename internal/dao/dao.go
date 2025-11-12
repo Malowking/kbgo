@@ -55,7 +55,8 @@ func InitDB() error {
 
 func GetDsn() string {
 	cfg := g.DB().GetConfig()
-	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.Name)
+	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=%s&parseTime=True&loc=Local",
+		cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.Name, cfg.Charset)
 }
 
 // GetDB 获取数据库实例

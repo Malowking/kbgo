@@ -19,6 +19,6 @@ type KnowledgeDocuments struct {
 	RustfsLocation string      `json:"rustfsLocation"    orm:"rustfs_location"     description:""` //
 	IsQA           int         `json:"isQA"              orm:"is_qa"               description:""` //
 	Status         int         `json:"status"            orm:"status"              description:""` //
-	CreatedAt      *gtime.Time `json:"createdAt"         orm:"created_at"          description:""` //
-	UpdatedAt      *gtime.Time `json:"updatedAt"         orm:"updated_at"          description:""` //
+	CreateTime     *gtime.Time `json:"CreateTime"        orm:"create_time"         description:""` //
+	UpdateTime     *gtime.Time `json:"UpdateTime"        orm:"update_time"         description:""` //
 }

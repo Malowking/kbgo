@@ -2,6 +2,7 @@ package rag
 
 import (
 	"context"
+	"fmt"
 	"mime/multipart"
 
 	gorag "github.com/Malowking/kbgo/core"
@@ -10,9 +11,10 @@ import (
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
 	"github.com/Malowking/kbgo/internal/logic/rag"
-	"github.com/Malowking/kbgo/internal/model/do"
 	"github.com/Malowking/kbgo/internal/model/entity"
+	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/cloudwego/eino/components/document"
+	"github.com/cloudwego/eino/schema"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 
@@ -54,7 +56,6 @@ func (c *ControllerV1) Indexer(ctx context.Context, req *v1.IndexerReq) (res *v1
 		}
 		// 从 URL 中提取文件名
 		fileName = getFileNameFromURL(uri)
-		uri = req.URL
 	} else {
 		err = gerror.New("no file or URL provided")
 		tx.Rollback()
@@ -64,7 +65,7 @@ func (c *ControllerV1) Indexer(ctx context.Context, req *v1.IndexerReq) (res *v1
 	// 步骤2: 检查数据库中是否已经存在相同 SHA256 的文档（使用事务）
 	// 先查询是否存在相同 SHA256 和 knowledge_id 的文档
 	var count int64
-	result := tx.WithContext(ctx).Model(&entity.KnowledgeDocuments{}).Where("sha256 = ? AND knowledge_id = ?", fileSHA256, req.KnowledgeId).Count(&count)
+	result := tx.WithContext(ctx).Model(&gormModel.KnowledgeDocuments{}).Where("sha256 = ? AND knowledge_id = ?", fileSHA256, req.KnowledgeId).Count(&count)
 	if result.Error != nil {
 		g.Log().Errorf(ctx, "query document by SHA256 failed, err=%v", result.Error)
 		tx.Rollback()
@@ -80,8 +81,8 @@ func (c *ControllerV1) Indexer(ctx context.Context, req *v1.IndexerReq) (res *v1
 	}
 
 	// 查询是否存在相同 SHA256 但不同 knowledge_id 的文档
-	var existingDocOtherKB entity.KnowledgeDocuments
-	result = tx.WithContext(ctx).Where("sha256 = ?", fileSHA256).First(&existingDocOtherKB)
+	var existingDocOtherKB gormModel.KnowledgeDocuments
+	result = tx.WithContext(ctx).Model(&gormModel.KnowledgeDocuments{}).Where("sha256 = ?", fileSHA256).First(&existingDocOtherKB)
 	if result.Error != nil && result.Error.Error() != "record not found" {
 		g.Log().Errorf(ctx, "query document by SHA256 (other KB) failed, err=%v", result.Error)
 		tx.Rollback()
@@ -93,8 +94,8 @@ func (c *ControllerV1) Indexer(ctx context.Context, req *v1.IndexerReq) (res *v1
 		g.Log().Infof(ctx, "reusing file with SHA256=%s from another knowledge base", fileSHA256)
 
 		// 获取当前知识库信息
-		var kb entity.KnowledgeBase
-		result = tx.WithContext(ctx).Where("id = ?", req.KnowledgeId).First(&kb)
+		var kb gormModel.KnowledgeBase
+		result = tx.WithContext(ctx).Model(&gormModel.KnowledgeBase{}).Where("id = ?", req.KnowledgeId).First(&kb)
 		if result.Error != nil {
 			g.Log().Errorf(ctx, "get knowledge base failed, err=%v", result.Error)
 			tx.Rollback()
@@ -110,7 +111,7 @@ func (c *ControllerV1) Indexer(ctx context.Context, req *v1.IndexerReq) (res *v1
 			RustfsBucket:   existingDocOtherKB.RustfsBucket,
 			RustfsLocation: existingDocOtherKB.RustfsLocation,
 			IsQA:           req.IsQA,
-			Status:         existingDocOtherKB.Status,
+			Status:         int(existingDocOtherKB.Status),
 		}
 		newDoc, err = knowledge.SaveDocumentsInfoWithTx(ctx, tx, newDoc)
 		if err != nil {
@@ -149,8 +150,8 @@ func (c *ControllerV1) Indexer(ctx context.Context, req *v1.IndexerReq) (res *v1
 	g.Log().Infof(ctx, "uploaded to RustFS, bucket=%s, location=%s", info.Bucket, info.Key)
 
 	// 步骤4: 获取知识库信息
-	var kb entity.KnowledgeBase
-	result = tx.WithContext(ctx).Where("id = ?", req.KnowledgeId).First(&kb)
+	var kb gormModel.KnowledgeBase
+	result = tx.WithContext(ctx).Model(&gormModel.KnowledgeBase{}).Where("id = ?", req.KnowledgeId).First(&kb)
 	if result.Error != nil {
 		g.Log().Errorf(ctx, "get knowledge base failed, err=%v", result.Error)
 		tx.Rollback()
@@ -192,13 +193,23 @@ func (c *ControllerV1) Indexer(ctx context.Context, req *v1.IndexerReq) (res *v1
 	}
 
 	// 步骤7: 使用 loader 加载文档
-	loader, err := indexer.Loader(ctx)
+	loader, err := indexer.Loader(ctx, rustfsConfig.Client, rustfsConfig.BucketName)
 	if err != nil {
 		g.Log().Errorf(ctx, "create loader failed, err=%v", err)
 		return
 	}
 
-	docs, err := loader.Load(ctx, document.Source{URI: uri})
+	// 根据是本地文件还是URL文件使用不同的加载方式
+	var docs []*schema.Document
+	if req.File != nil {
+		// 对于本地上传的文件，构造 rustfs URI 直接加载
+		rustfsURI := fmt.Sprintf("rustfs://%s/%s/%s", rustfsConfig.BucketName, req.KnowledgeId, req.File.Filename)
+		docs, err = loader.Load(ctx, document.Source{URI: rustfsURI})
+	} else {
+		// 对于URL文件，使用原来的URL方式加载
+		docs, err = loader.Load(ctx, document.Source{URI: uri})
+	}
+
 	if err != nil {
 		g.Log().Errorf(ctx, "load document failed, err=%v", err)
 		return
