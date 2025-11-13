@@ -3,13 +3,12 @@ package rerank
 import (
 	"testing"
 
-	"github.com/Malowking/kbgo/core/rerank"
 	"github.com/cloudwego/eino/schema"
 	"github.com/gogf/gf/v2/os/gctx"
 )
 
 func TestRerank(t *testing.T) {
-	rerank.rerankCfg = &rerank.Conf{
+	rerankCfg = &Conf{
 		apiKey:          "sk-***",
 		Model:           "BAAI/bge-reranker-v2-m3",
 		ReturnDocuments: false,
@@ -24,7 +23,7 @@ func TestRerank(t *testing.T) {
 		{Content: "apple"},
 		{Content: "vegetable"},
 	}
-	output, err := Rerank(ctx, "水果", docs, 2)
+	output, err := NewRerank(ctx, "水果", docs, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
