@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"mime/multipart"
 	"net/http"
 	"strings"
 
+	"github.com/gogf/gf/v2/frame/g"
 	"github.com/minio/minio-go/v7"
 )
 
@@ -97,7 +97,7 @@ func ListObjects(ctx context.Context, client *minio.Client, bucketName string, r
 			return nil, fmt.Errorf("list error: %w", object.Err)
 		}
 		objects = append(objects, object)
-		log.Printf("Found object: %s", object.Key)
+		g.Log().Infof(ctx, "Found object: %s", object.Key)
 	}
 
 	return objects, nil
@@ -125,8 +125,7 @@ func DownloadFile(ctx context.Context, client *minio.Client, bucketName, objectN
 	if err != nil {
 		return fmt.Errorf("failed to download file: %w", err)
 	}
-
-	log.Printf("Downloaded '%s' from bucket '%s' to '%s'", objectName, bucketName, destFile)
+	g.Log().Infof(ctx, "Downloaded '%s' from bucket '%s' to '%s'", objectName, bucketName, destFile)
 	return nil
 }
 
@@ -141,21 +140,9 @@ func DeleteObject(ctx context.Context, client *minio.Client, bucketName, objectN
 	if err != nil {
 		return fmt.Errorf("failed to delete object: %w", err)
 	}
-
-	log.Printf("Deleted object '%s' from bucket '%s'", objectName, bucketName)
+	g.Log().Infof(ctx, "Deleted object '%s' from bucket '%s'", objectName, bucketName)
 	return nil
 }
-
-//// DeleteBucket 删除指定的 bucket
-//func DeleteBucket(ctx context.Context, client *minio.Client, bucketName string) error {
-//	err := client.RemoveBucket(ctx, bucketName)
-//	if err != nil {
-//		return fmt.Errorf("failed to delete bucket: %w", err)
-//	}
-//
-//	log.Printf("Deleted bucket '%s'", bucketName)
-//	return nil
-//}
 
 // GetObjectInfo 获取对象的详细信息
 func GetObjectInfo(ctx context.Context, client *minio.Client, bucketName, objectName string) (minio.ObjectInfo, error) {

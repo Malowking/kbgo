@@ -885,8 +885,37 @@
 
                         <div class="form-group">
                             <label class="form-label">相似度阈值</label>
-                            <input type="number" class="form-input" id="retriever_score" value="0.2" min="0" max="1" step="0.1">
-                            <div class="helper-text">0-1之间，默认0.2</div>
+                            <input type="number" class="form-input" id="retriever_score" value="0.2" min="0" max="1" step="0.01">
+                            <div class="helper-text">0-1范围(归一化后)，0=完全不相关，1=完全相同，推荐0.2-0.5</div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">启用查询重写</label>
+                        <select class="form-select" id="retriever_enable_rewrite">
+                            <option value="false">否 (默认)</option>
+                            <option value="true">是</option>
+                        </select>
+                        <div class="helper-text">启用后将使用LLM对查询进行重写优化，可提高召回率但速度较慢</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">重写尝试次数</label>
+                        <input type="number" class="form-input" id="retriever_rewrite_attempts" value="3" min="1" max="10">
+                        <div class="helper-text">仅在启用查询重写时生效，默认3次</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">检索模式</label>
+                        <select class="form-select" id="retriever_retrieve_mode">
+                            <option value="milvus">Milvus向量检索</option>
+                            <option value="rerank" selected>Rerank重排序 (推荐)</option>
+                            <option value="rrf">RRF混合检索</option>
+                        </select>
+                        <div class="helper-text">
+                            • Milvus: 仅使用向量相似度排序，速度最快<br>
+                            • Rerank: 使用Rerank模型重排序，准确度高（推荐）<br>
+                            • RRF: 混合多种检索策略，准确度最高但速度较慢
                         </div>
                     </div>
 
@@ -1476,6 +1505,9 @@
             const question = document.getElementById('retriever_question').value.trim();
             const topK = parseInt(document.getElementById('retriever_top_k').value);
             const score = parseFloat(document.getElementById('retriever_score').value);
+            const enableRewrite = document.getElementById('retriever_enable_rewrite').value === 'true';
+            const rewriteAttempts = parseInt(document.getElementById('retriever_rewrite_attempts').value);
+            const retrieveMode = document.getElementById('retriever_retrieve_mode').value;
 
             if (!kbId || !question) {
                 alert('请填写必填字段');
@@ -1492,7 +1524,10 @@
                         knowledge_id: kbId,
                         question: question,
                         top_k: topK,
-                        score: score
+                        score: score,
+                        enable_rewrite: enableRewrite,
+                        rewrite_attempts: rewriteAttempts,
+                        retrieve_mode: retrieveMode
                     })
                 });
 

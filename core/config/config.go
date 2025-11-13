@@ -13,6 +13,8 @@ type Config struct {
 	BaseURL        string
 	EmbeddingModel string
 	ChatModel      string
+	// Milvus retriever 配置
+	MetricType string // 向量相似度度量类型，如 "COSINE", "L2", "IP" 等，默认 "COSINE"
 }
 
 func (x *Config) GetChatModelConfig() *openai.ChatModelConfig {
@@ -35,5 +37,6 @@ func (x *Config) Copy() *Config {
 		BaseURL:        x.BaseURL,
 		EmbeddingModel: x.EmbeddingModel,
 		ChatModel:      x.ChatModel,
+		MetricType:     x.MetricType,
 	}
 }

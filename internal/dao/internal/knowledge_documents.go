@@ -26,10 +26,10 @@ type KnowledgeDocumentsColumns struct {
 	FileName       string //
 	CollectionName string // milvus collection name
 	//QACollectionName string // QA milvus collection name
-	IsQA      string // is QA
-	Status    string //
-	CreatedAt string //
-	UpdatedAt string //
+	IsQA       string // is QA
+	Status     string //
+	CreateTime string //
+	UpdateTime string //
 }
 
 // knowledgeDocumentsColumns holds the columns for the table knowledge_documents.
@@ -39,10 +39,10 @@ var knowledgeDocumentsColumns = KnowledgeDocumentsColumns{
 	FileName:       "file_name",
 	CollectionName: "collection_name", // milvus collection name
 	//QACollectionName: "qa_collection_name", // QA milvus collection name
-	IsQA:      "is_qa",
-	Status:    "status",
-	CreatedAt: "created_at",
-	UpdatedAt: "updated_at",
+	IsQA:       "is_qa",
+	Status:     "status",
+	CreateTime: "create_time",
+	UpdateTime: "update_time",
 }
 
 // NewKnowledgeDocumentsDao creates and returns a new DAO object for table data access.

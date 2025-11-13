@@ -3,10 +3,10 @@ package common
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 
 	milvusModel "github.com/Malowking/kbgo/internal/model/milvus"
+	"github.com/gogf/gf/v2/frame/g"
 	"github.com/milvus-io/milvus/client/v2/entity"
 	"github.com/milvus-io/milvus/client/v2/index"
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
@@ -92,8 +92,7 @@ func CreateDatabaseIfNotExists(ctx context.Context, MilvusClient *milvusclient.C
 		}
 	}
 	// 如果database存在则跳过创建
-	log.Printf("Database '%s' already exists, skipping creation.", DatabaseName)
-
+	g.Log().Infof(ctx, "Database '%s' already exists, skipping creation.", DatabaseName)
 	return nil
 }
 
@@ -103,7 +102,7 @@ func DeleteCollection(ctx context.Context, MilvusClient *milvusclient.Client, Co
 	if err != nil {
 		return err
 	}
-	log.Printf("Collection '%s' is delete......", CollectionName)
+	g.Log().Infof(ctx, "Collection '%s' is delete......", CollectionName)
 	return nil
 }
 
@@ -113,8 +112,7 @@ func DeleteMilvusDocument(ctx context.Context, MilvusClient *milvusclient.Client
 	// Build filter expression to match document_id
 	filterExpr := fmt.Sprintf(`document_id == "%s"`, documentID)
 
-	log.Printf("Attempting to delete all chunks of document %s from collection %s with filter: %s", documentID, collectionName, filterExpr)
-
+	g.Log().Infof(ctx, "Attempting to delete all chunks of document %s from collection %s with filter: %s", documentID, collectionName, filterExpr)
 	// Create delete option with filter expression
 	deleteOpt := milvusclient.NewDeleteOption(collectionName).WithExpr(filterExpr)
 
@@ -124,11 +122,11 @@ func DeleteMilvusDocument(ctx context.Context, MilvusClient *milvusclient.Client
 		return fmt.Errorf("failed to delete document %s from collection %s: %w", documentID, collectionName, err)
 	}
 
-	log.Printf("Delete operation completed for document %s, affected rows: %d", documentID, result.DeleteCount)
+	g.Log().Infof(ctx, "Delete operation completed for document %s, affected rows: %d", documentID, result.DeleteCount)
 
 	// Check if any rows were actually deleted
 	if result.DeleteCount == 0 {
-		log.Printf("Warning: No chunks were deleted for document_id=%s in collection %s", documentID, collectionName)
+		g.Log().Infof(ctx, "Warning: No chunks were deleted for document_id=%s in collection %s", documentID, collectionName)
 	}
 
 	return nil
@@ -140,7 +138,7 @@ func DeleteMilvusChunk(ctx context.Context, MilvusClient *milvusclient.Client, c
 	// Build filter expression to match the primary key id
 	filterExpr := fmt.Sprintf(`id == "%s"`, chunkID)
 
-	log.Printf("Attempting to delete chunk %s from collection %s with filter: %s", chunkID, collectionName, filterExpr)
+	g.Log().Infof(ctx, "Attempting to delete chunk %s from collection %s with filter: %s", chunkID, collectionName, filterExpr)
 
 	// Create delete option with filter expression
 	deleteOpt := milvusclient.NewDeleteOption(collectionName).WithExpr(filterExpr)
@@ -151,11 +149,11 @@ func DeleteMilvusChunk(ctx context.Context, MilvusClient *milvusclient.Client, c
 		return fmt.Errorf("failed to delete chunk (id=%s) from collection %s: %w", chunkID, collectionName, err)
 	}
 
-	log.Printf("Delete operation completed for chunk id=%s, affected rows: %d", chunkID, result.DeleteCount)
+	g.Log().Infof(ctx, "Delete operation completed for chunk id=%s, affected rows: %d", chunkID, result.DeleteCount)
 
 	// Check if any rows were actually deleted
 	if result.DeleteCount == 0 {
-		log.Printf("Warning: No chunk was deleted for id=%s in collection %s", chunkID, collectionName)
+		g.Log().Infof(ctx, "Warning: No chunk was deleted for id=%s in collection %s", chunkID, collectionName)
 	}
 
 	return nil

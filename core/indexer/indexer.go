@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/config"
@@ -12,6 +11,7 @@ import (
 	"github.com/Malowking/kbgo/milvus_new"
 	"github.com/cloudwego/eino/components/indexer"
 	"github.com/cloudwego/eino/schema"
+	"github.com/gogf/gf/v2/frame/g"
 	"github.com/google/uuid"
 	"github.com/milvus-io/milvus/client/v2/column"
 )
@@ -51,8 +51,7 @@ func newIndexer(ctx context.Context, conf *config.Config, collectionName string)
 		return nil, fmt.Errorf("failed to create milvus indexer for collection '%s': %w",
 			collectionName, err)
 	}
-
-	log.Printf("✅ Successfully created Milvus indexer: collection='%s'", collectionName)
+	g.Log().Infof(ctx, "✅ Successfully created Milvus indexer: collection='%s'", collectionName)
 	return idr, nil
 }
 

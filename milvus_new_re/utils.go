@@ -36,8 +36,8 @@ import (
 )
 
 // defaultDocumentConverter returns the default document converter
-func defaultDocumentConverter() func(ctx context.Context, columns []column.Column) ([]*schema.Document, error) {
-	return func(ctx context.Context, columns []column.Column) ([]*schema.Document, error) {
+func defaultDocumentConverter() func(ctx context.Context, columns []column.Column, scores []float32) ([]*schema.Document, error) {
+	return func(ctx context.Context, columns []column.Column, scores []float32) ([]*schema.Document, error) {
 		if len(columns) == 0 {
 			return nil, nil
 		}
@@ -49,6 +49,11 @@ func defaultDocumentConverter() func(ctx context.Context, columns []column.Colum
 			result[i] = &schema.Document{
 				MetaData: make(map[string]any),
 			}
+		}
+
+		// Set scores for each document
+		for i := 0; i < numDocs && i < len(scores); i++ {
+			result[i].WithScore(float64(scores[i]))
 		}
 
 		// Process each column

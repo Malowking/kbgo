@@ -73,7 +73,7 @@ func GetChunksList(ctx context.Context, where entity.KnowledgeChunks, page, size
 	}
 
 	// 按创建时间倒序
-	model = model.OrderDesc("created_at")
+	model = model.OrderDesc("created_time")
 
 	err = model.Scan(&list)
 	return
@@ -83,12 +83,6 @@ func GetChunksList(ctx context.Context, where entity.KnowledgeChunks, page, size
 func GetChunkById(ctx context.Context, id string) (chunk entity.KnowledgeChunks, err error) {
 	err = dao.KnowledgeChunks.Ctx(ctx).Where("id", id).Scan(&chunk)
 	return
-}
-
-// DeleteChunkByIds 根据ID软删除知识块
-func DeleteChunkById(ctx context.Context, id string) error {
-	_, err := dao.KnowledgeChunks.Ctx(ctx).Where("id", id).Delete()
-	return err
 }
 
 // DeleteChunkByIdWithTx 根据ID软删除知识块（事务版本）

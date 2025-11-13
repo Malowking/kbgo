@@ -12,9 +12,7 @@ import (
 	"github.com/milvus-io/milvus/client/v2/column"
 )
 
-// newRetrieverMilvus creates a new Milvus-based retriever
-func newRetriever(ctx context.Context, conf *config.Config) (rtr retriever.Retriever, err error) {
-	// Get vector field from context, default to FieldContentVector
+func Retriever(ctx context.Context, conf *config.Config, collectionName string) (rtr retriever.Retriever, err error) {
 	vectorField := common.FieldContentVector
 	if value, ok := ctx.Value(common.RetrieverFieldKey).(string); ok {
 		vectorField = value
@@ -31,14 +29,20 @@ func newRetriever(ctx context.Context, conf *config.Config) (rtr retriever.Retri
 		return nil, fmt.Errorf("milvus client is nil")
 	}
 
+	// 设置 MetricType，如果配置文件中有指定则使用，否则默认使用 COSINE
+	metricType := milvus.COSINE
+	if conf.MetricType != "" {
+		metricType = milvus.MetricType(conf.MetricType)
+	}
+
 	// Configure Milvus retriever
 	retrieverConfig := &milvus.RetrieverConfig{
-		Client:            *conf.Client,  // Dereference pointer to get value
-		Collection:        conf.Database, // Using Database field as collection name
+		Client:            *conf.Client,
+		Collection:        collectionName,
 		VectorField:       vectorField,
-		OutputFields:      []string{"id", common.FieldContent, common.FieldExtra, common.KnowledgeId},
+		OutputFields:      []string{"id", common.FieldContent, common.FieldMetadata, common.DocumentId},
 		DocumentConverter: MilvusResult2Document,
-		MetricType:        milvus.COSINE,
+		MetricType:        metricType,
 		TopK:              5,
 		ScoreThreshold:    0,
 		Embedding:         embeddingIns,
@@ -54,7 +58,7 @@ func newRetriever(ctx context.Context, conf *config.Config) (rtr retriever.Retri
 }
 
 // MilvusResult2Document converts Milvus search results to schema.Document
-func MilvusResult2Document(ctx context.Context, columns []column.Column) ([]*schema.Document, error) {
+func MilvusResult2Document(ctx context.Context, columns []column.Column, scores []float32) ([]*schema.Document, error) {
 	if len(columns) == 0 {
 		return nil, nil
 	}
@@ -66,6 +70,11 @@ func MilvusResult2Document(ctx context.Context, columns []column.Column) ([]*sch
 		result[i] = &schema.Document{
 			MetaData: make(map[string]any),
 		}
+	}
+
+	// Set scores for each document
+	for i := 0; i < numDocs && i < len(scores); i++ {
+		result[i].WithScore(float64(scores[i]))
 	}
 
 	// Process each column
@@ -109,7 +118,7 @@ func MilvusResult2Document(ctx context.Context, columns []column.Column) ([]*sch
 					result[i].WithDenseVector(v)
 				}
 			}
-		case common.FieldExtra:
+		case common.FieldMetadata:
 			for i := 0; i < col.Len(); i++ {
 				val, err := col.Get(i)
 				if err != nil {
@@ -121,19 +130,19 @@ func MilvusResult2Document(ctx context.Context, columns []column.Column) ([]*sch
 				// Handle both string and []byte for extra field
 				switch v := val.(type) {
 				case string:
-					result[i].MetaData[common.FieldExtra] = v
+					result[i].MetaData[common.FieldMetadata] = v
 				case []byte:
-					result[i].MetaData[common.FieldExtra] = string(v)
+					result[i].MetaData[common.FieldMetadata] = string(v)
 				}
 			}
-		case common.KnowledgeId:
+		case common.DocumentId:
 			for i := 0; i < col.Len(); i++ {
 				val, err := col.Get(i)
 				if err != nil {
 					continue
 				}
 				if str, ok := val.(string); ok {
-					result[i].MetaData[common.KnowledgeId] = str
+					result[i].MetaData[common.DocumentId] = str
 				}
 			}
 		default:

@@ -18,30 +18,39 @@ func (c *ControllerV1) Retriever(ctx context.Context, req *v1.RetrieverReq) (res
 		req.TopK = 5
 	}
 	if req.Score == 0 {
-		req.Score = 0.2
+		req.Score = 0.2 // 默认0.2，对应归一化后的分数范围
 	}
-	if req.Score < 1.0 {
-		req.Score += 1
+	// 默认检索模式为rerank
+	if req.RetrieveMode == "" {
+		req.RetrieveMode = "rerank"
 	}
+	// 分数现在已经是0-1范围，不需要额外转换
 	ragReq := &gorag.RetrieveReq{
-		Query:       req.Question,
-		TopK:        req.TopK,
-		Score:       req.Score,
-		KnowledgeId: req.KnowledgeId,
+		Query:           req.Question,
+		TopK:            req.TopK,
+		Score:           req.Score,
+		KnowledgeId:     req.KnowledgeId,
+		EnableRewrite:   req.EnableRewrite,
+		RewriteAttempts: req.RewriteAttempts,
+		RetrieveMode:    gorag.RetrieveMode(req.RetrieveMode),
 	}
-	g.Log().Infof(ctx, "ragReq: %v", ragReq)
+	g.Log().Infof(ctx, "ragReq: %v, EnableRewrite: %v, RewriteAttempts: %v, RetrieveMode: %v", ragReq, req.EnableRewrite, req.RewriteAttempts, req.RetrieveMode)
 	msg, err := ragSvr.Retrieve(ctx, ragReq)
 	if err != nil {
 		return
 	}
 	for _, document := range msg {
 		if document.MetaData != nil {
-			delete(document.MetaData, "_dense_vector")
-			m := make(map[string]interface{})
-			if err = json.Unmarshal([]byte(document.MetaData["ext"].(string)), &m); err != nil {
-				return
+			if metadataVal, ok := document.MetaData["metadata"]; ok && metadataVal != nil {
+				// 尝试将 metadata 从 JSON 字符串解析为 map
+				if metadataStr, isString := metadataVal.(string); isString && metadataStr != "" {
+					m := make(map[string]interface{})
+					if err = json.Unmarshal([]byte(metadataStr), &m); err == nil {
+						document.MetaData["metadata"] = m
+					}
+					// 如果解析失败，保持原值
+				}
 			}
-			document.MetaData["ext"] = m
 		}
 	}
 	// eino 默认是把分高的排在两边，这里我修改

@@ -8,12 +8,12 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-func BuildRetriever(ctx context.Context, conf *config.Config) (r compose.Runnable[string, []*schema.Document], err error) {
+func BuildRetriever(ctx context.Context, conf *config.Config, collectionName string) (r compose.Runnable[string, []*schema.Document], err error) {
 	const (
 		Retriever1 = "Retriever"
 	)
 	g := compose.NewGraph[string, []*schema.Document]()
-	retriever1KeyOfRetriever, err := newRetriever(ctx, conf)
+	retriever1KeyOfRetriever, err := Retriever(ctx, conf, collectionName)
 	if err != nil {
 		return nil, err
 	}

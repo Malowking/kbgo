@@ -31,11 +31,8 @@ go.work
 # Log files
 *.log
 
-# Uploads directory
-uploads/
-
 # Configuration files
-manifest/config/config.yaml
+/manifest/config/config.yaml
 
 # Environment files
 .env
@@ -55,3 +52,4 @@ dist/
 .Trashes
 ehthumbs.db
 Thumbs.db
+/.claude/

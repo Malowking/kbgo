@@ -110,7 +110,7 @@ func (x *multiLoader) loadRustFSObject(ctx context.Context, src document.Source)
 		if doc.MetaData == nil {
 			doc.MetaData = make(map[string]interface{})
 		}
-		doc.MetaData["source"] = src.URI
+		doc.MetaData["_source"] = src.URI
 	}
 
 	return docs, nil

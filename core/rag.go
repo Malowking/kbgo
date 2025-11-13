@@ -35,14 +35,14 @@ func (r *Rag) BuildIndexer(ctx context.Context, collectionName string, chunkSize
 
 // BuildIndexerAsync creates an async indexer for the specified collection
 // collectionName: the Milvus collection name
-func (r *Rag) BuildIndexerAsync(ctx context.Context, collectionName string) (compose.Runnable[[]*schema.Document, []string], error) {
-	return indexer.BuildIndexerAsync(ctx, r.conf, collectionName)
-}
+//func (r *Rag) BuildIndexerAsync(ctx context.Context, collectionName string) (compose.Runnable[[]*schema.Document, []string], error) {
+//	return indexer.BuildIndexerAsync(ctx, r.conf, collectionName)
+//}
 
 // BuildRetriever creates a retriever for the specified collection
 // collectionName: the Milvus collection name
 func (r *Rag) BuildRetriever(ctx context.Context, collectionName string) (compose.Runnable[string, []*schema.Document], error) {
-	return retriever.BuildRetriever(ctx, r.conf)
+	return retriever.BuildRetriever(ctx, r.conf, collectionName)
 }
 
 // GetConfig returns the configuration
@@ -72,35 +72,4 @@ func New(ctx context.Context, conf *config.Config) (*Rag, error) {
 		conf:   conf,
 		cm:     cm,
 	}, nil
-}
-
-// GetKnowledgeBaseList 获取知识库列表
-// 从 Milvus 获取所有 text_ 开头的 collection，提取知识库 ID
-func (x *Rag) GetKnowledgeBaseList(ctx context.Context) (list []string, err error) {
-	// 列出指定 database 中的所有 collection
-	listOpt := milvusclient.NewListCollectionOption()
-	collections, err := x.Client.ListCollections(ctx, listOpt)
-	if err != nil {
-		g.Log().Errorf(ctx, "failed to list collections: %v", err)
-		return nil, err
-	}
-
-	// 过滤出 text_ 开头的 collection，提取知识库 ID
-	kbIDSet := make(map[string]bool)
-	for _, collectionName := range collections {
-		// 只处理 text_ 开头的 collection
-		if len(collectionName) > 5 && collectionName[:5] == "text_" {
-			// 提取知识库 ID（text_xxx -> xxx）
-			kbID := collectionName[5:]
-			kbIDSet[kbID] = true
-		}
-	}
-
-	// 转换为列表
-	list = make([]string, 0, len(kbIDSet))
-	for kbID := range kbIDSet {
-		list = append(list, kbID)
-	}
-
-	return list, nil
 }

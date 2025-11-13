@@ -27,8 +27,8 @@ type KnowledgeChunksColumns struct {
 	CollectionName string // Milvus collection name
 	Ext            string //
 	Status         string //
-	CreatedAt      string //
-	UpdatedAt      string //
+	CreateTime     string //
+	UpdateTime     string //
 }
 
 // knowledgeChunksColumns holds the columns for the table knowledge_chunks.
@@ -39,8 +39,8 @@ var knowledgeChunksColumns = KnowledgeChunksColumns{
 	CollectionName: "collection_name",
 	Ext:            "ext",
 	Status:         "status",
-	CreatedAt:      "created_at",
-	UpdatedAt:      "updated_at",
+	CreateTime:     "create_time",
+	UpdateTime:     "update_time",
 }
 
 // NewKnowledgeChunksDao creates and returns a new DAO object for table data access.
