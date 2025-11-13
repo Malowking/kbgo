@@ -31,10 +31,10 @@ KBGO 是一个基于 Go 语言开发的知识库管理系统，集成了 Milvus 
 
 1. 复制配置文件模板：
    ```bash
-   cp manifest/config/config_demo.yaml manifest/config/config.yaml
+   cp config/config_demo.yaml config/config.yaml
    ```
 
-2. 修改 `manifest/config/config.yaml` 中的配置项：
+2. 修改 `config/config.yaml` 中的配置项：
    ```yaml
    # 数据库配置
    database:

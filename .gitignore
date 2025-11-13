@@ -32,7 +32,7 @@ go.work
 *.log
 
 # Configuration files
-/manifest/config/config.yaml
+/config/config.yaml
 
 # Environment files
 .env
