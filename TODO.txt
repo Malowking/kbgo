@@ -1,3 +1,4 @@
 待办
-1.修改在mysql创建知识库和milvus创建collection保持原子性 internal/controller/rag/rag_v1_kb.go
-2.添加QA切分
+1.添加QA切分
+2.迁移数据库Mysql到PG
+3.工作流添加
