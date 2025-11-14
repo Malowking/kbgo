@@ -1385,8 +1385,13 @@
             showLoading('chunk_status');
 
             try {
-                const response = await fetch(getBaseUrl() + '/api/v1/chunks?ids=' + idsArray.join(',') + '&status=' + status, {
-                    method: 'PUT'
+                const response = await fetch(getBaseUrl() + '/api/v1/chunks', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        ids: idsArray,
+                        status: parseInt(status)
+                    })
                 });
 
                 const data = await response.json();

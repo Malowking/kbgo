@@ -38,13 +38,3 @@ type UpdateChunkReq struct {
 type UpdateChunkRes struct {
 	g.Meta `mime:"application/json"`
 }
-
-type UpdateChunkContentReq struct {
-	g.Meta  `path:"/v1/chunks_content" method:"put" tags:"rag"`
-	Id      string `p:"id" dc:"id" v:"required"`
-	Content string `p:"content" dc:"content" v:"required"`
-}
-
-type UpdateChunkContentRes struct {
-	g.Meta `mime:"application/json"`
-}

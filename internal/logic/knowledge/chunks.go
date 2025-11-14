@@ -73,7 +73,7 @@ func GetChunksList(ctx context.Context, where entity.KnowledgeChunks, page, size
 	}
 
 	// 按创建时间倒序
-	model = model.OrderDesc("created_time")
+	model = model.OrderDesc("create_time")
 
 	err = model.Scan(&list)
 	return
@@ -97,7 +97,7 @@ func UpdateChunkByIdsWithTx(ctx context.Context, tx *gorm.DB, ids []string, data
 	if data.Content != "" {
 		updates["content"] = data.Content
 	}
-	if data.Status != 0 {
+	if data.Status == 0 || data.Status == 1 {
 		updates["status"] = data.Status
 	}
 	result := tx.WithContext(ctx).Model(&entity.KnowledgeChunks{}).Where("id IN ?", ids).Updates(updates)
