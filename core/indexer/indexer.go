@@ -92,14 +92,7 @@ func getDocumentConverter() func(ctx context.Context, docs []*schema.Document, v
 			// Extract document_id from metadata or use context value
 			// Priority: metadata > context
 			var docID string
-			if id, ok := doc.MetaData["document_id"].(string); ok && id != "" {
-				docID = id
-			} else if id, ok := doc.MetaData["knowledge_doc_id"].(string); ok && id != "" {
-				docID = id
-			} else if id, ok := doc.MetaData["doc_id"].(string); ok && id != "" {
-				docID = id
-			} else if contextDocumentId != "" {
-				// Use document ID from context if not found in metadata
+			if contextDocumentId != "" {
 				docID = contextDocumentId
 			} else {
 				// document_id is required, return error if not found
@@ -111,12 +104,10 @@ func getDocumentConverter() func(ctx context.Context, docs []*schema.Document, v
 			metaCopy := make(map[string]any)
 			if doc.MetaData != nil {
 				for k, v := range doc.MetaData {
-					// Skip fields that are stored separately in their own columns
-					if k != "document_id" && k != "knowledge_doc_id" && k != "doc_id" {
-						metaCopy[k] = v
-					}
+					metaCopy[k] = v
 				}
 			}
+
 			// Add knowledge base ID to metadata
 			if knowledgeId != "" {
 				metaCopy[common.KnowledgeId] = knowledgeId

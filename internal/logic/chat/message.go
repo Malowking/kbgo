@@ -28,23 +28,34 @@ func formatDocuments(docs []*schema.Document) string {
 
 		// 添加元数据信息
 		if doc.MetaData != nil {
-			if source, ok := doc.MetaData["source"]; ok {
-				builder.WriteString(fmt.Sprintf("来源: %v\n", source))
-			}
-			if page, ok := doc.MetaData["page"]; ok {
-				builder.WriteString(fmt.Sprintf("页码: %v\n", page))
-			}
+			// 从顶层获取document_id
 			if docID, ok := doc.MetaData["document_id"]; ok {
 				builder.WriteString(fmt.Sprintf("文档ID: %v\n", docID))
 			}
-			if title, ok := doc.MetaData["title"]; ok {
-				builder.WriteString(fmt.Sprintf("标题: %v\n", title))
-			}
-			// 处理嵌套的metadata字段（常见情况）
+
+			// 从顶层获取可能存在的其他字段
+			//if page, ok := doc.MetaData["page"]; ok {
+			//	builder.WriteString(fmt.Sprintf("页码: %v\n", page))
+			//}
+			//if title, ok := doc.MetaData["title"]; ok {
+			//	builder.WriteString(fmt.Sprintf("标题: %v\n", title))
+			//}
+
+			// 处理嵌套的metadata字段，从里面提取_source、_knowledge_id等
 			if metadata, ok := doc.MetaData["metadata"]; ok {
 				if metaMap, isMap := metadata.(map[string]interface{}); isMap {
+					// 优先提取_source
+					if source, ok := metaMap["_source"]; ok {
+						builder.WriteString(fmt.Sprintf("来源: %v\n", source))
+					}
+					// 提取_knowledge_id
+					if knowledgeID, ok := metaMap["knowledge_id"]; ok {
+						builder.WriteString(fmt.Sprintf("知识库ID: %v\n", knowledgeID))
+					}
+					// 遍历其他字段
 					for key, value := range metaMap {
-						if key != "content" && value != nil {
+						// 跳过已经处理的字段和content字段
+						if key != "_source" && key != "_knowledge_id" && value != nil {
 							builder.WriteString(fmt.Sprintf("%s: %v\n", key, value))
 						}
 					}

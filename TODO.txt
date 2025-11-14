@@ -1,6 +1,6 @@
 修改
 1.chat对话接口调用知识库
-
+2.文档切分选择chunksize和overlapsize报错
 
 待办
 1.添加QA切分

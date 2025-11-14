@@ -6,7 +6,7 @@ const (
 	//FieldQAContent       = "qa_content"
 	//FieldQAContentVector = "qa_content_vector"
 	FieldMetadata = "metadata"
-	KnowledgeId   = "_knowledge_id"
+	KnowledgeId   = "knowledge_id"
 	DocumentId    = "document_id"
 
 	RetrieverFieldKey = "_retriever_field"
