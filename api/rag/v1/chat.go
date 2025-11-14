@@ -11,7 +11,7 @@ type ChatReq struct {
 	Question    string  `json:"question" v:"required"`
 	KnowledgeId string  `json:"knowledge_id" v:"required"`
 	TopK        int     `json:"top_k"` // 默认为5
-	Score       float64 `json:"score"` // 默认为0.2
+	Score       float64 `json:"score"` // 默认为0.2 （默认是rrf检索模式，相似度分数不重要）
 }
 
 type ChatRes struct {
@@ -27,7 +27,7 @@ type ChatStreamReq struct {
 	Question    string  `json:"question" v:"required"`
 	KnowledgeId string  `json:"knowledge_id" v:"required"`
 	TopK        int     `json:"top_k"` // 默认为5
-	Score       float64 `json:"score"` // 默认为0.2
+	Score       float64 `json:"score"` // 默认为0.2 （默认是rrf检索模式，相似度分数不重要）
 }
 
 // ChatStreamRes 流式输出响应

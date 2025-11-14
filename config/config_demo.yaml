@@ -60,3 +60,17 @@ chat:
   apiKey: "sk-your-api-key-here"
   baseURL: "https://api.agicto.cn/v1"
   model: "qwen3-32b"
+  # 大模型推理参数
+  temperature: 0.7           # 控制输出的随机性，0.0-2.0，越小越确定性
+  topP: 0.9                  # 核采样参数，0.0-1.0，控制生成的多样性
+  maxTokens: 4096            # 最大生成token数量
+  frequencyPenalty: 0.0      # 频率惩罚，减少重复词汇，-2.0到2.0
+  presencePenalty: 0.0       # 存在惩罚，鼓励新话题，-2.0到2.0
+  stop: [ ]                   # 停止词列表
+  functions: [ ]              # 函数调用配置
+
+# 知识库检索默认参数配置
+retriever:
+  enableRewrite: false       # 是否启用查询重写（默认 false）
+  rewriteAttempts: 3         # 查询重写尝试次数（默认 3）
+  retrieveMode: "rrf"     # 检索模式: milvus/rerank/rrf（默认 rrf）
