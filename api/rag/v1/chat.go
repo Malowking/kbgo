@@ -22,6 +22,13 @@ type ChatRes struct {
 	g.Meta     `mime:"application/json"`
 	Answer     string             `json:"answer"`
 	References []*schema.Document `json:"references"`
+	MCPResults []*MCPResult       `json:"mcp_results,omitempty"`
+}
+
+type MCPResult struct {
+	ServiceName string `json:"service_name"`
+	ToolName    string `json:"tool_name"`
+	Content     string `json:"content"`
 }
 
 // ChatStreamReq 流式输出请求 (保留兼容性)

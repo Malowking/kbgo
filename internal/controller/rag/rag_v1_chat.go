@@ -49,14 +49,17 @@ func (c *ControllerV1) Chat(ctx context.Context, req *v1.ChatReq) (res *v1.ChatR
 		res.References = retriever.Document
 	}
 
+	var mcpResults []*v1.MCPResult
 	// 如果启用MCP，则执行MCP逻辑
 	if req.UseMCP {
-		mcpResults, err := c.callMCPTools(ctx, req)
+		mcpDocs, err := c.callMCPTools(ctx, req)
 		if err != nil {
 			g.Log().Errorf(ctx, "MCP工具调用失败: %v", err)
 		} else {
 			// 将MCP结果合并到上下文中
-			documents = append(documents, mcpResults...)
+			documents = append(documents, mcpDocs...)
+			// 提取MCP结果用于返回
+			mcpResults = c.extractMCPResults(mcpDocs)
 		}
 	}
 
@@ -67,6 +70,9 @@ func (c *ControllerV1) Chat(ctx context.Context, req *v1.ChatReq) (res *v1.ChatR
 		return nil, err
 	}
 	res.Answer = answer
+	if len(mcpResults) > 0 {
+		res.MCPResults = mcpResults
+	}
 
 	return res, nil
 }
@@ -97,14 +103,17 @@ func (c *ControllerV1) handleStreamChat(ctx context.Context, req *v1.ChatReq) er
 		documents = retriever.Document
 	}
 
+	var mcpResults []*v1.MCPResult
 	// 如果启用MCP，则执行MCP逻辑
 	if req.UseMCP {
-		mcpResults, err := c.callMCPTools(ctx, req)
+		mcpDocs, err := c.callMCPTools(ctx, req)
 		if err != nil {
 			g.Log().Errorf(ctx, "MCP工具调用失败: %v", err)
 		} else {
 			// 将MCP结果合并到上下文中
-			documents = append(documents, mcpResults...)
+			documents = append(documents, mcpDocs...)
+			// 提取MCP结果用于返回
+			mcpResults = c.extractMCPResults(mcpDocs)
 		}
 	}
 
@@ -118,13 +127,54 @@ func (c *ControllerV1) handleStreamChat(ctx context.Context, req *v1.ChatReq) er
 	}
 	defer streamReader.Close()
 
-	err = common.SteamResponse(ctx, streamReader, documents)
+	// 在流式响应中添加MCP结果
+	var allDocuments []*schema.Document
+	allDocuments = append(allDocuments, documents...)
+
+	// 添加MCP结果作为文档
+	for _, mcpResult := range mcpResults {
+		mcpDoc := &schema.Document{
+			ID:      "mcp_" + mcpResult.ServiceName + "_" + mcpResult.ToolName,
+			Content: mcpResult.Content,
+			MetaData: map[string]interface{}{
+				"source":       "mcp",
+				"service_name": mcpResult.ServiceName,
+				"tool_name":    mcpResult.ToolName,
+			},
+		}
+		allDocuments = append(allDocuments, mcpDoc)
+	}
+
+	err = common.SteamResponse(ctx, streamReader, allDocuments)
 	if err != nil {
 		g.Log().Error(ctx, err)
 		return err
 	}
 
 	return nil
+}
+
+// extractMCPResults 从MCP文档中提取结果信息
+func (c *ControllerV1) extractMCPResults(docs []*schema.Document) []*v1.MCPResult {
+	var results []*v1.MCPResult
+	for _, doc := range docs {
+		if source, ok := doc.MetaData["source"].(string); ok && source == "mcp" {
+			result := &v1.MCPResult{
+				ServiceName: "",
+				ToolName:    "",
+				Content:     doc.Content,
+			}
+
+			if serviceName, ok := doc.MetaData["service"].(string); ok {
+				result.ServiceName = serviceName
+			}
+			if toolName, ok := doc.MetaData["tool"].(string); ok {
+				result.ToolName = toolName
+			}
+			results = append(results, result)
+		}
+	}
+	return results
 }
 
 // callMCPTools 调用MCP工具

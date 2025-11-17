@@ -234,10 +234,10 @@ func (c *ControllerV1) MCPListTools(ctx context.Context, req *v1.MCPListToolsReq
 		var tools []v1.MCPToolInfo
 		if err := json.Unmarshal([]byte(registry.Tools), &tools); err == nil {
 			// 检查缓存是否过期（简单实现，可根据需要增强）
-			cacheTTL := 300 // 默认5分钟
-			if req.CacheTTL != nil {
-				cacheTTL = *req.CacheTTL
-			}
+			// cacheTTL := 300 // 默认5分钟
+			// if req.CacheTTL != nil {
+			// 	cacheTTL = *req.CacheTTL
+			// }
 
 			// 这里可以添加更复杂的缓存过期逻辑
 			// 简单起见，我们直接使用缓存数据
