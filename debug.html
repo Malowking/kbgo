@@ -343,6 +343,7 @@
                     <div class="menu-item" data-section="kb-list">知识库列表</div>
                     <div class="menu-item" data-section="kb-get">获取知识库详情</div>
                     <div class="menu-item" data-section="kb-update">更新知识库</div>
+                    <div class="menu-item" data-section="kb-update-status">修改知识库状态</div>
                     <div class="menu-item" data-section="kb-delete">删除知识库</div>
                 </div>
 
@@ -350,6 +351,7 @@
                 <div class="menu-section">
                     <div class="menu-section-title">文档管理</div>
                     <div class="menu-item" data-section="doc-list">文档列表</div>
+                    <div class="menu-item" data-section="doc-reindex">重新索引文档</div>
                     <div class="menu-item" data-section="doc-delete">删除文档</div>
                 </div>
 
@@ -565,6 +567,40 @@
                     </div>
                 </div>
 
+                <!-- 修改知识库状态 -->
+                <div class="api-section" id="kb-update-status">
+                    <h2 class="api-title">
+                        <span class="api-method method-put" style="background: #17a2b8; color: white;">PATCH</span>
+                        修改知识库状态
+                    </h2>
+                    <p class="api-description">专门用于修改知识库的启用/禁用状态</p>
+
+                    <div class="form-group">
+                        <label class="form-label">知识库ID <span class="required">*</span></label>
+                        <input type="text" class="form-input" id="kb_update_status_id" placeholder="输入知识库ID">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">状态 <span class="required">*</span></label>
+                        <select class="form-select" id="kb_update_status_value">
+                            <option value="1">启用</option>
+                            <option value="2">禁用</option>
+                        </select>
+                        <div class="helper-text">1=启用（可用），2=禁用（不可用）</div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="updateKBStatus()">修改状态</button>
+                    <button class="btn btn-secondary" onclick="clearForm('kb-update-status')">清空</button>
+
+                    <div class="loading" id="kb_update_status_loading">请求中...</div>
+
+                    <div class="response-section" id="kb_update_status_response">
+                        <div class="response-title">响应结果</div>
+                        <div class="response-status" id="kb_update_status_status"></div>
+                        <div class="response-body" id="kb_update_status_body"></div>
+                    </div>
+                </div>
+
                 <!-- 文档列表 -->
                 <div class="api-section" id="doc-list">
                     <h2 class="api-title">
@@ -624,6 +660,46 @@
                         <div class="response-title">响应结果</div>
                         <div class="response-status" id="doc_delete_status"></div>
                         <div class="response-body" id="doc_delete_body"></div>
+                    </div>
+                </div>
+
+                <!-- 重新索引文档 -->
+                <div class="api-section" id="doc-reindex">
+                    <h2 class="api-title">
+                        <span class="api-method method-post">POST</span>
+                        重新索引文档
+                    </h2>
+                    <p class="api-description">对索引失败的文档进行重新索引（适用于文件已上传但向量化失败的情况）</p>
+
+                    <div class="form-group">
+                        <label class="form-label">文档ID <span class="required">*</span></label>
+                        <input type="text" class="form-input" id="doc_reindex_id" placeholder="输入文档ID">
+                        <div class="helper-text">只能重新索引status不为2（Active）的文档</div>
+                    </div>
+
+                    <div class="inline-group">
+                        <div class="form-group">
+                            <label class="form-label">Chunk Size</label>
+                            <input type="number" class="form-input" id="doc_reindex_chunk_size" value="1000" min="1">
+                            <div class="helper-text">文档分块大小，默认1000</div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Overlap Size</label>
+                            <input type="number" class="form-input" id="doc_reindex_overlap_size" value="100" min="0">
+                            <div class="helper-text">分块重叠大小，默认100</div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="reindexDoc()">重新索引</button>
+                    <button class="btn btn-secondary" onclick="clearForm('doc-reindex')">清空</button>
+
+                    <div class="loading" id="doc_reindex_loading">请求中...</div>
+
+                    <div class="response-section" id="doc_reindex_response">
+                        <div class="response-title">响应结果</div>
+                        <div class="response-status" id="doc_reindex_status"></div>
+                        <div class="response-body" id="doc_reindex_body"></div>
                     </div>
                 </div>
 
@@ -1266,6 +1342,34 @@
             }
         }
 
+        // 修改知识库状态
+        async function updateKBStatus() {
+            const id = document.getElementById('kb_update_status_id').value.trim();
+            const status = document.getElementById('kb_update_status_value').value;
+
+            if (!id) {
+                alert('请输入知识库ID');
+                return;
+            }
+
+            showLoading('kb_update_status');
+
+            try {
+                const response = await fetch(getBaseUrl() + '/api/v1/kb/' + id + '/status', {
+                    method: 'PATCH',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        status: parseInt(status)
+                    })
+                });
+
+                const data = await response.json();
+                showResponse('kb_update_status', response.ok, data);
+            } catch (error) {
+                showResponse('kb_update_status', false, {error: error.message});
+            }
+        }
+
         // ==================== 文档管理 ====================
 
         // 获取文档列表
@@ -1315,6 +1419,37 @@
                 showResponse('doc_delete', response.ok, data);
             } catch (error) {
                 showResponse('doc_delete', false, {error: error.message});
+            }
+        }
+
+        // 重新索引文档
+        async function reindexDoc() {
+            const docId = document.getElementById('doc_reindex_id').value.trim();
+            const chunkSize = document.getElementById('doc_reindex_chunk_size').value;
+            const overlapSize = document.getElementById('doc_reindex_overlap_size').value;
+
+            if (!docId) {
+                alert('请输入文档ID');
+                return;
+            }
+
+            showLoading('doc_reindex');
+
+            try {
+                const response = await fetch(getBaseUrl() + '/api/v1/documents/reindex', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        document_id: docId,
+                        chunk_size: parseInt(chunkSize),
+                        overlap_size: parseInt(overlapSize)
+                    })
+                });
+
+                const data = await response.json();
+                showResponse('doc_reindex', response.ok, data);
+            } catch (error) {
+                showResponse('doc_reindex', false, {error: error.message});
             }
         }
 

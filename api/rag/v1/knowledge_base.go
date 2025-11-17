@@ -58,3 +58,11 @@ type KBGetListReq struct {
 type KBGetListRes struct {
 	List []*entity.KnowledgeBase `json:"list" dc:"kb list"`
 }
+
+type KBUpdateStatusReq struct {
+	g.Meta `path:"/v1/kb/{id}/status" method:"patch" tags:"kb" summary:"Update kb status"`
+	Id     string `v:"required" dc:"kb id"`
+	Status Status `v:"required|in:1,2" dc:"kb status: 1-enabled, 2-disabled"`
+}
+
+type KBUpdateStatusRes struct{}

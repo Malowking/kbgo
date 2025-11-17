@@ -6,6 +6,7 @@ import (
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/config"
+	"github.com/Malowking/kbgo/internal/dao"
 	milvus "github.com/Malowking/kbgo/milvus_new_re"
 	"github.com/cloudwego/eino/components/retriever"
 	"github.com/cloudwego/eino/schema"
@@ -58,6 +59,7 @@ func Retriever(ctx context.Context, conf *config.Config, collectionName string) 
 }
 
 // MilvusResult2Document converts Milvus search results to schema.Document
+// and filters out chunks with status != 1 for permission control
 func MilvusResult2Document(ctx context.Context, columns []column.Column, scores []float32) ([]*schema.Document, error) {
 	if len(columns) == 0 {
 		return nil, nil
@@ -155,6 +157,33 @@ func MilvusResult2Document(ctx context.Context, columns []column.Column, scores 
 				result[i].MetaData[col.Name()] = val
 			}
 		}
+	}
+
+	// Permission control: Filter out chunks with status != 1
+	// Collect all chunk IDs
+	chunkIDs := make([]string, 0, len(result))
+	for _, doc := range result {
+		if doc.ID != "" {
+			chunkIDs = append(chunkIDs, doc.ID)
+		}
+	}
+
+	// Query active chunk IDs from database
+	if len(chunkIDs) > 0 {
+		activeIDs, err := dao.KnowledgeChunks.GetActiveChunkIDs(ctx, chunkIDs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query chunk status: %w", err)
+		}
+
+		// Filter documents to only include active chunks
+		filtered := make([]*schema.Document, 0, len(result))
+		for _, doc := range result {
+			if activeIDs.Contains(doc.ID) {
+				filtered = append(filtered, doc)
+			}
+		}
+
+		return filtered, nil
 	}
 
 	return result, nil

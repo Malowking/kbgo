@@ -80,61 +80,6 @@ func (c *ControllerV1) Indexer(ctx context.Context, req *v1.IndexerReq) (res *v1
 		return nil, err
 	}
 
-	// 查询是否存在相同 SHA256 但不同 knowledge_id 的文档
-	var existingDocOtherKB gormModel.KnowledgeDocuments
-	result = tx.WithContext(ctx).Model(&gormModel.KnowledgeDocuments{}).Where("sha256 = ?", fileSHA256).First(&existingDocOtherKB)
-	if result.Error != nil && result.Error.Error() != "record not found" {
-		g.Log().Errorf(ctx, "query document by SHA256 (other KB) failed, err=%v", result.Error)
-		tx.Rollback()
-		return nil, result.Error
-	}
-
-	// 如果存在相同 SHA256 但不同 knowledge_id 的文档，复用该文档信息
-	if result.Error == nil && existingDocOtherKB.KnowledgeId != req.KnowledgeId {
-		g.Log().Infof(ctx, "reusing file with SHA256=%s from another knowledge base", fileSHA256)
-
-		// 获取当前知识库信息
-		var kb gormModel.KnowledgeBase
-		result = tx.WithContext(ctx).Model(&gormModel.KnowledgeBase{}).Where("id = ?", req.KnowledgeId).First(&kb)
-		if result.Error != nil {
-			g.Log().Errorf(ctx, "get knowledge base failed, err=%v", result.Error)
-			tx.Rollback()
-			return nil, result.Error
-		}
-
-		// 创建新记录，复用 RustFS 信息
-		newDoc := entity.KnowledgeDocuments{
-			KnowledgeId:    req.KnowledgeId,
-			FileName:       existingDocOtherKB.FileName,
-			CollectionName: kb.CollectionName,
-			SHA256:         fileSHA256,
-			RustfsBucket:   existingDocOtherKB.RustfsBucket,
-			RustfsLocation: existingDocOtherKB.RustfsLocation,
-			IsQA:           req.IsQA,
-			Status:         int(existingDocOtherKB.Status),
-		}
-		newDoc, err = knowledge.SaveDocumentsInfoWithTx(ctx, tx, newDoc)
-		if err != nil {
-			g.Log().Errorf(ctx, "SaveDocumentsInfo failed, err=%v", err)
-			tx.Rollback()
-			return nil, err
-		}
-
-		// 提交事务
-		if err = tx.Commit().Error; err != nil {
-			g.Log().Errorf(ctx, "Indexer: transaction commit failed, err: %v", err)
-			return nil, gerror.Newf("failed to commit transaction: %v", err)
-		}
-
-		g.Log().Infof(ctx, "created new document reference, document_id=%s, knowledge_id=%s", newDoc.Id, req.KnowledgeId)
-
-		// 返回新文档的 ID
-		res = &v1.IndexerRes{
-			DocIDs: []string{newDoc.Id},
-		}
-		return res, nil
-	}
-
 	// 步骤3: 文档不存在，需要上传到 RustFS
 	rustfsConfig := gorag.GetRustfsConfig()
 	var fileHeader *multipart.FileHeader

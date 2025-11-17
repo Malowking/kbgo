@@ -7,9 +7,11 @@ import (
 
 	v1 "github.com/Malowking/kbgo/api/rag/v1"
 	"github.com/Malowking/kbgo/core/common"
+	"github.com/Malowking/kbgo/core/indexer"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
 	"github.com/Malowking/kbgo/internal/model/entity"
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/eino/components/document"
 	"github.com/cloudwego/eino/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gctx"
@@ -43,6 +45,12 @@ type IndexAsyncByDocsIDReq struct {
 	DocumentId string // 文档ID
 }
 
+type ReIndexReq struct {
+	DocumentId  string // 文档ID
+	ChunkSize   int    // 文档分块大小
+	OverlapSize int    // 分块重叠大小
+}
+
 // Index
 // 这里处理文档的读取、分割、合并和存储
 // 真正的embedding
@@ -59,7 +67,6 @@ func (x *Rag) Index(ctx context.Context, req *IndexReq) (ids []string, err error
 		return
 	}
 	go func() {
-		// Milvus数据写入后立即可见（flush操作在indexer中已完成），所以不需要sleep
 		ctxN := gctx.New()
 		defer func() {
 			if e := recover(); e != nil {
@@ -100,8 +107,6 @@ func (x *Rag) IndexAsync(ctx context.Context, req *IndexAsyncReq) (ids []string,
 	return
 }
 
-// 通过docIDs 异步 生成QA&embedding
-// 这个方法不用暴露出去
 func (x *Rag) indexAsyncByDocsID(ctx context.Context, req *IndexAsyncByDocsIDReq) (ids []string, err error) {
 	// 从 Milvus 查询数据，根据 ID 列表获取文档
 	client := x.Client
@@ -268,4 +273,87 @@ func (x *Rag) DeleteDocument(ctx context.Context, collectionName string, documen
 
 func (x *Rag) DeleteChunk(ctx context.Context, collectionName string, chunkID string) error {
 	return common.DeleteMilvusChunk(ctx, x.Client, collectionName, chunkID)
+}
+
+// ReIndex 重新索引失败的文档
+// 适用于文件已上传到rustfs和MySQL，但索引失败（status != 2）的情况
+func (x *Rag) ReIndex(ctx context.Context, req *ReIndexReq) (ids []string, err error) {
+	// 步骤1: 获取文档信息
+	doc, err := knowledge.GetDocumentById(ctx, req.DocumentId)
+	if err != nil {
+		g.Log().Errorf(ctx, "get document by id failed, document_id=%s, err=%v", req.DocumentId, err)
+		return nil, fmt.Errorf("获取文档信息失败: %w", err)
+	}
+
+	// 步骤2: 检查文档状态，如果已经是Active状态，则不需要重新索引
+	if doc.Status == int(v1.StatusActive) {
+		g.Log().Infof(ctx, "document already indexed, document_id=%s, status=%d", req.DocumentId, doc.Status)
+		return nil, fmt.Errorf("文档已经索引完成，无需重新索引")
+	}
+
+	// 步骤3: 检查RustFS信息
+	if doc.RustfsBucket == "" || doc.RustfsLocation == "" {
+		g.Log().Errorf(ctx, "document rustfs info is empty, document_id=%s", req.DocumentId)
+		return nil, fmt.Errorf("文档RustFS信息不完整，无法重新索引")
+	}
+
+	// 步骤4: 更新文档状态为索引中
+	err = knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusIndexing))
+	if err != nil {
+		g.Log().Errorf(ctx, "update document status to indexing failed, document_id=%s, err=%v", req.DocumentId, err)
+		return nil, fmt.Errorf("更新文档状态失败: %w", err)
+	}
+
+	// 步骤5: 设置默认值
+	chunkSize := req.ChunkSize
+	if chunkSize <= 0 {
+		chunkSize = 1000
+	}
+	overlapSize := req.OverlapSize
+	if overlapSize < 0 {
+		overlapSize = 100
+	}
+
+	// 步骤6: 获取RustFS配置并创建loader
+	rustfsConfig := GetRustfsConfig()
+	loader, err := indexer.Loader(ctx, rustfsConfig.Client, rustfsConfig.BucketName)
+	if err != nil {
+		g.Log().Errorf(ctx, "create loader failed, err=%v", err)
+		// 索引失败，更新状态为Failed
+		_ = knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
+		return nil, fmt.Errorf("创建loader失败: %w", err)
+	}
+
+	// 步骤7: 构造rustfs URI并加载文档
+	rustfsURI := fmt.Sprintf("rustfs://%s/%s", doc.RustfsBucket, doc.RustfsLocation)
+	g.Log().Infof(ctx, "loading document from rustfs, uri=%s", rustfsURI)
+
+	docs, err := loader.Load(ctx, document.Source{URI: rustfsURI})
+	if err != nil {
+		g.Log().Errorf(ctx, "load document from rustfs failed, uri=%s, err=%v", rustfsURI, err)
+		// 索引失败，更新状态为Failed
+		_ = knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
+		return nil, fmt.Errorf("从RustFS加载文档失败: %w", err)
+	}
+
+	// 步骤8: 执行索引
+	indexReq := &IndexReq{
+		Docs:           docs,
+		KnowledgeId:    doc.KnowledgeId,
+		CollectionName: doc.CollectionName,
+		DocumentsId:    req.DocumentId,
+		ChunkSize:      chunkSize,
+		OverlapSize:    overlapSize,
+	}
+
+	ids, err = x.Index(ctx, indexReq)
+	if err != nil {
+		g.Log().Errorf(ctx, "index document failed, document_id=%s, err=%v", req.DocumentId, err)
+		// 索引失败，更新状态为Failed
+		_ = knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
+		return nil, fmt.Errorf("索引文档失败: %w", err)
+	}
+
+	g.Log().Infof(ctx, "reindex document success, document_id=%s, chunks_count=%d", req.DocumentId, len(ids))
+	return ids, nil
 }

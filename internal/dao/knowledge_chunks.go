@@ -5,7 +5,10 @@
 package dao
 
 import (
+	"context"
+
 	"github.com/Malowking/kbgo/internal/dao/internal"
+	"github.com/gogf/gf/v2/container/gset"
 )
 
 // knowledgeChunksDao is the data access object for the table knowledge_chunks.
@@ -20,3 +23,33 @@ var (
 )
 
 // Add your custom methods and functionality below.
+
+// GetActiveChunkIDs returns a set of chunk IDs that have status = 1 from the given chunk ID list.
+// This is used for permission control to filter out inactive chunks.
+func (dao *knowledgeChunksDao) GetActiveChunkIDs(ctx context.Context, chunkIDs []string) (*gset.StrSet, error) {
+	if len(chunkIDs) == 0 {
+		return gset.NewStrSet(), nil
+	}
+
+	type ChunkIDResult struct {
+		Id string `json:"id"`
+	}
+
+	var results []ChunkIDResult
+	err := dao.Ctx(ctx).
+		Fields(dao.Columns().Id).
+		WhereIn(dao.Columns().Id, chunkIDs).
+		Where(dao.Columns().Status, 1).
+		Scan(&results)
+
+	if err != nil {
+		return nil, err
+	}
+
+	activeIDs := gset.NewStrSet()
+	for _, result := range results {
+		activeIDs.Add(result.Id)
+	}
+
+	return activeIDs, nil
+}

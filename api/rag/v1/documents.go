@@ -35,3 +35,15 @@ type DocumentsDeleteReq struct {
 type DocumentsDeleteRes struct {
 	g.Meta `mime:"application/json"`
 }
+
+type DocumentsReIndexReq struct {
+	g.Meta      `path:"/v1/documents/reindex" method:"post" tags:"rag" summary:"Re-index a failed document"`
+	DocumentId  string `p:"document_id" dc:"document_id" v:"required"`
+	ChunkSize   int    `p:"chunk_size" dc:"chunk_size" d:"1000"`
+	OverlapSize int    `p:"overlap_size" dc:"overlap_size" d:"100"`
+}
+
+type DocumentsReIndexRes struct {
+	g.Meta   `mime:"application/json"`
+	ChunkIds []string `json:"chunk_ids" dc:"chunk ids"`
+}

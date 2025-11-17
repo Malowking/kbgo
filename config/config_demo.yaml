@@ -73,4 +73,4 @@ chat:
 retriever:
   enableRewrite: false       # 是否启用查询重写（默认 false）
   rewriteAttempts: 3         # 查询重写尝试次数（默认 3）
-  retrieveMode: "rrf"     # 检索模式: milvus/rerank/rrf（默认 rrf）
+  retrieveMode: "rerank"     # 检索模式: milvus/rerank/rrf（默认 rrf）
