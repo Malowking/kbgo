@@ -10,5 +10,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&KnowledgeBase{},
 		&KnowledgeDocuments{},
 		&KnowledgeChunks{},
+		&MCPRegistry{},
+		&MCPCallLog{},
 	)
 }

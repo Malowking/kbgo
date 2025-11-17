@@ -6,12 +6,16 @@ import (
 )
 
 type ChatReq struct {
-	g.Meta      `path:"/v1/chat" method:"post" tags:"rag"`
-	ConvID      string  `json:"conv_id" v:"required"` // 会话id
-	Question    string  `json:"question" v:"required"`
-	KnowledgeId string  `json:"knowledge_id" v:"required"`
-	TopK        int     `json:"top_k"` // 默认为5
-	Score       float64 `json:"score"` // 默认为0.2 （默认是rrf检索模式，相似度分数不重要）
+	g.Meta          `path:"/v1/chat" method:"post" tags:"rag"`
+	ConvID          string              `json:"conv_id" v:"required"` // 会话id
+	Question        string              `json:"question" v:"required"`
+	KnowledgeId     string              `json:"knowledge_id"`
+	EnableRetriever bool                `json:"enable_retriever"`  // 是否启用知识库检索
+	TopK            int                 `json:"top_k"`             // 默认为5
+	Score           float64             `json:"score"`             // 默认为0.2 （默认是rrf检索模式，相似度分数不重要）
+	UseMCP          bool                `json:"use_mcp"`           // 是否使用MCP
+	MCPServiceTools map[string][]string `json:"mcp_service_tools"` // 按服务指定允许调用的MCP工具列表
+	Stream          bool                `json:"stream"`            // 是否流式返回
 }
 
 type ChatRes struct {
@@ -20,12 +24,12 @@ type ChatRes struct {
 	References []*schema.Document `json:"references"`
 }
 
-// ChatStreamReq 流式输出请求
+// ChatStreamReq 流式输出请求 (保留兼容性)
 type ChatStreamReq struct {
 	g.Meta      `path:"/v1/chat/stream" method:"post" tags:"rag"`
 	ConvID      string  `json:"conv_id" v:"required"` // 会话id
 	Question    string  `json:"question" v:"required"`
-	KnowledgeId string  `json:"knowledge_id" v:"required"`
+	KnowledgeId string  `json:"knowledge_id"`
 	TopK        int     `json:"top_k"` // 默认为5
 	Score       float64 `json:"score"` // 默认为0.2 （默认是rrf检索模式，相似度分数不重要）
 }

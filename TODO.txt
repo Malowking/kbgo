@@ -1,7 +1,7 @@
 修改
 1.chat对话接口调用知识库
 2.文档切分选择chunksize和overlapsize报错（可能是调用api的问题）
-3.文件对话接口
+3.mcp服务测试
 
 待办
 1.添加QA切分

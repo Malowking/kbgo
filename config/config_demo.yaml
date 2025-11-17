@@ -34,31 +34,31 @@ rustfs:
 # Embedding模型配置
 embedding:
   apiKey: "sk-your-api-key-here"
-  baseURL: "https://api.agicto.cn/v1"
+  baseURL: "https://api.openai.com/v1"
   model: "text-embedding-v3"
 
 # Rerank模型配置
 rerank:
   apiKey: "sk-your-api-key-here"
-  baseURL: "https://api.agicto.cn/v1"
+  baseURL: "https://api.openai.com/v1"
   model: "gte-rerank-v2"
 
 # Query Rewrite模型配置
 rewrite:
   apiKey: "sk-your-api-key-here"
-  baseURL: "https://api.agicto.cn/v1"
-  model: "qwen3-32b" # 测试下来14b速度最快
+  baseURL: "https://api.openai.com/v1"
+  model: "o4-mini"
 
 # QA生成模型配置
-qa:
-  apiKey: "sk-your-api-key-here"
-  baseURL: "https://api.agicto.cn/v1"
-  model: "qwen3-32b" # 测试下来14b速度最快
+#qa:
+#  apiKey: "sk-your-api-key-here"
+#  baseURL: "https://api.openai.com/v1"
+#  model: "o4-mini" # 测试下来14b速度最快
 
 # Chat对话模型配置
 chat:
   apiKey: "sk-your-api-key-here"
-  baseURL: "https://api.agicto.cn/v1"
+  baseURL: "https://api.openai.com/v1"
   model: "qwen3-32b"
   # 大模型推理参数
   temperature: 0.7           # 控制输出的随机性，0.0-2.0，越小越确定性
@@ -73,4 +73,4 @@ chat:
 retriever:
   enableRewrite: false       # 是否启用查询重写（默认 false）
   rewriteAttempts: 3         # 查询重写尝试次数（默认 3）
-  retrieveMode: "rerank"     # 检索模式: milvus/rerank/rrf（默认 rrf）
+  retrieveMode: "rerank"     # 检索模式: milvus/rerank/rrf（默认 rerank）

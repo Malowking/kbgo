@@ -108,7 +108,6 @@ KBGO 是一个基于 Go 语言开发的知识库管理系统，集成了 Milvus 
 
 ### 检索相关
 - `POST /api/v1/retriever/search` - 标准检索
-- `POST /api/v1/retriever/dify` - Dify 格式检索
 
 ### 对话相关
 - `POST /api/v1/chat/completion` - 普通对话
