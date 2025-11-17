@@ -1,7 +1,8 @@
 修改
 1.chat对话接口调用知识库
 2.文档切分选择chunksize和overlapsize报错（可能是调用api的问题）
-3.mcp服务测试
+3.mcp服务不能兼容fastmcp，接口逻辑不对
+4.mcp服务测试
 
 待办
 1.添加QA切分

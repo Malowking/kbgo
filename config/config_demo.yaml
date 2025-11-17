@@ -23,6 +23,11 @@ milvus:
   database: "kbgo"
   dim: 1024
 
+# 文件存储配置
+storage:
+  # 存储类型: "rustfs" 或 "local"，默认为"rustfs"
+  type: "rustfs"
+
 # rustfs文件存储配置（可选）
 rustfs:
   endpoint: "http://localhost:9000"

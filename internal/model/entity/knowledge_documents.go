@@ -17,6 +17,7 @@ type KnowledgeDocuments struct {
 	SHA256         string      `json:"sha256"            orm:"sha256"              description:""` //
 	RustfsBucket   string      `json:"rustfsBucket"      orm:"rustfs_bucket"       description:""` //
 	RustfsLocation string      `json:"rustfsLocation"    orm:"rustfs_location"     description:""` //
+	LocalFilePath  string      `json:"localFilePath"     orm:"local_file_path"     description:""` // 本地文件路径
 	IsQA           int         `json:"isQA"              orm:"is_qa"               description:""` //
 	Status         int         `json:"status"            orm:"status"              description:""` //
 	CreateTime     *gtime.Time `json:"CreateTime"        orm:"create_time"         description:""` //

@@ -3,7 +3,10 @@ package rag
 import (
 	"context"
 	"fmt"
+	"io"
 	"mime/multipart"
+	"os"
+	"path/filepath"
 
 	gorag "github.com/Malowking/kbgo/core"
 	"github.com/Malowking/kbgo/core/common"
@@ -17,6 +20,8 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/gfile"
+	"github.com/minio/minio-go/v7"
 
 	v1 "github.com/Malowking/kbgo/api/rag/v1"
 )
@@ -80,21 +85,7 @@ func (c *ControllerV1) Indexer(ctx context.Context, req *v1.IndexerReq) (res *v1
 		return nil, err
 	}
 
-	// 步骤3: 文档不存在，需要上传到 RustFS
-	rustfsConfig := gorag.GetRustfsConfig()
-	var fileHeader *multipart.FileHeader
-	if req.File != nil {
-		fileHeader = req.File.FileHeader
-	}
-	info, err := common.UploadToRustFS(ctx, rustfsConfig.Client, rustfsConfig.BucketName, req.KnowledgeId, fileHeader, uri)
-	if err != nil {
-		g.Log().Errorf(ctx, "upload to RustFS failed, err=%v", err)
-		tx.Rollback()
-		return
-	}
-	g.Log().Infof(ctx, "uploaded to RustFS, bucket=%s, location=%s", info.Bucket, info.Key)
-
-	// 步骤4: 获取知识库信息
+	// 步骤3: 获取知识库信息
 	var kb gormModel.KnowledgeBase
 	result = tx.WithContext(ctx).Model(&gormModel.KnowledgeBase{}).Where("id = ?", req.KnowledgeId).First(&kb)
 	if result.Error != nil {
@@ -103,22 +94,101 @@ func (c *ControllerV1) Indexer(ctx context.Context, req *v1.IndexerReq) (res *v1
 		return nil, result.Error
 	}
 
-	// 步骤5: 保存文档信息到数据库（使用事务）
-	documents := entity.KnowledgeDocuments{
-		KnowledgeId:    req.KnowledgeId,
-		FileName:       fileName,
-		CollectionName: kb.CollectionName,
-		SHA256:         fileSHA256,
-		RustfsBucket:   info.Bucket,
-		RustfsLocation: info.Key,
-		IsQA:           req.IsQA,
-		Status:         int(v1.StatusPending),
-	}
-	documents, err = knowledge.SaveDocumentsInfoWithTx(ctx, tx, documents)
-	if err != nil {
-		g.Log().Errorf(ctx, "SaveDocumentsInfo failed, err=%v", err)
-		tx.Rollback()
-		return
+	// 步骤4: 根据配置决定存储方式
+	storageType := gorag.GetStorageType()
+	var fileHeader *multipart.FileHeader
+	var localFilePath string
+	var documents entity.KnowledgeDocuments
+
+	if storageType == gorag.StorageTypeRustFS {
+		// 使用 RustFS 存储
+		rustfsConfig := gorag.GetRustfsConfig()
+		if req.File != nil {
+			fileHeader = req.File.FileHeader
+		}
+		var info minio.UploadInfo
+		info, err = common.UploadToRustFS(ctx, rustfsConfig.Client, rustfsConfig.BucketName, req.KnowledgeId, fileHeader, uri)
+		if err != nil {
+			g.Log().Errorf(ctx, "upload to RustFS failed, err=%v", err)
+			tx.Rollback()
+			return
+		}
+		g.Log().Infof(ctx, "uploaded to RustFS, bucket=%s, location=%s", info.Bucket, info.Key)
+
+		// 保存到数据库
+		documents = entity.KnowledgeDocuments{
+			KnowledgeId:    req.KnowledgeId,
+			FileName:       fileName,
+			CollectionName: kb.CollectionName,
+			SHA256:         fileSHA256,
+			RustfsBucket:   info.Bucket,
+			RustfsLocation: info.Key,
+			IsQA:           req.IsQA,
+			Status:         int(v1.StatusPending),
+		}
+		documents, err = knowledge.SaveDocumentsInfoWithTx(ctx, tx, documents)
+		if err != nil {
+			g.Log().Errorf(ctx, "SaveDocumentsInfo failed, err=%v", err)
+			tx.Rollback()
+			return
+		}
+	} else {
+		// 使用本地存储
+		if req.File != nil {
+			fileHeader = req.File.FileHeader
+		}
+
+		// 创建目录 knowledge_file/知识库id/
+		localDir := filepath.Join("knowledge_file", req.KnowledgeId)
+		if !gfile.Exists(localDir) {
+			err = os.MkdirAll(localDir, 0755)
+			if err != nil {
+				g.Log().Errorf(ctx, "create local directory failed, dir=%s, err=%v", localDir, err)
+				tx.Rollback()
+				return nil, err
+			}
+		}
+
+		// 保存文件路径
+		localFilePath = filepath.Join(localDir, fileName)
+
+		// 保存文件到本地
+		if req.File != nil {
+			// 保存上传的文件
+			err = saveUploadedFile(req.File.FileHeader, localFilePath)
+			if err != nil {
+				g.Log().Errorf(ctx, "save uploaded file failed, path=%s, err=%v", localFilePath, err)
+				tx.Rollback()
+				return nil, err
+			}
+		} else if uri != "" {
+			// 下载URL文件并保存
+			err = downloadAndSaveFile(uri, localFilePath)
+			if err != nil {
+				g.Log().Errorf(ctx, "download and save file failed, url=%s, path=%s, err=%v", uri, localFilePath, err)
+				tx.Rollback()
+				return nil, err
+			}
+		}
+
+		// 保存到数据库
+		documents = entity.KnowledgeDocuments{
+			KnowledgeId:    req.KnowledgeId,
+			FileName:       fileName,
+			CollectionName: kb.CollectionName,
+			SHA256:         fileSHA256,
+			RustfsBucket:   "", // 本地存储时这些字段为空
+			RustfsLocation: "",
+			IsQA:           req.IsQA,
+			Status:         int(v1.StatusPending),
+			LocalFilePath:  localFilePath, // 保存本地文件路径
+		}
+		documents, err = knowledge.SaveDocumentsInfoWithTx(ctx, tx, documents)
+		if err != nil {
+			g.Log().Errorf(ctx, "SaveDocumentsInfo failed, err=%v", err)
+			tx.Rollback()
+			return
+		}
 	}
 
 	// 提交事务
@@ -127,7 +197,7 @@ func (c *ControllerV1) Indexer(ctx context.Context, req *v1.IndexerReq) (res *v1
 		return nil, gerror.Newf("failed to commit transaction: %v", err)
 	}
 
-	// 步骤6: 设置默认值
+	// 步骤5: 设置默认值
 	chunkSize := req.ChunkSize
 	if chunkSize <= 0 {
 		chunkSize = 1000
@@ -137,22 +207,36 @@ func (c *ControllerV1) Indexer(ctx context.Context, req *v1.IndexerReq) (res *v1
 		overlapSize = 100
 	}
 
-	// 步骤7: 使用 loader 加载文档
-	loader, err := indexer.Loader(ctx, rustfsConfig.Client, rustfsConfig.BucketName)
+	// 步骤6: 使用 loader 加载文档
+	var loader document.Loader
+	var rustfsConfig *gorag.RustfsConfig
+	if storageType == gorag.StorageTypeRustFS {
+		rustfsConfig = gorag.GetRustfsConfig()
+		loader, err = indexer.Loader(ctx, rustfsConfig.Client, rustfsConfig.BucketName)
+	} else {
+		// 本地存储使用文件加载器
+		loader, err = createLocalLoader(ctx)
+	}
+
 	if err != nil {
 		g.Log().Errorf(ctx, "create loader failed, err=%v", err)
 		return
 	}
 
-	// 根据是本地文件还是URL文件使用不同的加载方式
+	// 根据存储类型和文件来源使用不同的加载方式
 	var docs []*schema.Document
-	if req.File != nil {
-		// 对于本地上传的文件，构造 rustfs URI 直接加载
-		rustfsURI := fmt.Sprintf("rustfs://%s/%s/%s", rustfsConfig.BucketName, req.KnowledgeId, req.File.Filename)
-		docs, err = loader.Load(ctx, document.Source{URI: rustfsURI})
+	if storageType == gorag.StorageTypeRustFS {
+		if req.File != nil {
+			// 对于本地上传的文件，构造 rustfs URI 直接加载
+			rustfsURI := fmt.Sprintf("rustfs://%s/%s/%s", rustfsConfig.BucketName, req.KnowledgeId, req.File.Filename)
+			docs, err = loader.Load(ctx, document.Source{URI: rustfsURI})
+		} else {
+			// 对于URL文件，使用原来的URL方式加载
+			docs, err = loader.Load(ctx, document.Source{URI: uri})
+		}
 	} else {
-		// 对于URL文件，使用原来的URL方式加载
-		docs, err = loader.Load(ctx, document.Source{URI: uri})
+		// 本地存储直接加载本地文件
+		docs, err = loader.Load(ctx, document.Source{URI: localFilePath})
 	}
 
 	if err != nil {
@@ -160,7 +244,7 @@ func (c *ControllerV1) Indexer(ctx context.Context, req *v1.IndexerReq) (res *v1
 		return
 	}
 
-	// 步骤8: 执行索引
+	// 步骤7: 执行索引
 	indexReq := &gorag.IndexReq{
 		Docs:           docs,
 		KnowledgeId:    req.KnowledgeId,
@@ -207,4 +291,48 @@ func splitURL(urlStr string) []string {
 		result = append(result, current)
 	}
 	return result
+}
+
+// saveUploadedFile 保存上传的文件到本地
+func saveUploadedFile(fileHeader *multipart.FileHeader, filePath string) error {
+	src, err := fileHeader.Open()
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	dst, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	// 使用 io.Copy 替代 gfile.Copy
+	_, err = io.Copy(dst, src)
+	return err
+}
+
+// downloadAndSaveFile 下载URL文件并保存到本地
+func downloadAndSaveFile(url, filePath string) error {
+	resp, err := g.Client().Get(context.Background(), url)
+	if err != nil {
+		return err
+	}
+	defer resp.Close()
+
+	file, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	// 使用 io.Copy 替代 gfile.Copy
+	_, err = io.Copy(file, resp.Body)
+	return err
+}
+
+// createLocalLoader 创建本地文件加载器
+func createLocalLoader(ctx context.Context) (document.Loader, error) {
+	loader, err := indexer.Loader(ctx, nil, "")
+	return loader, err
 }

@@ -9,13 +9,15 @@ KBGO 是一个基于 Go 语言开发的知识库管理系统，集成了 Milvus 
 - 向量检索：基于 Milvus 的高效相似度检索
 - RAG 对话：结合知识库内容进行智能问答
 - API 调试：提供完整的 HTML 调试界面
+- 灵活存储：支持 RustFS 对象存储和本地文件系统存储
 
 ## 技术栈
 
 - 后端框架：Go + [GoFrame](https://goframe.org/)
 - 向量数据库：[Milvus](https://milvus.io/)
 - 关系数据库：MySQL
-- 对象存储：RustFS
+- 对象存储：RustFS (可选)
+- 本地存储：文件系统
 - 前端技术：HTML/CSS/JavaScript(后段开发测试使用)
 
 ## 快速开始
@@ -25,7 +27,7 @@ KBGO 是一个基于 Go 语言开发的知识库管理系统，集成了 Milvus 
 - Go 1.24+
 - MySQL 5.7+
 - Milvus 2.4+
-- RustFS
+- RustFS (可选，当使用 RustFS 存储时需要)
 
 ### 配置文件
 
@@ -50,8 +52,26 @@ KBGO 是一个基于 Go 语言开发的知识库管理系统，集成了 Milvus 
      address: "http://localhost:19530"
      database: "kbgo"
    
+   # 文件存储配置
+   storage:
+     # 存储类型: "rustfs" 或 "local"，默认为"rustfs"
+     type: "rustfs"
+   
+   # rustfs文件存储配置（当storage.type为"rustfs"时需要配置）
+   rustfs:
+     endpoint: "http://localhost:9000"
+     accessKey: "your_access_key"
+     secretKey: "your_secret_key"
+     bucketName: "your_bucket_name"
+     ssl: false
+   
    # 其他配置...
    ```
+
+3. 存储类型说明：
+   - 当 `storage.type` 设置为 `rustfs` 时，文件将存储在 RustFS/MinIO 对象存储中
+   - 当 `storage.type` 设置为 `local` 时，文件将存储在本地文件系统中，路径为 `knowledge_file/{知识库ID}/{文件名}`
+   - 如果 `storage.type` 设置为 `rustfs` 但未正确配置 `rustfs` 相关参数，系统将自动回退到本地存储
 
 ### 启动项目
 

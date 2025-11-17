@@ -15,6 +15,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gctx"
+	"github.com/gogf/gf/v2/os/gfile"
 	"github.com/milvus-io/milvus/client/v2/column"
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
 )
@@ -291,10 +292,25 @@ func (x *Rag) ReIndex(ctx context.Context, req *ReIndexReq) (ids []string, err e
 		return nil, fmt.Errorf("文档已经索引完成，无需重新索引")
 	}
 
-	// 步骤3: 检查RustFS信息
-	if doc.RustfsBucket == "" || doc.RustfsLocation == "" {
-		g.Log().Errorf(ctx, "document rustfs info is empty, document_id=%s", req.DocumentId)
-		return nil, fmt.Errorf("文档RustFS信息不完整，无法重新索引")
+	// 步骤3: 检查存储信息
+	storageType := GetStorageType()
+	if storageType == StorageTypeRustFS {
+		// 检查RustFS信息
+		if doc.RustfsBucket == "" || doc.RustfsLocation == "" {
+			g.Log().Errorf(ctx, "document rustfs info is empty, document_id=%s", req.DocumentId)
+			return nil, fmt.Errorf("文档RustFS信息不完整，无法重新索引")
+		}
+	} else {
+		// 检查本地文件路径
+		if doc.LocalFilePath == "" {
+			g.Log().Errorf(ctx, "document local file path is empty, document_id=%s", req.DocumentId)
+			return nil, fmt.Errorf("文档本地文件路径信息不完整，无法重新索引")
+		}
+		// 检查文件是否存在
+		if !gfile.Exists(doc.LocalFilePath) {
+			g.Log().Errorf(ctx, "document local file not exists, path=%s, document_id=%s", doc.LocalFilePath, req.DocumentId)
+			return nil, fmt.Errorf("文档本地文件不存在，无法重新索引")
+		}
 	}
 
 	// 步骤4: 更新文档状态为索引中
@@ -314,33 +330,61 @@ func (x *Rag) ReIndex(ctx context.Context, req *ReIndexReq) (ids []string, err e
 		overlapSize = 100
 	}
 
-	// 步骤6: 获取RustFS配置并创建loader
-	rustfsConfig := GetRustfsConfig()
-	loader, err := indexer.Loader(ctx, rustfsConfig.Client, rustfsConfig.BucketName)
-	if err != nil {
-		g.Log().Errorf(ctx, "create loader failed, err=%v", err)
-		// 索引失败，更新状态为Failed
-		_ = knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
-		return nil, fmt.Errorf("创建loader失败: %w", err)
+	// 步骤6: 获取存储配置并创建loader
+	var loader document.Loader
+	if storageType == StorageTypeRustFS {
+		rustfsConfig := GetRustfsConfig()
+		loader, err = indexer.Loader(ctx, rustfsConfig.Client, rustfsConfig.BucketName)
+		if err != nil {
+			g.Log().Errorf(ctx, "create loader failed, err=%v", err)
+			// 索引失败，更新状态为Failed
+			_ = knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
+			return nil, fmt.Errorf("创建loader失败: %w", err)
+		}
+	} else {
+		loader, err = indexer.Loader(ctx, nil, "")
+		if err != nil {
+			g.Log().Errorf(ctx, "create local loader failed, err=%v", err)
+			// 索引失败，更新状态为Failed
+			_ = knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
+			return nil, fmt.Errorf("创建本地loader失败: %w", err)
+		}
 	}
 
-	// 步骤7: 构造rustfs URI并加载文档
-	rustfsURI := fmt.Sprintf("rustfs://%s/%s", doc.RustfsBucket, doc.RustfsLocation)
-	g.Log().Infof(ctx, "loading document from rustfs, uri=%s", rustfsURI)
-
-	docs, err := loader.Load(ctx, document.Source{URI: rustfsURI})
-	if err != nil {
-		g.Log().Errorf(ctx, "load document from rustfs failed, uri=%s, err=%v", rustfsURI, err)
-		// 索引失败，更新状态为Failed
-		_ = knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
-		return nil, fmt.Errorf("从RustFS加载文档失败: %w", err)
+	// 步骤7: 构造URI并加载文档
+	var docs []*schema.Document
+	if storageType == StorageTypeRustFS {
+		rustfsURI := fmt.Sprintf("rustfs://%s/%s", doc.RustfsBucket, doc.RustfsLocation)
+		g.Log().Infof(ctx, "loading document from rustfs, uri=%s", rustfsURI)
+		docs, err = loader.Load(ctx, document.Source{URI: rustfsURI})
+		if err != nil {
+			g.Log().Errorf(ctx, "load document from rustfs failed, uri=%s, err=%v", rustfsURI, err)
+			// 索引失败，更新状态为Failed
+			_ = knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
+			return nil, fmt.Errorf("从RustFS加载文档失败: %w", err)
+		}
+	} else {
+		g.Log().Infof(ctx, "loading document from local file, path=%s", doc.LocalFilePath)
+		docs, err = loader.Load(ctx, document.Source{URI: doc.LocalFilePath})
+		if err != nil {
+			g.Log().Errorf(ctx, "load document from local file failed, path=%s, err=%v", doc.LocalFilePath, err)
+			// 索引失败，更新状态为Failed
+			_ = knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
+			return nil, fmt.Errorf("从本地文件加载文档失败: %w", err)
+		}
 	}
 
 	// 步骤8: 执行索引
+	// 确保 CollectionName 不为空，如果为空则使用 KnowledgeId 作为默认值
+	collectionName := doc.CollectionName
+	if collectionName == "" {
+		collectionName = doc.KnowledgeId
+	}
+
 	indexReq := &IndexReq{
 		Docs:           docs,
 		KnowledgeId:    doc.KnowledgeId,
-		CollectionName: doc.CollectionName,
+		CollectionName: collectionName,
 		DocumentsId:    req.DocumentId,
 		ChunkSize:      chunkSize,
 		OverlapSize:    overlapSize,
