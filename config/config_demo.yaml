@@ -14,8 +14,9 @@ database:
     user: "root" # 账号
     pass: "your_password" # 密码
     name: "kbgo" # 数据库名称
-    type: "mysql" # 数据库类型
+    type: "mysql" # 数据库类型，支持 mysql 和 postgresql
     charset: "utf8mb4" # 数据库编码，一定要加上，因为文档里面经常出现特殊字符
+    maxLifeTime: 3600 # 连接最大生命周期(秒)
 
 # Milvus向量数据库配置
 milvus:
