@@ -46,7 +46,7 @@ func InitDB() error {
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	// 自动迁移数据库表结构
-	if err = gormModel.AutoMigrate(db); err != nil {
+	if err = gormModel.Migrate(db); err != nil {
 		return fmt.Errorf("failed to migrate database tables: %v", err)
 	}
 

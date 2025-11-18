@@ -26,7 +26,8 @@ milvus:
 # 文件存储配置
 storage:
   # 存储类型: "rustfs" 或 "local"，默认为"rustfs"
-  type: "rustfs"
+  type: "local"
+  #TODO存储类型不同可能导致文档切分同样分段字数到但是文档的片段不一样，还未修改
 
 # rustfs文件存储配置（可选）
 rustfs:

@@ -7,7 +7,7 @@ import (
 // MCPCallLog MCP调用日志表 GORM模型定义
 type MCPCallLog struct {
 	ID              string     `gorm:"primaryKey;column:id;type:varchar(64)"`                   // 主键ID
-	ConversationID  string     `gorm:"column:conversation_id;type:varchar(255);index;not null"` // 对话ID（关联外部chat-history）
+	ConversationID  string     `gorm:"column:conversation_id;type:varchar(255);index;not null"` // 对话ID（关联外部对话历史）
 	MCPRegistryID   string     `gorm:"column:mcp_registry_id;type:varchar(64);index"`           // MCP服务ID（外键）
 	MCPServiceName  string     `gorm:"column:mcp_service_name;type:varchar(100)"`               // MCP服务名称快照
 	ToolName        string     `gorm:"column:tool_name;type:varchar(100)"`                      // 调用的工具名称

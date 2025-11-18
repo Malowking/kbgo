@@ -5,7 +5,6 @@ go 1.24.6
 toolchain go1.24.9
 
 require (
-	github.com/ThinkInAIXYZ/go-mcp v0.2.24
 	github.com/bytedance/sonic v1.14.2
 	github.com/cloudwego/eino v0.5.12
 	github.com/cloudwego/eino-ext/components/document/loader/file v0.0.0-20251107064029-2e128d3d2258
@@ -23,7 +22,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/milvus-io/milvus/client/v2 v2.6.1
 	github.com/minio/minio-go/v7 v7.0.73
-	github.com/wangle201210/chat-history v0.0.0-20250402104704-5eec15d5419e
+	github.com/stretchr/testify v1.11.1
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/gorm v1.31.1
 )
@@ -118,7 +117,6 @@ require (
 	github.com/olekukonko/ll v0.1.2 // indirect
 	github.com/olekukonko/tablewriter v1.1.0 // indirect
 	github.com/opencontainers/runtime-spec v1.0.2 // indirect
-	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	github.com/panjf2000/ants/v2 v2.11.3 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
@@ -143,7 +141,6 @@ require (
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spf13/cast v1.3.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
@@ -160,7 +157,6 @@ require (
 	github.com/xuri/excelize/v2 v2.10.0 // indirect
 	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
 	github.com/yargevad/filepathx v1.0.0 // indirect
-	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
 	go.etcd.io/bbolt v1.3.6 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.5 // indirect
