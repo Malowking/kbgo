@@ -1,8 +1,0 @@
-gfcli:
-  gen:
-    dao:
-      # 从 manifest/config/config.yaml 读取数据库配置
-      # gfcli 会自动读取项目的 config.yaml 配置
-      - link: "database:default"
-        descriptionTag: true
-        tables: "knowledge_base,knowledge_chunks,knowledge_documents"

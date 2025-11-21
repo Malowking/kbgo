@@ -374,15 +374,29 @@
                 <!-- 检索 -->
                 <div class="menu-section">
                     <div class="menu-section-title">检索</div>
-                    <div class="menu-item" data-section="retriever">标准检索</div>
-                    <div class="menu-item" data-section="retriever-dify">Dify检索</div>
+                    <div class="menu-item" data-section="retriever-section">标准检索</div>
+
                 </div>
 
                 <!-- 对话 -->
                 <div class="menu-section">
                     <div class="menu-section-title">对话</div>
-                    <div class="menu-item" data-section="chat">普通对话</div>
-                    <div class="menu-item" data-section="chat-stream">流式对话</div>
+                    <div class="menu-item" data-section="chat">对话</div>
+                </div>
+
+                <!-- MCP管理 -->
+                <div class="menu-section">
+                    <div class="menu-section-title">MCP管理</div>
+                    <div class="menu-item" data-section="mcp-registry-create">注册MCP服务</div>
+                    <div class="menu-item" data-section="mcp-registry-list">MCP服务列表</div>
+                    <div class="menu-item" data-section="mcp-registry-get">获取MCP服务</div>
+                    <div class="menu-item" data-section="mcp-registry-update">更新MCP服务</div>
+                    <div class="menu-item" data-section="mcp-registry-delete">删除MCP服务</div>
+                    <div class="menu-item" data-section="mcp-registry-test">测试MCP连接</div>
+                    <div class="menu-item" data-section="mcp-list-tools">列出MCP工具</div>
+                    <div class="menu-item" data-section="mcp-call-tool">调用MCP工具</div>
+                    <div class="menu-item" data-section="mcp-logs">MCP调用日志</div>
+                    <div class="menu-item" data-section="mcp-stats">MCP统计信息</div>
                 </div>
             </div>
 
@@ -934,122 +948,91 @@
                     </div>
                 </div>
 
-                <!-- 标准检索 -->
-                <div class="api-section" id="retriever">
-                    <h2 class="api-title">
-                        <span class="api-method method-post">POST</span>
-                        标准检索
-                    </h2>
-                    <p class="api-description">根据问题从知识库检索相关文档</p>
-
-                    <div class="form-group">
-                        <label class="form-label">知识库ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="retriever_kb_id" placeholder="输入知识库ID">
+                <!-- 检索部分 -->
+                <div class="api-section" id="retriever-section">
+                    <h2 class="section-title">检索接口</h2>
+                    
+                    <div class="tab-container">
+                        <div class="menu-item active" data-section="retriever-standard">标准检索</div>
                     </div>
-
-                    <div class="form-group">
-                        <label class="form-label">查询问题 <span class="required">*</span></label>
-                        <textarea class="form-textarea" id="retriever_question" placeholder="输入您的问题"></textarea>
-                    </div>
-
-                    <div class="inline-group">
+                    
+                    <!-- 标准检索 -->
+                    <div class="api-form active" id="retriever-standard-form">
+                        <h3>标准检索</h3>
+                        <p class="api-description">标准检索接口，支持多种检索模式和查询重写</p>
+                        
                         <div class="form-group">
-                            <label class="form-label">Top K</label>
-                            <input type="number" class="form-input" id="retriever_top_k" value="3" min="1">
-                            <div class="helper-text">返回文档数量，默认5</div>
+                            <label class="form-label">知识库ID *</label>
+                            <input type="text" class="form-input" id="retriever_kb_id" placeholder="请输入知识库ID">
+                            <div class="helper-text">必填，要检索的知识库ID</div>
                         </div>
-
+                        
                         <div class="form-group">
-                            <label class="form-label">相似度阈值</label>
-                            <input type="number" class="form-input" id="retriever_score" value="0.2" min="0" max="1" step="0.01">
-                            <div class="helper-text">0-1范围(归一化后)，0=完全不相关，1=完全相同，推荐0.2-0.5</div>
+                            <label class="form-label">检索问题 *</label>
+                            <input type="text" class="form-input" id="retriever_question" placeholder="请输入要检索的问题">
+                            <div class="helper-text">必填，要检索的问题内容</div>
                         </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">启用查询重写</label>
-                        <select class="form-select" id="retriever_enable_rewrite">
-                            <option value="false">否 (默认)</option>
-                            <option value="true">是</option>
-                        </select>
-                        <div class="helper-text">启用后将使用LLM对查询进行重写优化，可提高召回率但速度较慢</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">重写尝试次数</label>
-                        <input type="number" class="form-input" id="retriever_rewrite_attempts" value="3" min="1" max="10">
-                        <div class="helper-text">仅在启用查询重写时生效，默认3次</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">检索模式</label>
-                        <select class="form-select" id="retriever_retrieve_mode">
-                            <option value="milvus">Milvus向量检索</option>
-                            <option value="rerank" selected>Rerank重排序 (推荐)</option>
-                            <option value="rrf">RRF混合检索</option>
-                        </select>
-                        <div class="helper-text">
-                            • Milvus: 仅使用向量相似度排序，速度最快<br>
-                            • Rerank: 使用Rerank模型重排序，准确度高（推荐）<br>
-                            • RRF: 混合多种检索策略，准确度最高但速度较慢
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">返回数量</label>
+                                <input type="number" class="form-input" id="retriever_top_k" value="5" min="1" max="100">
+                                <div class="helper-text">默认5，返回最相关的前N个结果</div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label">相似度阈值</label>
+                                <input type="number" class="form-input" id="retriever_score" value="0.2" min="0" max="1" step="0.01">
+                                <div class="helper-text">0-1范围(归一化后)，0=完全不相关，1=完全相同，推荐0.2-0.5</div>
+                            </div>
                         </div>
-                    </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">启用查询重写</label>
+                            <select class="form-select" id="retriever_enable_rewrite">
+                                <option value="false">否 (默认)</option>
+                                <option value="true">是</option>
+                            </select>
+                            <div class="helper-text">启用后将使用LLM对查询进行重写优化，可提高召回率但速度较慢</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">重写尝试次数</label>
+                            <input type="number" class="form-input" id="retriever_rewrite_attempts" value="3" min="1" max="10">
+                            <div class="helper-text">仅在启用查询重写时生效，默认3次</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">检索模式</label>
+                            <select class="form-select" id="retriever_retrieve_mode">
+                                <option value="rerank">Rerank (默认)</option>
+                                <option value="milvus">Milvus Only</option>
+                                <option value="rrf">RRF混合</option>
+                            </select>
+                            <div class="helper-text">
+                                <strong>Rerank</strong>: Milvus检索+重排序(推荐) 
+                                <strong>Milvus Only</strong>: 仅向量检索 
+                                <strong>RRF</strong>: Reciprocal Rank Fusion混合检索
+                            </div>
+                        </div>
+                        
+                        <button class="btn btn-primary" onclick="retrieve()">
+                            <i class="icon-send"></i>执行检索
+                        </button>
+                        
+                        <div class="loading" id="retriever_loading">请求中...</div>
 
-                    <button class="btn btn-primary" onclick="retrieve()">检索</button>
-                    <button class="btn btn-secondary" onclick="clearForm('retriever')">清空</button>
-
-                    <div class="loading" id="retriever_loading">请求中...</div>
-
-                    <div class="response-section" id="retriever_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="retriever_status"></div>
-                        <div class="response-body" id="retriever_body"></div>
+                        <div class="response-section" id="retriever_response">
+                            <div class="response-title">响应结果</div>
+                            <div class="response-status" id="retriever_status"></div>
+                            <div class="response-body" id="retriever_body"></div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Dify检索 -->
-                <div class="api-section" id="retriever-dify">
-                    <h2 class="api-title">
-                        <span class="api-method method-post">POST</span>
-                        Dify检索
-                    </h2>
-                    <p class="api-description">兼容Dify格式的检索接口</p>
 
-                    <div class="form-group">
-                        <label class="form-label">知识库ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="dify_kb_id" placeholder="输入知识库ID">
-                    </div>
 
-                    <div class="form-group">
-                        <label class="form-label">查询问题 <span class="required">*</span></label>
-                        <textarea class="form-textarea" id="dify_query" placeholder="输入您的问题"></textarea>
-                    </div>
-
-                    <div class="inline-group">
-                        <div class="form-group">
-                            <label class="form-label">Top K</label>
-                            <input type="number" class="form-input" id="dify_top_k" value="3" min="1">
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">相似度阈值</label>
-                            <input type="number" class="form-input" id="dify_score" value="0.2" min="0" max="1" step="0.1">
-                        </div>
-                    </div>
-
-                    <button class="btn btn-primary" onclick="difyRetrieve()">检索</button>
-                    <button class="btn btn-secondary" onclick="clearForm('retriever-dify')">清空</button>
-
-                    <div class="loading" id="dify_loading">请求中...</div>
-
-                    <div class="response-section" id="dify_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="dify_status"></div>
-                        <div class="response-body" id="dify_body"></div>
-                    </div>
-                </div>
-
-                <!-- 普通对话 -->
+                <!-- 在相应位置添加MCP和知识库控制选项 -->
                 <div class="api-section" id="chat">
                     <h2 class="api-title">
                         <span class="api-method method-post">POST</span>
@@ -1063,8 +1046,19 @@
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">知识库ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="chat_kb_id" placeholder="输入知识库ID">
+                        <label class="form-label">知识库ID</label>
+                        <input type="text" class="form-input" id="chat_kb_id" placeholder="输入知识库ID（可选）">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">启用知识库检索</label>
+                        <div class="checkbox-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="chat_enable_retriever" checked>
+                                启用知识库检索
+                            </label>
+                        </div>
+                        <div class="helper-text">即使提供了知识库ID，也需要启用此选项才会进行检索</div>
                     </div>
 
                     <div class="form-group">
@@ -1074,17 +1068,34 @@
 
                     <div class="inline-group">
                         <div class="form-group">
-                            <label class="form-label">Top K</label>
-                            <input type="number" class="form-input" id="chat_top_k" value="3" min="1">
+                            <label class="form-label">TopK</label>
+                            <input type="number" class="form-input" id="chat_top_k" value="5" min="1" max="100">
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label">相似度阈值</label>
-                            <input type="number" class="form-input" id="chat_score" value="0.2" min="0" max="1" step="0.1">
+                            <label class="form-label">Score阈值</label>
+                            <input type="number" class="form-input" id="chat_score" value="0.2" min="0" max="1" step="0.01">
                         </div>
                     </div>
 
-                    <button class="btn btn-primary" onclick="chat()">发送</button>
+                    <div class="form-group">
+                        <label class="form-label">启用MCP</label>
+                        <div class="checkbox-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="chat_use_mcp">
+                                启用MCP工具调用
+                            </label>
+                        </div>
+                        <div class="helper-text">调用已注册的MCP服务工具</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">按服务指定MCP工具</label>
+                        <textarea class="form-textarea" id="chat_mcp_service_tools" placeholder='{"service_name": ["tool1", "tool2"]}'></textarea>
+                        <div class="helper-text">JSON格式，可按服务指定工具，留空表示调用所有工具</div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="chat()">发送消息</button>
                     <button class="btn btn-secondary" onclick="clearForm('chat')">清空</button>
 
                     <div class="loading" id="chat_loading">请求中...</div>
@@ -1096,50 +1107,381 @@
                     </div>
                 </div>
 
-                <!-- 流式对话 -->
-                <div class="api-section" id="chat-stream">
+
+
+                <!-- MCP: 注册MCP服务 -->
+                <div class="api-section" id="mcp-registry-create">
                     <h2 class="api-title">
                         <span class="api-method method-post">POST</span>
-                        流式对话
+                        注册MCP服务
                     </h2>
-                    <p class="api-description">基于知识库的流式问答对话（RAG），使用SSE实时返回</p>
+                    <p class="api-description">注册一个外部 MCP 服务到系统中</p>
 
                     <div class="form-group">
-                        <label class="form-label">会话ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="chat_stream_conv_id" placeholder="输入会话ID，例如: session_123">
+                        <label class="form-label">服务名称 <span class="required">*</span></label>
+                        <input type="text" class="form-input" id="mcp_reg_name" placeholder="例如: my-search-service">
+                        <div class="helper-text">唯一标识，长度1-100字符</div>
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">知识库ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="chat_stream_kb_id" placeholder="输入知识库ID">
+                        <label class="form-label">服务描述</label>
+                        <textarea class="form-textarea" id="mcp_reg_desc" placeholder="例如: 搜索服务"></textarea>
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">问题 <span class="required">*</span></label>
-                        <textarea class="form-textarea" id="chat_stream_question" placeholder="输入您的问题"></textarea>
+                        <label class="form-label">SSE 端点 URL <span class="required">*</span></label>
+                        <input type="text" class="form-input" id="mcp_reg_endpoint" placeholder="http://localhost:3000/sse">
+                        <div class="helper-text">MCP 服务的 SSE 端点地址</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">API Key</label>
+                        <input type="text" class="form-input" id="mcp_reg_apikey" placeholder="可选，用于认证">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">自定义请求头 (JSON)</label>
+                        <textarea class="form-textarea" id="mcp_reg_headers" placeholder='{"X-Custom-Header": "value"}'></textarea>
+                        <div class="helper-text">可选，JSON 格式的自定义请求头</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">超时时间（秒）</label>
+                        <input type="number" class="form-input" id="mcp_reg_timeout" value="30" min="1" max="300">
+                    </div>
+
+                    <button class="btn btn-primary" onclick="createMCPRegistry()">注册服务</button>
+                    <button class="btn btn-secondary" onclick="clearForm('mcp-registry-create')">清空</button>
+
+                    <div class="loading" id="mcp_reg_loading">请求中...</div>
+
+                    <div class="response-section" id="mcp_reg_response">
+                        <div class="response-title">响应结果</div>
+                        <div class="response-status" id="mcp_reg_status"></div>
+                        <div class="response-body" id="mcp_reg_body"></div>
+                    </div>
+                </div>
+
+                <!-- MCP: 服务列表 -->
+                <div class="api-section" id="mcp-registry-list">
+                    <h2 class="api-title">
+                        <span class="api-method method-get">GET</span>
+                        MCP 服务列表
+                    </h2>
+                    <p class="api-description">获取已注册的 MCP 服务列表</p>
+
+                    <div class="inline-group">
+                        <div class="form-group">
+                            <label class="form-label">状态</label>
+                            <select class="form-select" id="mcp_list_status">
+                                <option value="">全部</option>
+                                <option value="1">启用</option>
+                                <option value="0">禁用</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">页码</label>
+                            <input type="number" class="form-input" id="mcp_list_page" value="1" min="1">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">每页数量</label>
+                            <input type="number" class="form-input" id="mcp_list_size" value="10" min="1" max="100">
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="getMCPList()">查询</button>
+                    <button class="btn btn-secondary" onclick="clearForm('mcp-registry-list')">清空</button>
+
+                    <div class="loading" id="mcp_list_loading">请求中...</div>
+
+                    <div class="response-section" id="mcp_list_response">
+                        <div class="response-title">响应结果</div>
+                        <div class="response-status" id="mcp_list_status_text"></div>
+                        <div class="response-body" id="mcp_list_body"></div>
+                    </div>
+                </div>
+
+                <!-- MCP: 获取单个服务 -->
+                <div class="api-section" id="mcp-registry-get">
+                    <h2 class="api-title">
+                        <span class="api-method method-get">GET</span>
+                        获取 MCP 服务详情
+                    </h2>
+                    <p class="api-description">根据 ID 获取单个 MCP 服务的详细信息</p>
+
+                    <div class="form-group">
+                        <label class="form-label">服务 ID <span class="required">*</span></label>
+                        <input type="text" class="form-input" id="mcp_get_id" placeholder="输入 MCP 服务 ID">
+                    </div>
+
+                    <button class="btn btn-primary" onclick="getMCPRegistry()">查询</button>
+                    <button class="btn btn-secondary" onclick="clearForm('mcp-registry-get')">清空</button>
+
+                    <div class="loading" id="mcp_get_loading">请求中...</div>
+
+                    <div class="response-section" id="mcp_get_response">
+                        <div class="response-title">响应结果</div>
+                        <div class="response-status" id="mcp_get_status"></div>
+                        <div class="response-body" id="mcp_get_body"></div>
+                    </div>
+                </div>
+
+                <!-- MCP: 更新服务 -->
+                <div class="api-section" id="mcp-registry-update">
+                    <h2 class="api-title">
+                        <span class="api-method method-put">PUT</span>
+                        更新 MCP 服务
+                    </h2>
+                    <p class="api-description">更新 MCP 服务信息，所有字段都是可选的</p>
+
+                    <div class="form-group">
+                        <label class="form-label">服务 ID <span class="required">*</span></label>
+                        <input type="text" class="form-input" id="mcp_update_id" placeholder="输入 MCP 服务 ID">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">服务名称</label>
+                        <input type="text" class="form-input" id="mcp_update_name" placeholder="新的名称">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">服务描述</label>
+                        <textarea class="form-textarea" id="mcp_update_desc" placeholder="新的描述"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">SSE 端点 URL</label>
+                        <input type="text" class="form-input" id="mcp_update_endpoint" placeholder="新的端点地址">
                     </div>
 
                     <div class="inline-group">
                         <div class="form-group">
-                            <label class="form-label">Top K</label>
-                            <input type="number" class="form-input" id="chat_stream_top_k" value="3" min="1">
+                            <label class="form-label">超时时间（秒）</label>
+                            <input type="number" class="form-input" id="mcp_update_timeout" min="1" max="300">
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label">相似度阈值</label>
-                            <input type="number" class="form-input" id="chat_stream_score" value="0.2" min="0" max="1" step="0.1">
+                            <label class="form-label">状态</label>
+                            <select class="form-select" id="mcp_update_status">
+                                <option value="">不修改</option>
+                                <option value="1">启用</option>
+                                <option value="0">禁用</option>
+                            </select>
                         </div>
                     </div>
 
-                    <button class="btn btn-primary" onclick="chatStream()">发送</button>
-                    <button class="btn btn-secondary" onclick="clearForm('chat-stream')">清空</button>
+                    <button class="btn btn-primary" onclick="updateMCPRegistry()">更新</button>
+                    <button class="btn btn-secondary" onclick="clearForm('mcp-registry-update')">清空</button>
 
-                    <div class="loading" id="chat_stream_loading">请求中...</div>
+                    <div class="loading" id="mcp_update_loading">请求中...</div>
 
-                    <div class="response-section" id="chat_stream_response">
-                        <div class="response-title">流式响应</div>
-                        <div class="response-status" id="chat_stream_status"></div>
-                        <div class="stream-container" id="chat_stream_body"></div>
+                    <div class="response-section" id="mcp_update_response">
+                        <div class="response-title">响应结果</div>
+                        <div class="response-status" id="mcp_update_status_text"></div>
+                        <div class="response-body" id="mcp_update_body"></div>
+                    </div>
+                </div>
+
+                <!-- MCP: 删除服务 -->
+                <div class="api-section" id="mcp-registry-delete">
+                    <h2 class="api-title">
+                        <span class="api-method method-delete">DELETE</span>
+                        删除 MCP 服务
+                    </h2>
+                    <p class="api-description">删除已注册的 MCP 服务</p>
+
+                    <div class="form-group">
+                        <label class="form-label">服务 ID <span class="required">*</span></label>
+                        <input type="text" class="form-input" id="mcp_delete_id" placeholder="输入 MCP 服务 ID">
+                    </div>
+
+                    <button class="btn btn-primary" onclick="deleteMCPRegistry()">删除</button>
+                    <button class="btn btn-secondary" onclick="clearForm('mcp-registry-delete')">清空</button>
+
+                    <div class="loading" id="mcp_delete_loading">请求中...</div>
+
+                    <div class="response-section" id="mcp_delete_response">
+                        <div class="response-title">响应结果</div>
+                        <div class="response-status" id="mcp_delete_status"></div>
+                        <div class="response-body" id="mcp_delete_body"></div>
+                    </div>
+                </div>
+
+                <!-- MCP: 测试连接 -->
+                <div class="api-section" id="mcp-registry-test">
+                    <h2 class="api-title">
+                        <span class="api-method method-post">POST</span>
+                        测试 MCP 连接
+                    </h2>
+                    <p class="api-description">测试 MCP 服务的连通性</p>
+
+                    <div class="form-group">
+                        <label class="form-label">服务 ID <span class="required">*</span></label>
+                        <input type="text" class="form-input" id="mcp_test_id" placeholder="输入 MCP 服务 ID">
+                    </div>
+
+                    <button class="btn btn-primary" onclick="testMCPConnection()">测试连接</button>
+                    <button class="btn btn-secondary" onclick="clearForm('mcp-registry-test')">清空</button>
+
+                    <div class="loading" id="mcp_test_loading">请求中...</div>
+
+                    <div class="response-section" id="mcp_test_response">
+                        <div class="response-title">响应结果</div>
+                        <div class="response-status" id="mcp_test_status"></div>
+                        <div class="response-body" id="mcp_test_body"></div>
+                    </div>
+                </div>
+
+                <!-- MCP: 列出工具 -->
+                <div class="api-section" id="mcp-list-tools">
+                    <h2 class="api-title">
+                        <span class="api-method method-get">GET</span>
+                        列出 MCP 工具
+                    </h2>
+                    <p class="api-description">列出指定 MCP 服务的所有可用工具</p>
+
+                    <div class="form-group">
+                        <label class="form-label">服务 ID <span class="required">*</span></label>
+                        <input type="text" class="form-input" id="mcp_tools_id" placeholder="输入 MCP 服务 ID">
+                    </div>
+
+                    <button class="btn btn-primary" onclick="listMCPTools()">获取工具列表</button>
+                    <button class="btn btn-secondary" onclick="clearForm('mcp-list-tools')">清空</button>
+
+                    <div class="loading" id="mcp_tools_loading">请求中...</div>
+
+                    <div class="response-section" id="mcp_tools_response">
+                        <div class="response-title">响应结果</div>
+                        <div class="response-status" id="mcp_tools_status"></div>
+                        <div class="response-body" id="mcp_tools_body"></div>
+                    </div>
+                </div>
+
+                <!-- MCP: 调用工具 -->
+                <div class="api-section" id="mcp-call-tool">
+                    <h2 class="api-title">
+                        <span class="api-method method-post">POST</span>
+                        调用 MCP 工具
+                    </h2>
+                    <p class="api-description">调用指定 MCP 服务的工具</p>
+
+                    <div class="form-group">
+                        <label class="form-label">服务 ID/名称 <span class="required">*</span></label>
+                        <input type="text" class="form-input" id="mcp_call_registry" placeholder="输入 MCP 服务 ID 或名称">
+                        <div class="helper-text">可以是服务 ID 或服务名称</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">工具名称 <span class="required">*</span></label>
+                        <input type="text" class="form-input" id="mcp_call_tool" placeholder="输入工具名称">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">工具参数 (JSON)</label>
+                        <textarea class="form-textarea" id="mcp_call_args" placeholder='{"key": "value"}'></textarea>
+                        <div class="helper-text">JSON 格式的工具参数</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">对话 ID</label>
+                        <input type="text" class="form-input" id="mcp_call_conv" placeholder="可选，用于日志关联">
+                    </div>
+
+                    <button class="btn btn-primary" onclick="callMCPTool()">调用工具</button>
+                    <button class="btn btn-secondary" onclick="clearForm('mcp-call-tool')">清空</button>
+
+                    <div class="loading" id="mcp_call_loading">请求中...</div>
+
+                    <div class="response-section" id="mcp_call_response">
+                        <div class="response-title">响应结果</div>
+                        <div class="response-status" id="mcp_call_status"></div>
+                        <div class="response-body" id="mcp_call_body"></div>
+                    </div>
+                </div>
+
+                <!-- MCP: 调用日志 -->
+                <div class="api-section" id="mcp-logs">
+                    <h2 class="api-title">
+                        <span class="api-method method-get">GET</span>
+                        MCP 调用日志
+                    </h2>
+                    <p class="api-description">查询 MCP 工具的调用日志</p>
+
+                    <div class="form-group">
+                        <label class="form-label">对话 ID</label>
+                        <input type="text" class="form-input" id="mcp_logs_conv" placeholder="按对话 ID 过滤">
+                    </div>
+
+                    <div class="inline-group">
+                        <div class="form-group">
+                            <label class="form-label">服务 ID</label>
+                            <input type="text" class="form-input" id="mcp_logs_registry" placeholder="按服务 ID 过滤">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">工具名称</label>
+                            <input type="text" class="form-input" id="mcp_logs_tool" placeholder="按工具名称过滤">
+                        </div>
+                    </div>
+
+                    <div class="inline-group">
+                        <div class="form-group">
+                            <label class="form-label">状态</label>
+                            <select class="form-select" id="mcp_logs_status">
+                                <option value="">全部</option>
+                                <option value="1">成功</option>
+                                <option value="0">失败</option>
+                                <option value="2">超时</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">页码</label>
+                            <input type="number" class="form-input" id="mcp_logs_page" value="1" min="1">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">每页数量</label>
+                            <input type="number" class="form-input" id="mcp_logs_size" value="10" min="1" max="100">
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="getMCPLogs()">查询日志</button>
+                    <button class="btn btn-secondary" onclick="clearForm('mcp-logs')">清空</button>
+
+                    <div class="loading" id="mcp_logs_loading">请求中...</div>
+
+                    <div class="response-section" id="mcp_logs_response">
+                        <div class="response-title">响应结果</div>
+                        <div class="response-status" id="mcp_logs_status_text"></div>
+                        <div class="response-body" id="mcp_logs_body"></div>
+                    </div>
+                </div>
+
+                <!-- MCP: 统计信息 -->
+                <div class="api-section" id="mcp-stats">
+                    <h2 class="api-title">
+                        <span class="api-method method-get">GET</span>
+                        MCP 统计信息
+                    </h2>
+                    <p class="api-description">获取指定 MCP 服务的调用统计信息</p>
+
+                    <div class="form-group">
+                        <label class="form-label">服务 ID <span class="required">*</span></label>
+                        <input type="text" class="form-input" id="mcp_stats_id" placeholder="输入 MCP 服务 ID">
+                    </div>
+
+                    <button class="btn btn-primary" onclick="getMCPStats()">获取统计</button>
+                    <button class="btn btn-secondary" onclick="clearForm('mcp-stats')">清空</button>
+
+                    <div class="loading" id="mcp_stats_loading">请求中...</div>
+
+                    <div class="response-section" id="mcp_stats_response">
+                        <div class="response-title">响应结果</div>
+                        <div class="response-status" id="mcp_stats_status"></div>
+                        <div class="response-body" id="mcp_stats_body"></div>
                     </div>
                 </div>
             </div>
@@ -1678,54 +2020,51 @@
             }
         }
 
-        // Dify检索
-        async function difyRetrieve() {
-            const kbId = document.getElementById('dify_kb_id').value.trim();
-            const query = document.getElementById('dify_query').value.trim();
-            const topK = parseInt(document.getElementById('dify_top_k').value);
-            const score = parseFloat(document.getElementById('dify_score').value);
 
-            if (!kbId || !query) {
-                alert('请填写必填字段');
-                return;
-            }
-
-            showLoading('dify');
-
-            try {
-                const response = await fetch(getBaseUrl() + '/api/v1/dify/retrieval', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        knowledge_id: kbId,
-                        query: query,
-                        retrieval_setting: {
-                            top_k: topK,
-                            score_threshold: score
-                        }
-                    })
-                });
-
-                const data = await response.json();
-                showResponse('dify', response.ok, data);
-            } catch (error) {
-                showResponse('dify', false, {error: error.message});
-            }
-        }
 
         // ==================== 对话 ====================
 
-        // 普通对话
+        // 更新聊天函数以支持新参数
         async function chat() {
             const convId = document.getElementById('chat_conv_id').value.trim();
-            const kbId = document.getElementById('chat_kb_id').value.trim();
             const question = document.getElementById('chat_question').value.trim();
+            const kbId = document.getElementById('chat_kb_id').value.trim();
+            const enableRetriever = document.getElementById('chat_enable_retriever').checked;
             const topK = parseInt(document.getElementById('chat_top_k').value);
             const score = parseFloat(document.getElementById('chat_score').value);
+            const useMcp = document.getElementById('chat_use_mcp').checked;
+            const mcpServiceToolsStr = document.getElementById('chat_mcp_service_tools').value.trim();
 
-            if (!convId || !kbId || !question) {
+            if (!convId || !question) {
                 alert('请填写必填字段');
                 return;
+            }
+
+            // 构建请求体
+            const body = {
+                conv_id: convId,
+                question: question,
+                enable_retriever: enableRetriever
+            };
+
+            // 添加可选参数
+            if (kbId) body.knowledge_id = kbId;
+            if (enableRetriever) {
+                body.top_k = topK;
+                body.score = score;
+            }
+            if (useMcp) {
+                body.use_mcp = true;
+                
+                // 解析按服务指定的MCP工具
+                if (mcpServiceToolsStr) {
+                    try {
+                        body.mcp_service_tools = JSON.parse(mcpServiceToolsStr);
+                    } catch (e) {
+                        alert('按服务指定MCP工具格式错误，请输入有效的 JSON');
+                        return;
+                    }
+                }
             }
 
             showLoading('chat');
@@ -1734,13 +2073,7 @@
                 const response = await fetch(getBaseUrl() + '/api/v1/chat', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        conv_id: convId,
-                        knowledge_id: kbId,
-                        question: question,
-                        top_k: topK,
-                        score: score
-                    })
+                    body: JSON.stringify(body)
                 });
 
                 const data = await response.json();
@@ -1750,65 +2083,287 @@
             }
         }
 
-        // 流式对话
-        async function chatStream() {
-            const convId = document.getElementById('chat_stream_conv_id').value.trim();
-            const kbId = document.getElementById('chat_stream_kb_id').value.trim();
-            const question = document.getElementById('chat_stream_question').value.trim();
-            const topK = parseInt(document.getElementById('chat_stream_top_k').value);
-            const score = parseFloat(document.getElementById('chat_stream_score').value);
 
-            if (!convId || !kbId || !question) {
+
+        // ==================== MCP 管理 ====================
+
+        // 注册 MCP 服务
+        async function createMCPRegistry() {
+            const name = document.getElementById('mcp_reg_name').value.trim();
+            const description = document.getElementById('mcp_reg_desc').value.trim();
+            const endpoint = document.getElementById('mcp_reg_endpoint').value.trim();
+            const apiKey = document.getElementById('mcp_reg_apikey').value.trim();
+            const headers = document.getElementById('mcp_reg_headers').value.trim();
+            const timeout = document.getElementById('mcp_reg_timeout').value;
+
+            if (!name || !endpoint) {
                 alert('请填写必填字段');
                 return;
             }
 
-            showLoading('chat_stream');
-
-            const responseSection = document.getElementById('chat_stream_response');
-            const statusEl = document.getElementById('chat_stream_status');
-            const bodyEl = document.getElementById('chat_stream_body');
-
-            bodyEl.textContent = '';
+            showLoading('mcp_reg');
 
             try {
-                const response = await fetch(getBaseUrl() + '/api/v1/chat/stream', {
+                const body = { name, endpoint };
+                if (description) body.description = description;
+                if (apiKey) body.api_key = apiKey;
+                if (headers) body.headers = headers;
+                if (timeout) body.timeout = parseInt(timeout);
+
+                const response = await fetch(getBaseUrl() + '/api/v1/mcp/registry', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        conv_id: convId,
-                        knowledge_id: kbId,
-                        question: question,
-                        top_k: topK,
-                        score: score
-                    })
+                    body: JSON.stringify(body)
                 });
 
-                hideLoading('chat_stream');
-                responseSection.classList.add('show');
-                statusEl.className = 'response-status status-success';
-                statusEl.textContent = '正在接收流式响应...';
-
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-
-                while (true) {
-                    const {done, value} = await reader.read();
-                    if (done) break;
-
-                    const chunk = decoder.decode(value, {stream: true});
-                    bodyEl.textContent += chunk;
-                    bodyEl.scrollTop = bodyEl.scrollHeight;
-                }
-
-                statusEl.textContent = '流式响应完成';
-
+                const data = await response.json();
+                showResponse('mcp_reg', response.ok, data);
             } catch (error) {
-                hideLoading('chat_stream');
-                responseSection.classList.add('show');
-                statusEl.className = 'response-status status-error';
-                statusEl.textContent = '请求失败';
-                bodyEl.textContent = JSON.stringify({error: error.message}, null, 2);
+                showResponse('mcp_reg', false, {error: error.message});
+            }
+        }
+
+        // 获取 MCP 服务列表
+        async function getMCPList() {
+            const status = document.getElementById('mcp_list_status').value;
+            const page = document.getElementById('mcp_list_page').value;
+            const size = document.getElementById('mcp_list_size').value;
+
+            const params = new URLSearchParams();
+            if (status) params.append('status', status);
+            params.append('page', page);
+            params.append('page_size', size);
+
+            showLoading('mcp_list');
+
+            try {
+                const url = getBaseUrl() + '/api/v1/mcp/registry?' + params.toString();
+                const response = await fetch(url);
+                const data = await response.json();
+                showResponse('mcp_list', response.ok, data);
+            } catch (error) {
+                showResponse('mcp_list', false, {error: error.message});
+            }
+        }
+
+        // 获取单个 MCP 服务
+        async function getMCPRegistry() {
+            const id = document.getElementById('mcp_get_id').value.trim();
+
+            if (!id) {
+                alert('请输入服务 ID');
+                return;
+            }
+
+            showLoading('mcp_get');
+
+            try {
+                const response = await fetch(getBaseUrl() + '/api/v1/mcp/registry/' + id);
+                const data = await response.json();
+                showResponse('mcp_get', response.ok, data);
+            } catch (error) {
+                showResponse('mcp_get', false, {error: error.message});
+            }
+        }
+
+        // 更新 MCP 服务
+        async function updateMCPRegistry() {
+            const id = document.getElementById('mcp_update_id').value.trim();
+            const name = document.getElementById('mcp_update_name').value.trim();
+            const description = document.getElementById('mcp_update_desc').value.trim();
+            const endpoint = document.getElementById('mcp_update_endpoint').value.trim();
+            const timeout = document.getElementById('mcp_update_timeout').value;
+            const status = document.getElementById('mcp_update_status').value;
+
+            if (!id) {
+                alert('请输入服务 ID');
+                return;
+            }
+
+            const body = {};
+            if (name) body.name = name;
+            if (description) body.description = description;
+            if (endpoint) body.endpoint = endpoint;
+            if (timeout) body.timeout = parseInt(timeout);
+            if (status) body.status = parseInt(status);
+
+            showLoading('mcp_update');
+
+            try {
+                const response = await fetch(getBaseUrl() + '/api/v1/mcp/registry/' + id, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)
+                });
+
+                const data = await response.json();
+                showResponse('mcp_update', response.ok, data);
+            } catch (error) {
+                showResponse('mcp_update', false, {error: error.message});
+            }
+        }
+
+        // 删除 MCP 服务
+        async function deleteMCPRegistry() {
+            const id = document.getElementById('mcp_delete_id').value.trim();
+
+            if (!id) {
+                alert('请输入服务 ID');
+                return;
+            }
+
+            if (!confirm('确定要删除该 MCP 服务吗？')) {
+                return;
+            }
+
+            showLoading('mcp_delete');
+
+            try {
+                const response = await fetch(getBaseUrl() + '/api/v1/mcp/registry/' + id, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+                showResponse('mcp_delete', response.ok, data);
+            } catch (error) {
+                showResponse('mcp_delete', false, {error: error.message});
+            }
+        }
+
+        // 测试 MCP 连接
+        async function testMCPConnection() {
+            const id = document.getElementById('mcp_test_id').value.trim();
+
+            if (!id) {
+                alert('请输入服务 ID');
+                return;
+            }
+
+            showLoading('mcp_test');
+
+            try {
+                const response = await fetch(getBaseUrl() + '/api/v1/mcp/registry/' + id + '/test', {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+                showResponse('mcp_test', response.ok, data);
+            } catch (error) {
+                showResponse('mcp_test', false, {error: error.message});
+            }
+        }
+
+        // 列出 MCP 工具
+        async function listMCPTools() {
+            const id = document.getElementById('mcp_tools_id').value.trim();
+
+            if (!id) {
+                alert('请输入服务 ID');
+                return;
+            }
+
+            showLoading('mcp_tools');
+
+            try {
+                const response = await fetch(getBaseUrl() + '/api/v1/mcp/registry/' + id + '/tools');
+                const data = await response.json();
+                showResponse('mcp_tools', response.ok, data);
+            } catch (error) {
+                showResponse('mcp_tools', false, {error: error.message});
+            }
+        }
+
+        // 调用 MCP 工具
+        async function callMCPTool() {
+            const registryId = document.getElementById('mcp_call_registry').value.trim();
+            const toolName = document.getElementById('mcp_call_tool').value.trim();
+            const argsStr = document.getElementById('mcp_call_args').value.trim();
+            const conversationId = document.getElementById('mcp_call_conv').value.trim();
+
+            if (!registryId || !toolName) {
+                alert('请填写必填字段');
+                return;
+            }
+
+            let args = {};
+            if (argsStr) {
+                try {
+                    args = JSON.parse(argsStr);
+                } catch (e) {
+                    alert('参数格式错误，请输入有效的 JSON');
+                    return;
+                }
+            }
+
+            showLoading('mcp_call');
+
+            try {
+                const body = {
+                    registry_id: registryId,
+                    tool_name: toolName,
+                    arguments: args
+                };
+                if (conversationId) body.conversation_id = conversationId;
+
+                const response = await fetch(getBaseUrl() + '/api/v1/mcp/call', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)
+                });
+
+                const data = await response.json();
+                showResponse('mcp_call', response.ok, data);
+            } catch (error) {
+                showResponse('mcp_call', false, {error: error.message});
+            }
+        }
+
+        // 获取 MCP 调用日志
+        async function getMCPLogs() {
+            const conversationId = document.getElementById('mcp_logs_conv').value.trim();
+            const registryId = document.getElementById('mcp_logs_registry').value.trim();
+            const toolName = document.getElementById('mcp_logs_tool').value.trim();
+            const status = document.getElementById('mcp_logs_status').value;
+            const page = document.getElementById('mcp_logs_page').value;
+            const size = document.getElementById('mcp_logs_size').value;
+
+            const params = new URLSearchParams();
+            if (conversationId) params.append('conversation_id', conversationId);
+            if (registryId) params.append('registry_id', registryId);
+            if (toolName) params.append('tool_name', toolName);
+            if (status) params.append('status', status);
+            params.append('page', page);
+            params.append('page_size', size);
+
+            showLoading('mcp_logs');
+
+            try {
+                const url = getBaseUrl() + '/api/v1/mcp/logs?' + params.toString();
+                const response = await fetch(url);
+                const data = await response.json();
+                showResponse('mcp_logs', response.ok, data);
+            } catch (error) {
+                showResponse('mcp_logs', false, {error: error.message});
+            }
+        }
+
+        // 获取 MCP 统计信息
+        async function getMCPStats() {
+            const id = document.getElementById('mcp_stats_id').value.trim();
+
+            if (!id) {
+                alert('请输入服务 ID');
+                return;
+            }
+
+            showLoading('mcp_stats');
+
+            try {
+                const response = await fetch(getBaseUrl() + '/api/v1/mcp/registry/' + id + '/stats');
+                const data = await response.json();
+                showResponse('mcp_stats', response.ok, data);
+            } catch (error) {
+                showResponse('mcp_stats', false, {error: error.message});
             }
         }
     </script>

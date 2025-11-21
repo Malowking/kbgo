@@ -9,13 +9,16 @@ KBGO 是一个基于 Go 语言开发的知识库管理系统，集成了 Milvus 
 - 向量检索：基于 Milvus 的高效相似度检索
 - RAG 对话：结合知识库内容进行智能问答
 - API 调试：提供完整的 HTML 调试界面
+- 灵活存储：支持 RustFS 对象存储和本地文件系统存储
+- 多数据库支持：支持 MySQL 和 PostgreSQL 数据库
 
 ## 技术栈
 
 - 后端框架：Go + [GoFrame](https://goframe.org/)
 - 向量数据库：[Milvus](https://milvus.io/)
-- 关系数据库：MySQL
-- 对象存储：RustFS
+- 关系数据库：MySQL/PostgreSQL
+- 对象存储：RustFS (可选)
+- 本地存储：文件系统
 - 前端技术：HTML/CSS/JavaScript(后段开发测试使用)
 
 ## 快速开始
@@ -23,9 +26,9 @@ KBGO 是一个基于 Go 语言开发的知识库管理系统，集成了 Milvus 
 ### 环境要求
 
 - Go 1.24+
-- MySQL 5.7+
-- Milvus 2.4+
-- RustFS
+- MySQL 5.7+ 或 PostgreSQL 9.6+
+- Milvus 2.6.x+
+- RustFS (可选，当使用 RustFS 存储时需要)
 
 ### 配置文件
 
@@ -39,19 +42,42 @@ KBGO 是一个基于 Go 语言开发的知识库管理系统，集成了 Milvus 
    # 数据库配置
    database:
      default:
-       host: "localhost" # MySQL地址
-       port: "3306"      # MySQL端口
+       host: "localhost" # 数据库地址
+       port: "3306"      # 数据库端口
        user: "root"      # 用户名
        pass: "password"  # 密码
        name: "kbgo"      # 数据库名
+       type: "mysql"     # 数据库类型，支持 mysql 和 postgresql
    
    # Milvus向量数据库配置
    milvus:
      address: "http://localhost:19530"
      database: "kbgo"
    
+   # 文件存储配置
+   storage:
+     # 存储类型: "rustfs" 或 "local"，默认为"rustfs"
+     type: "rustfs"
+   
+   # rustfs文件存储配置（当storage.type为"rustfs"时需要配置）
+   rustfs:
+     endpoint: "http://localhost:9000"
+     accessKey: "your_access_key"
+     secretKey: "your_secret_key"
+     bucketName: "your_bucket_name"
+     ssl: false
+   
    # 其他配置...
    ```
+
+3. 数据库类型说明：
+   - 当 `database.default.type` 设置为 `mysql` 时，使用 MySQL 数据库
+   - 当 `database.default.type` 设置为 `postgresql` 时，使用 PostgreSQL 数据库
+
+4. 存储类型说明：
+   - 当 `storage.type` 设置为 `rustfs` 时，文件将存储在 RustFS/MinIO 对象存储中
+   - 当 `storage.type` 设置为 `local` 时，文件将存储在本地文件系统中，路径为 `knowledge_file/{知识库ID}/{文件名}`
+   - 如果 `storage.type` 设置为 `rustfs` 但未正确配置 `rustfs` 相关参数，系统将自动回退到本地存储
 
 ### 启动项目
 
@@ -108,17 +134,16 @@ KBGO 是一个基于 Go 语言开发的知识库管理系统，集成了 Milvus 
 
 ### 检索相关
 - `POST /api/v1/retriever/search` - 标准检索
-- `POST /api/v1/retriever/dify` - Dify 格式检索
 
 ### 对话相关
-- `POST /api/v1/chat/completion` - 普通对话
-- `POST /api/v1/chat/completion/stream` - 流式对话
+- `POST /api/v1/chat` - 智能对话接口（支持知识库检索、MCP工具调用、流式输出等功能）
 
 ## 项目结构
 
 ```
 .
 ├── api                 # API 接口定义
+├── config              # 配置文件
 ├── core                # 核心业务逻辑
 ├── internal            # 内部实现
 │   ├── cmd             # 命令行入口
@@ -127,8 +152,9 @@ KBGO 是一个基于 Go 语言开发的知识库管理系统，集成了 Milvus 
 │   ├── logic           # 业务逻辑层
 │   ├── mcp             # MCP 协议实现
 │   └── model           # 数据模型
-├── manifest            # 配置文件
-└── milvus_new          # Milvus 相关封装
+├── milvus_new          # Milvus 相关封装
+├── milvus_new_re       # Milvus 检索相关封装
+└── test_mcp_server    # MCP 测试服务器
 ```
 
 ## 许可证

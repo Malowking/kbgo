@@ -5,26 +5,27 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
+	"time"
 
-	"github.com/Malowking/kbgo/internal/dao"
+	"github.com/Malowking/kbgo/internal/history"
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gctx"
-	"github.com/wangle201210/chat-history/eino"
 )
 
-var chat *Chat
+var chatInstance *Chat
 
 type Chat struct {
 	cm     model.BaseChatModel
-	eh     *eino.History
+	eh     *history.Manager
 	params ModelParams // 添加推理参数配置
 }
 
 func GetChat() *Chat {
-	return chat
+	return chatInstance
 }
 
 // 暂时用不上chat功能，先不init
@@ -49,8 +50,8 @@ func init() {
 		g.Log().Fatalf(ctx, "newChat failed, err=%v", err)
 		return
 	}
-	c.eh = eino.NewEinoHistory(dao.GetDsn())
-	chat = c
+	c.eh = history.NewManager()
+	chatInstance = c
 }
 
 func newChat(cfg *openai.ChatModelConfig, params ModelParams) (res *Chat, err error) {
@@ -75,11 +76,32 @@ func (x *Chat) GetAnswer(ctx context.Context, convID string, docs []*schema.Docu
 	if err != nil {
 		return "", err
 	}
+
+	// 记录开始时间
+	start := time.Now()
+
 	result, err := x.generate(ctx, messages)
 	if err != nil {
 		return "", fmt.Errorf("生成答案失败: %w", err)
 	}
-	err = x.eh.SaveMessage(result, convID)
+
+	// 计算延迟
+	latencyMs := time.Since(start).Milliseconds()
+
+	// 获取token使用量
+	tokensUsed := 0
+	if result.ResponseMeta != nil && result.ResponseMeta.Usage != nil {
+		tokensUsed = result.ResponseMeta.Usage.TotalTokens
+	}
+
+	// 创建带指标的消息
+	msgWithMetrics := &history.MessageWithMetrics{
+		Message:    result,
+		LatencyMs:  int(latencyMs),
+		TokensUsed: tokensUsed,
+	}
+
+	err = x.eh.SaveMessageWithMetrics(msgWithMetrics, convID)
 	if err != nil {
 		g.Log().Error(ctx, "save assistant message err: %v", err)
 		return
@@ -93,6 +115,10 @@ func (x *Chat) GetAnswerStream(ctx context.Context, convID string, docs []*schem
 	if err != nil {
 		return
 	}
+
+	// 记录开始时间
+	start := time.Now()
+
 	ctx = context.Background()
 	streamData, err := x.stream(ctx, messages)
 	if err != nil {
@@ -109,7 +135,24 @@ func (x *Chat) GetAnswerStream(ctx context.Context, convID string, docs []*schem
 				g.Log().Error(ctx, "error concatenating messages: %v", err)
 				return
 			}
-			err = x.eh.SaveMessage(fullMsg, convID)
+
+			// 计算延迟
+			latencyMs := time.Since(start).Milliseconds()
+
+			// 获取token使用量
+			tokensUsed := 0
+			if fullMsg.ResponseMeta != nil && fullMsg.ResponseMeta.Usage != nil {
+				tokensUsed = fullMsg.ResponseMeta.Usage.TotalTokens
+			}
+
+			// 创建带指标的消息
+			msgWithMetrics := &history.MessageWithMetrics{
+				Message:    fullMsg,
+				LatencyMs:  int(latencyMs),
+				TokensUsed: tokensUsed,
+			}
+
+			err = x.eh.SaveMessageWithMetrics(msgWithMetrics, convID)
 			if err != nil {
 				g.Log().Error(ctx, "save assistant message err: %v", err)
 				return
@@ -167,13 +210,32 @@ func (x *Chat) Generate(ctx context.Context, convID string, docs []*schema.Docum
 		params = *customParams
 	}
 
+	// 记录开始时间
+	start := time.Now()
+
 	opts := params.ToModelOptions()
 	result, err := x.cm.Generate(ctx, messages, opts...)
 	if err != nil {
 		return "", fmt.Errorf("生成答案失败: %w", err)
 	}
 
-	err = x.eh.SaveMessage(result, convID)
+	// 计算延迟
+	latencyMs := time.Since(start).Milliseconds()
+
+	// 获取token使用量
+	tokensUsed := 0
+	if result.ResponseMeta != nil && result.ResponseMeta.Usage != nil {
+		tokensUsed = result.ResponseMeta.Usage.TotalTokens
+	}
+
+	// 创建带指标的消息
+	msgWithMetrics := &history.MessageWithMetrics{
+		Message:    result,
+		LatencyMs:  int(latencyMs),
+		TokensUsed: tokensUsed,
+	}
+
+	err = x.eh.SaveMessageWithMetrics(msgWithMetrics, convID)
 	if err != nil {
 		g.Log().Error(ctx, "save assistant message err: %v", err)
 		return "", err
@@ -190,4 +252,84 @@ func (x *Chat) UpdateParams(params ModelParams) {
 // GetParams 获取当前模型参数
 func (x *Chat) GetParams() ModelParams {
 	return x.params
+}
+
+// GenerateWithTools 使用工具进行生成（支持 Function Calling）
+func (x *Chat) GenerateWithTools(ctx context.Context, messages []*schema.Message, tools []*schema.ToolInfo) (*schema.Message, error) {
+	// 准备模型选项
+	opts := x.params.ToModelOptions()
+
+	// 如果有工具，添加工具选项
+	if len(tools) > 0 {
+		opts = append(opts, model.WithTools(tools))
+		opts = append(opts, model.WithToolChoice(schema.ToolChoiceAllowed))
+	}
+
+	// 记录开始时间
+	start := time.Now()
+
+	result, err := x.cm.Generate(ctx, messages, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("llm generate failed: %v", err)
+	}
+
+	// 计算延迟
+	latencyMs := time.Since(start).Milliseconds()
+
+	// 获取token使用量
+	tokensUsed := 0
+	if result.ResponseMeta != nil && result.ResponseMeta.Usage != nil {
+		tokensUsed = result.ResponseMeta.Usage.TotalTokens
+	}
+
+	// 添加指标信息到返回的消息中（通过扩展字段）
+	// 注意：LatencyMs 和 TokensUsed 不再是 Message 的直接字段，需要通过其他方式处理
+	result.Extra = map[string]any{
+		"latency_ms":  latencyMs,
+		"tokens_used": tokensUsed,
+	}
+
+	return result, nil
+}
+
+// GenerateWithToolsAndSave 使用工具进行生成并返回结果（不自动保存）
+func (x *Chat) GenerateWithToolsAndSave(ctx context.Context, messages []*schema.Message, tools []*schema.ToolInfo) (*schema.Message, error) {
+	// 准备模型选项
+	opts := x.params.ToModelOptions()
+
+	// 如果有工具，添加工具选项
+	if len(tools) > 0 {
+		opts = append(opts, model.WithTools(tools))
+		opts = append(opts, model.WithToolChoice(schema.ToolChoiceAllowed))
+	}
+
+	result, err := x.cm.Generate(ctx, messages, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("llm generate failed: %v", err)
+	}
+
+	return result, nil
+}
+
+// SaveMessageWithMetadata 保存带元数据的消息
+func (x *Chat) SaveMessageWithMetadata(message *schema.Message, convID string, metadata map[string]interface{}) error {
+	return x.eh.SaveMessageWithMetadata(message, convID, metadata)
+}
+
+// SaveStreamingMessageWithMetadata 保存流式传输的完整消息和元数据
+func (x *Chat) SaveStreamingMessageWithMetadata(convID string, content string, metadata map[string]interface{}) error {
+	message := &schema.Message{
+		Role:    schema.Assistant,
+		Content: content,
+	}
+	return x.eh.SaveMessageWithMetadata(message, convID, metadata)
+}
+
+// ConcatStreamContent 将流式内容连接成完整字符串
+func (x *Chat) ConcatStreamContent(messages []*schema.Message) string {
+	var builder strings.Builder
+	for _, msg := range messages {
+		builder.WriteString(msg.Content)
+	}
+	return builder.String()
 }

@@ -12,16 +12,45 @@ type RustfsConfig struct {
 	BucketName string
 }
 
+type StorageType string
+
+const (
+	StorageTypeRustFS StorageType = "rustfs"
+	StorageTypeLocal  StorageType = "local"
+)
+
 var rustfsConfig RustfsConfig
+var storageType StorageType
 
 func init() {
 	ctx := gctx.New()
+
+	// 获取存储类型配置，默认为 rustfs
+	storageTypeStr := g.Cfg().MustGet(ctx, "storage.type", "rustfs").String()
+
+	// 根据配置决定存储类型
+	switch storageTypeStr {
+	case "local":
+		storageType = StorageTypeLocal
+		g.Log().Infof(ctx, "Using local storage as configured")
+		return
+	case "rustfs":
+		// 继续初始化 RustFS
+	default:
+		// 默认使用 RustFS
+		storageType = StorageTypeRustFS
+	}
+
 	// 检查rustfs配置是否存在
 	rustfsEndpoint := g.Cfg().MustGet(ctx, "rustfs.endpoint", "").String()
 	if rustfsEndpoint == "" {
-		g.Log().Fatalf(ctx, "RustFs configuration is missing: rustfs.endpoint is required")
+		// 如果没有配置rustfs，使用本地存储
+		storageType = StorageTypeLocal
+		g.Log().Infof(ctx, "RustFS not configured, using local storage")
 		return
 	}
+
+	storageType = StorageTypeRustFS
 	rustfsAccessKey := g.Cfg().MustGet(ctx, "rustfs.accessKey").String()
 	rustfsSecretKey := g.Cfg().MustGet(ctx, "rustfs.secretKey").String()
 	rustfsBucketName := g.Cfg().MustGet(ctx, "rustfs.bucketName").String()
@@ -65,4 +94,8 @@ func init() {
 
 func GetRustfsConfig() *RustfsConfig {
 	return &rustfsConfig
+}
+
+func GetStorageType() StorageType {
+	return storageType
 }

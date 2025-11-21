@@ -2,6 +2,7 @@ package rag
 
 import (
 	"context"
+	"os"
 
 	v1 "github.com/Malowking/kbgo/api/rag/v1"
 	gorag "github.com/Malowking/kbgo/core"
@@ -35,7 +36,9 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 	}
 
 	var needDeleteFromRustFS bool
+	var needDeleteLocalFile bool
 	var rustfsBucket, rustfsLocation string
+	var localFilePath string
 
 	// 检查是否有其他知识库引用了相同的 SHA256 文件
 	if document.SHA256 != "" {
@@ -48,13 +51,26 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 			return nil, err
 		}
 
-		// 如果只有当前这一个文档，则需要删除 RustFS 中的文件
+		// 如果只有当前这一个文档，则需要删除存储中的文件
 		if count == 1 {
-			needDeleteFromRustFS = true
-			rustfsBucket = document.RustfsBucket
-			rustfsLocation = document.RustfsLocation
+			// 根据存储类型决定删除方式
+			storageType := gorag.GetStorageType()
+			if storageType == gorag.StorageTypeRustFS {
+				// 使用 RustFS 存储
+				if document.RustfsBucket != "" && document.RustfsLocation != "" {
+					needDeleteFromRustFS = true
+					rustfsBucket = document.RustfsBucket
+					rustfsLocation = document.RustfsLocation
+				}
+			} else {
+				// 使用本地存储
+				if document.LocalFilePath != "" {
+					needDeleteLocalFile = true
+					localFilePath = document.LocalFilePath
+				}
+			}
 		} else {
-			g.Log().Infof(ctx, "DocumentsDelete: file is referenced by %d documents, skipping RustFS deletion", count)
+			g.Log().Infof(ctx, "DocumentsDelete: file is referenced by %d documents, skipping file deletion", count)
 		}
 	}
 
@@ -85,7 +101,7 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 		return nil, gerror.Newf("failed to commit transaction: %v", err)
 	}
 
-	// 事务成功提交后，删除 RustFS 文件（这个操作失败不影响数据一致性）
+	// 事务成功提交后，删除存储中的文件（这个操作失败不影响数据一致性）
 	if needDeleteFromRustFS && rustfsBucket != "" && rustfsLocation != "" {
 		g.Log().Infof(ctx, "DocumentsDelete: deleting file from RustFS, bucket=%s, location=%s", rustfsBucket, rustfsLocation)
 
@@ -96,6 +112,16 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 			// 不返回错误，因为数据库操作已经成功
 		} else {
 			g.Log().Infof(ctx, "DocumentsDelete: successfully deleted from RustFS, bucket=%s, location=%s", rustfsBucket, rustfsLocation)
+		}
+	} else if needDeleteLocalFile && localFilePath != "" {
+		g.Log().Infof(ctx, "DocumentsDelete: deleting local file, path=%s", localFilePath)
+
+		err = os.Remove(localFilePath)
+		if err != nil {
+			g.Log().Errorf(ctx, "DocumentsDelete: failed to delete local file, path=%s, err: %v", localFilePath, err)
+			// 不返回错误，因为数据库操作已经成功
+		} else {
+			g.Log().Infof(ctx, "DocumentsDelete: successfully deleted local file, path=%s", localFilePath)
 		}
 	}
 

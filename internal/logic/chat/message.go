@@ -61,6 +61,16 @@ func formatDocuments(docs []*schema.Document) string {
 					}
 				}
 			}
+
+			// 处理聊天元数据
+			if chatMetadata, ok := doc.MetaData["chat_metadata"]; ok {
+				if metaMap, isMap := chatMetadata.(map[string]interface{}); isMap {
+					builder.WriteString("聊天元数据:\n")
+					for key, value := range metaMap {
+						builder.WriteString(fmt.Sprintf("  %s: %v\n", key, value))
+					}
+				}
+			}
 		}
 
 		builder.WriteString("内容: ")
@@ -73,21 +83,29 @@ func formatDocuments(docs []*schema.Document) string {
 
 // createTemplate 创建并返回一个配置好的聊天模板
 func createTemplate() prompt.ChatTemplate {
-	// 创建模板，使用 FString 格式
 	return prompt.FromMessages(schema.FString,
 		// 系统消息模板
 		schema.SystemMessage("{role}"+
-			"请严格遵守以下规则：\n"+
-			"1. 回答必须基于提供的参考内容，不要依赖外部知识\n"+
-			"2. 如果参考内容中有明确答案，直接使用参考内容回答\n"+
-			"3. 如果参考内容不完整或模糊，可以合理推断但需说明\n"+
-			"4. 如果参考内容完全不相关或不存在，如实告知用户'根据现有资料无法回答'\n"+
-			"5. 保持回答专业、简洁、准确\n"+
-			"6. 必要时可引用参考内容中的具体数据或原文\n\n"+
+			"你是一个智能助手，具备以下两种能力，请根据问题性质合理选择：\n\n"+
+			"🔹 **知识库检索（RAG）**：\n"+
+			"- 当前已为你提供相关参考内容（见下方「参考内容」）。\n"+
+			"- 如果问题能从参考内容中直接或间接回答，请优先基于这些内容作答。\n"+
+			"- 若参考内容不完整，可合理推断但需说明；若完全无关，请明确回复“根据现有资料无法回答”。\n\n"+
+			"🔹 **工具调用（MCP）**：\n"+
+			"- 对于需要实时数据、外部操作或动态计算的问题（如天气、时间、代码执行、数据库查询等），你可以调用可用工具。\n"+
+			"- 工具列表及参数说明将由系统自动提供，你只需决定是否调用及传入正确参数。\n"+
+			"- 不要虚构工具结果，也不要假设工具返回内容。\n\n"+
+			"📌 回答要求：\n"+
+			"- 保持专业、简洁、准确；\n"+
+			"- 若使用了参考内容，可适当引用关键信息；\n"+
+			"- 若调用了工具，请等待工具返回后再生成最终答案。\n\n"+
 			"当前提供的参考内容：{formatted_docs}\n"+
 			""),
+
+		// 聊天历史（包含之前的 tool_call 和 tool 响应）
 		schema.MessagesPlaceholder("chat_history", true),
-		// 用户消息模板
+
+		// 用户当前问题
 		schema.UserMessage("Question: {question}"),
 	)
 }

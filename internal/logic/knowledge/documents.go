@@ -32,6 +32,7 @@ func SaveDocumentsInfoWithTx(ctx context.Context, tx *gorm.DB, documents entity.
 		SHA256:         documents.SHA256,
 		RustfsBucket:   documents.RustfsBucket,
 		RustfsLocation: documents.RustfsLocation,
+		LocalFilePath:  documents.LocalFilePath, // 添加本地文件路径
 		IsQA:           int8(documents.IsQA),
 		Status:         int8(documents.Status),
 	}
