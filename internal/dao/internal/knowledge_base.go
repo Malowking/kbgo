@@ -25,10 +25,9 @@ type KnowledgeBaseColumns struct {
 	Description    string // 知识库描述
 	Category       string // 知识库分类
 	CollectionName string // milvus collection name
-	//QACollectionName string // QA milvus collection name
-	Status     string // 状态：1-启用,2-禁用
-	CreateTime string // 创建时间
-	UpdateTime string // 更新时间
+	Status         string // 状态：1-启用,2-禁用
+	CreateTime     string // 创建时间
+	UpdateTime     string // 更新时间
 }
 
 // knowledgeBaseColumns holds the columns for the table knowledge_base.
@@ -38,10 +37,9 @@ var knowledgeBaseColumns = KnowledgeBaseColumns{
 	Description:    "description",
 	Category:       "category",
 	CollectionName: "collection_name",
-	//QACollectionName:   "qa_collection_name",
-	Status:     "status",
-	CreateTime: "create_time",
-	UpdateTime: "update_time",
+	Status:         "status",
+	CreateTime:     "create_time",
+	UpdateTime:     "update_time",
 }
 
 // NewKnowledgeBaseDao creates and returns a new DAO object for table data access.

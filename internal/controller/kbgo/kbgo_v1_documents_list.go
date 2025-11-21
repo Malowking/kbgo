@@ -1,9 +1,9 @@
-package rag
+package kbgo
 
 import (
 	"context"
 
-	v1 "github.com/Malowking/kbgo/api/rag/v1"
+	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
 	"github.com/Malowking/kbgo/internal/model/entity"
 )

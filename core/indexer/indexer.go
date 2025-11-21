@@ -17,7 +17,6 @@ import (
 )
 
 // newIndexer creates a new Milvus indexer for the specified collection
-// It supports both text collections and QA collections based on collection name prefix
 func newIndexer(ctx context.Context, conf *config.Config, collectionName string) (idr indexer.Indexer, err error) {
 	// Validate configuration
 	if collectionName == "" {
@@ -53,6 +52,11 @@ func newIndexer(ctx context.Context, conf *config.Config, collectionName string)
 	}
 	g.Log().Infof(ctx, "✅ Successfully created Milvus indexer: collection='%s'", collectionName)
 	return idr, nil
+}
+
+// NewIndexer 导出的函数，用于创建Milvus索引器
+func NewIndexer(ctx context.Context, conf *config.Config, collectionName string) (indexer.Indexer, error) {
+	return newIndexer(ctx, conf, collectionName)
 }
 
 // getTextDocumentConverter returns the document converter for text collections
@@ -131,40 +135,6 @@ func getDocumentConverter() func(ctx context.Context, docs []*schema.Document, v
 		}, nil
 	}
 }
-
-// getQADocumentConverter returns the document converter for QA collections
-//func getQADocumentConverter() func(ctx context.Context, docs []*schema.Document, vectors [][]float64) ([]column.Column, error) {
-//	return func(ctx context.Context, docs []*schema.Document, vectors [][]float64) ([]column.Column, error) {
-//		ids := make([]string, len(docs))
-//		qaContents := make([]string, len(docs))
-//		vectorsFloat32 := make([][]float32, len(docs))
-//
-//		for idx, doc := range docs {
-//			// Generate ID if not provided
-//			if len(doc.ID) == 0 {
-//				doc.ID = uuid.New().String()
-//			}
-//			ids[idx] = doc.ID
-//
-//			// Use QA content from metadata if available, otherwise use doc.Content
-//			qaContent := doc.Content
-//			if content, ok := doc.MetaData[common.FieldQAContent].(string); ok && content != "" {
-//				qaContent = content
-//			}
-//			qaContents[idx] = truncateString(qaContent, 256)
-//
-//			// Convert vector to float32
-//			vectorsFloat32[idx] = float64ToFloat32(vectors[idx])
-//		}
-//
-//		// Create columns
-//		return []column.Column{
-//			column.NewColumnVarChar("id", ids),
-//			column.NewColumnVarChar("qa_content", qaContents),
-//			column.NewColumnFloatVector("qa_vector", 1024, vectorsFloat32),
-//		}, nil
-//	}
-//}
 
 // Helper functions
 

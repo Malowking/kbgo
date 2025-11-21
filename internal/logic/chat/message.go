@@ -11,13 +11,14 @@ import (
 )
 
 const (
-	role = "你是一个专业的AI助手，能够根据提供的参考信息准确回答用户问题。"
+	role = "你是一个专业的AI助手，能够根据提供的参考信息准确回答用户问题。如果没有提供参考信息，也请根据你的知识自由回答用户问题。"
 )
 
 // formatDocuments 格式化文档列表为包含元数据的字符串
 func formatDocuments(docs []*schema.Document) string {
 	if len(docs) == 0 {
-		return "暂无相关参考资料"
+		// 当没有检索到相关文档时，返回空字符串，让大模型自由回答
+		return ""
 	}
 
 	var builder strings.Builder
@@ -90,7 +91,7 @@ func createTemplate() prompt.ChatTemplate {
 			"🔹 **知识库检索（RAG）**：\n"+
 			"- 当前已为你提供相关参考内容（见下方「参考内容」）。\n"+
 			"- 如果问题能从参考内容中直接或间接回答，请优先基于这些内容作答。\n"+
-			"- 若参考内容不完整，可合理推断但需说明；若完全无关，请明确回复“根据现有资料无法回答”。\n\n"+
+			"- 若参考内容不完整，可合理推断但需说明；若完全无关，请根据你的知识自由回答用户问题。\n\n"+
 			"🔹 **工具调用（MCP）**：\n"+
 			"- 对于需要实时数据、外部操作或动态计算的问题（如天气、时间、代码执行、数据库查询等），你可以调用可用工具。\n"+
 			"- 工具列表及参数说明将由系统自动提供，你只需决定是否调用及传入正确参数。\n"+
@@ -99,8 +100,7 @@ func createTemplate() prompt.ChatTemplate {
 			"- 保持专业、简洁、准确；\n"+
 			"- 若使用了参考内容，可适当引用关键信息；\n"+
 			"- 若调用了工具，请等待工具返回后再生成最终答案。\n\n"+
-			"当前提供的参考内容：{formatted_docs}\n"+
-			""),
+			"{formatted_docs}"), // 移除了"当前提供的参考内容："前缀，因为没有文档时应该完全不显示
 
 		// 聊天历史（包含之前的 tool_call 和 tool 响应）
 		schema.MessagesPlaceholder("chat_history", true),

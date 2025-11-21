@@ -15,11 +15,11 @@ type KnowledgeDocuments struct {
 	Id             interface{} //
 	KnowledgeId    interface{} //
 	FileName       interface{} //
+	FileExtension  interface{} // 添加文件后缀名字段
 	CollectionName interface{} //
 	SHA256         interface{} //
 	RustfsBucket   interface{} //
 	RustfsLocation interface{} //
-	IsQA           interface{} //
 	Status         interface{} //
 	CreateTime     *gtime.Time //
 	UpdateTime     *gtime.Time //

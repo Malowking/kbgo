@@ -15,22 +15,26 @@ import (
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
 )
 
+// Rag represents the core RAG (Retrieval-Augmented Generation) service
+// It provides methods to build indexers and retrievers on-demand rather than
+// pre-creating and storing them in the struct, which is more resource-efficient
 type Rag struct {
-	//idxer      compose.Runnable[any, []string]
-	//idxerAsync compose.Runnable[[]*schema.Document, []string]
-	//rtrvr      compose.Runnable[string, []*schema.Document]
-	//qaRtrvr    compose.Runnable[string, []*schema.Document]
 	Client *milvusclient.Client
 	cm     model.BaseChatModel
-
-	//grader *grader.Grader // 暂时先弃用，使用 grader 会严重影响rag的速度
-	conf *config.Config
+	conf   *config.Config
 }
 
 // BuildIndexer creates an indexer for the specified collection
 // collectionName: the Milvus collection name
 func (r *Rag) BuildIndexer(ctx context.Context, collectionName string, chunkSize, overlapSize int) (compose.Runnable[any, []string], error) {
 	return indexer.BuildIndexer(ctx, r.conf, collectionName, chunkSize, overlapSize)
+}
+
+// BuildIndexerWithSeparator creates an indexer for the specified collection with custom separator
+// collectionName: the Milvus collection name
+// separator: custom separator for document splitting
+func (r *Rag) BuildIndexerWithSeparator(ctx context.Context, collectionName string, chunkSize, overlapSize int, separator string) (compose.Runnable[any, []string], error) {
+	return indexer.BuildIndexerWithSeparator(ctx, r.conf, collectionName, chunkSize, overlapSize, separator)
 }
 
 // BuildIndexerAsync creates an async indexer for the specified collection
@@ -48,6 +52,16 @@ func (r *Rag) BuildRetriever(ctx context.Context, collectionName string) (compos
 // GetConfig returns the configuration
 func (r *Rag) GetConfig() *config.Config {
 	return r.conf
+}
+
+// GetChatModel returns the chat model
+func (r *Rag) GetChatModel() model.BaseChatModel {
+	return r.cm
+}
+
+// GetClient returns the Milvus client
+func (r *Rag) GetClient() *milvusclient.Client {
+	return r.Client
 }
 
 func New(ctx context.Context, conf *config.Config) (*Rag, error) {

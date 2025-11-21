@@ -6,11 +6,179 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/gctx"
 	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 )
+
+// StorageType 存储类型
+type StorageType string
+
+const (
+	StorageTypeRustFS StorageType = "rustfs"
+	StorageTypeLocal  StorageType = "local"
+)
+
+var rustfsConfig RustfsConfig
+var storageType StorageType
+
+type RustfsConfig struct {
+	Client     *minio.Client
+	BucketName string
+}
+
+func init() {
+	ctx := gctx.New()
+
+	// 获取存储类型配置，默认为 rustfs
+	storageTypeStr := g.Cfg().MustGet(ctx, "storage.type", "rustfs").String()
+
+	// 根据配置决定存储类型
+	switch storageTypeStr {
+	case "local":
+		storageType = StorageTypeLocal
+		g.Log().Infof(ctx, "Using local storage as configured")
+		// 初始化 upload 目录结构
+		initUploadDirectories()
+		return
+	case "rustfs":
+		// 继续初始化 RustFS
+	default:
+		// 默认使用 RustFS
+		storageType = StorageTypeRustFS
+	}
+
+	// 检查rustfs配置是否存在
+	rustfsEndpoint := g.Cfg().MustGet(ctx, "rustfs.endpoint", "").String()
+	if rustfsEndpoint == "" {
+		// 如果没有配置rustfs，使用本地存储
+		storageType = StorageTypeLocal
+		g.Log().Infof(ctx, "RustFS not configured, using local storage")
+		// 初始化 upload 目录结构
+		initUploadDirectories()
+		return
+	}
+
+	storageType = StorageTypeRustFS
+	rustfsAccessKey := g.Cfg().MustGet(ctx, "rustfs.accessKey").String()
+	rustfsSecretKey := g.Cfg().MustGet(ctx, "rustfs.secretKey").String()
+	rustfsBucketName := g.Cfg().MustGet(ctx, "rustfs.bucketName").String()
+	rustfsSsl := g.Cfg().MustGet(ctx, "rustfs.ssl", false).Bool()
+
+	client, err := minio.New(rustfsEndpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(rustfsAccessKey, rustfsSecretKey, ""),
+		Secure: rustfsSsl,
+	})
+
+	if err != nil {
+		g.Log().Fatalf(ctx, "failed to create MinIO client: %v", err)
+		return
+	}
+
+	// 设置全局配置（无论 bucket 是否已存在）
+	rustfsConfig = RustfsConfig{
+		Client:     client,
+		BucketName: rustfsBucketName,
+	}
+
+	// CreateBucketIfNotExists 创建 bucket，如果已存在则跳过
+	exists, err := client.BucketExists(ctx, rustfsBucketName)
+	if err != nil {
+		g.Log().Fatalf(ctx, "failed to check if bucket exists: %v", err)
+		return
+	}
+
+	if exists {
+		g.Log().Printf(ctx, "Bucket '%s' already exists, skipping creation.", rustfsBucketName)
+		return
+	}
+
+	err = client.MakeBucket(ctx, rustfsBucketName, minio.MakeBucketOptions{Region: ""})
+	if err != nil {
+		g.Log().Printf(ctx, "failed to create bucket: %v", err)
+		return
+	}
+	g.Log().Printf(ctx, "Created bucket '%s'", rustfsBucketName)
+
+	// 初始化 upload 目录结构
+	initUploadDirectories()
+}
+
+// initUploadDirectories 初始化 upload 目录结构
+func initUploadDirectories() {
+	ctx := gctx.New()
+
+	// 定义需要创建的目录
+	uploadDirs := []string{
+		"upload",
+		"upload/image",
+		"upload/video",
+		"upload/audio",
+		"upload/file",
+	}
+
+	// 创建所有目录
+	for _, dir := range uploadDirs {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			g.Log().Warningf(ctx, "Failed to create directory %s: %v", dir, err)
+		} else {
+			g.Log().Debugf(ctx, "Created upload directory: %s", dir)
+		}
+	}
+}
+
+// GetRustfsConfig 获取RustFS配置
+func GetRustfsConfig() *RustfsConfig {
+	return &rustfsConfig
+}
+
+// GetStorageType 获取存储类型
+func GetStorageType() StorageType {
+	return storageType
+}
+
+// GetUploadDirByFileType 根据文件扩展名获取对应的上传目录
+func GetUploadDirByFileType(fileExt string) string {
+	// 图片格式
+	imageExts := map[string]bool{
+		".jpg": true, ".jpeg": true, ".png": true, ".gif": true,
+		".bmp": true, ".svg": true, ".webp": true, ".ico": true,
+	}
+
+	// 视频格式
+	videoExts := map[string]bool{
+		".mp4": true, ".avi": true, ".mov": true, ".wmv": true,
+		".flv": true, ".mkv": true, ".webm": true, ".m4v": true,
+	}
+
+	// 音频格式
+	audioExts := map[string]bool{
+		".mp3": true, ".wav": true, ".flac": true, ".aac": true,
+		".ogg": true, ".wma": true, ".m4a": true, ".opus": true,
+	}
+
+	// 转换为小写进行比较
+	ext := filepath.Ext(strings.ToLower(fileExt))
+	if ext == "" {
+		ext = "." + strings.ToLower(fileExt)
+	}
+
+	if imageExts[ext] {
+		return "upload/image"
+	} else if videoExts[ext] {
+		return "upload/video"
+	} else if audioExts[ext] {
+		return "upload/audio"
+	}
+
+	// 默认返回 file 目录
+	return "upload/file"
+}
 
 // UploadToRustFS 支持上传本地文件（multipart）或远程URL文件到 RustFS。
 // file: *multipart.FileHeader 或 nil
@@ -25,7 +193,7 @@ func UploadToRustFS(ctx context.Context, client *minio.Client, bucketName string
 
 	// 本地文件上传
 	if f, ok := file.(*multipart.FileHeader); ok && f != nil {
-		objectName = knowledgeId + "/" + f.Filename
+		objectName = "knowledge_base/" + knowledgeId + "/" + f.Filename
 		r, err := f.Open()
 		if err != nil {
 			return minio.UploadInfo{}, fmt.Errorf("open local file failed: %w", err)
@@ -51,7 +219,7 @@ func UploadToRustFS(ctx context.Context, client *minio.Client, bucketName string
 		reader = resp.Body
 		size = resp.ContentLength
 		contentType = resp.Header.Get("Content-Type")
-		objectName = knowledgeId + "/" + getFileNameFromURL(url)
+		objectName = "knowledge_base/" + knowledgeId + "/" + getFileNameFromURL(url)
 	}
 
 	if reader == nil {
@@ -74,14 +242,24 @@ func UploadToRustFS(ctx context.Context, client *minio.Client, bucketName string
 	return info, nil
 }
 
-// 辅助函数：从URL中提取文件名
-func getFileNameFromURL(url string) string {
+// GetFileNameFromURL 从URL中提取文件名（公开函数）
+func GetFileNameFromURL(url string) string {
 	parts := strings.Split(url, "/")
 	name := parts[len(parts)-1]
 	if name == "" {
 		name = "unknown_file"
 	}
 	return name
+}
+
+// getFileNameFromURL 从URL中提取文件名（内部函数）
+func getFileNameFromURL(url string) string {
+	return GetFileNameFromURL(url)
+}
+
+// GetFileExtension 从文件名中提取扩展名
+func GetFileExtension(fileName string) string {
+	return filepath.Ext(fileName)
 }
 
 // ListObjects 列举 bucket 中的所有对象

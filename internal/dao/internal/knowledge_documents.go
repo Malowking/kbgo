@@ -24,12 +24,11 @@ type KnowledgeDocumentsColumns struct {
 	Id             string //
 	KnowledgeId    string //
 	FileName       string //
+	FileExtension  string // 文件后缀名
 	CollectionName string // milvus collection name
-	//QACollectionName string // QA milvus collection name
 	RustfsBucket   string // rustfs bucket
 	RustfsLocation string // rustfs location
 	LocalFilePath  string // local file path
-	IsQA           string // is QA
 	Status         string //
 	CreateTime     string //
 	UpdateTime     string //
@@ -40,12 +39,11 @@ var knowledgeDocumentsColumns = KnowledgeDocumentsColumns{
 	Id:             "id",
 	KnowledgeId:    "knowledge_id",
 	FileName:       "file_name",
+	FileExtension:  "file_extension",  // 添加文件后缀名字段
 	CollectionName: "collection_name", // milvus collection name
-	//QACollectionName: "qa_collection_name", // QA milvus collection name
 	RustfsBucket:   "rustfs_bucket",
 	RustfsLocation: "rustfs_location",
 	LocalFilePath:  "local_file_path",
-	IsQA:           "is_qa",
 	Status:         "status",
 	CreateTime:     "create_time",
 	UpdateTime:     "update_time",

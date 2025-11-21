@@ -1,4 +1,4 @@
-package rag
+package kbgo
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Malowking/kbgo/api/rag/v1"
+	"github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/mcp/client"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
@@ -27,7 +27,7 @@ func (c *ControllerV1) MCPRegistryCreate(ctx context.Context, req *v1.MCPRegistr
 	}
 
 	// 生成ID
-	id := "mcp_" + strings.ReplaceAll(uuid.New().String(), "-", "")
+	id := strings.ReplaceAll(uuid.New().String(), "-", "")
 
 	// 默认超时时间
 	timeout := 30
@@ -335,7 +335,7 @@ func (c *ControllerV1) MCPCallTool(ctx context.Context, req *v1.MCPCallToolReq) 
 		errorMsg = err.Error()
 	}
 
-	logID := "log_" + strings.ReplaceAll(uuid.New().String(), "-", "")
+	logID := strings.ReplaceAll(uuid.New().String(), "-", "")
 	callLog := &gormModel.MCPCallLog{
 		ID:              logID,
 		ConversationID:  req.ConversationID,

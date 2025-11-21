@@ -13,7 +13,6 @@ var (
 	embeddingModel model.BaseChatModel
 	rerankModel    model.BaseChatModel
 	rewriteModel   model.BaseChatModel
-	qaModel        model.BaseChatModel
 	chatModel      model.BaseChatModel
 )
 
@@ -91,25 +90,5 @@ func GetRerankModel(ctx context.Context, cfg *openai.ChatModelConfig) (model.Bas
 		return nil, err
 	}
 	rerankModel = cm
-	return cm, nil
-}
-
-func GetQAModel(ctx context.Context, cfg *qwen.ChatModelConfig) (model.BaseChatModel, error) {
-	if qaModel != nil {
-		return qaModel, nil
-	}
-	if cfg == nil {
-		cfg = &qwen.ChatModelConfig{}
-		err := g.Cfg().MustGet(ctx, "qa").Scan(cfg)
-		cfg.EnableThinking = Of(false)
-		if err != nil {
-			return nil, err
-		}
-	}
-	cm, err := qwen.NewChatModel(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	qaModel = cm
 	return cm, nil
 }

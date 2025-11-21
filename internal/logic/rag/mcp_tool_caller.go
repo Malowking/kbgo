@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	v1 "github.com/Malowking/kbgo/api/rag/v1"
+	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/chat"
 	"github.com/Malowking/kbgo/internal/mcp/client"
@@ -434,7 +434,7 @@ func (tc *MCPToolCaller) callSingleTool(
 		errorMsg = err.Error()
 	}
 
-	logID := "log_" + strings.ReplaceAll(uuid.New().String(), "-", "")
+	logID := strings.ReplaceAll(uuid.New().String(), "-", "")
 	callLog := &gormModel.MCPCallLog{
 		ID:              logID,
 		ConversationID:  convID,

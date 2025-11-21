@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	StatusPending  Status = 0
-	StatusIndexing Status = 1
+	StatusPending  Status = 0 //文件准备切分
+	StatusIndexing Status = 1 //文件准备索引
 	StatusActive   Status = 2
 	StatusFailed   Status = 3
 )
@@ -37,13 +37,13 @@ type DocumentsDeleteRes struct {
 }
 
 type DocumentsReIndexReq struct {
-	g.Meta      `path:"/v1/documents/reindex" method:"post" tags:"rag" summary:"Re-index a failed document"`
+	g.Meta      `path:"/v1/documents/reindex" method:"post" tags:"rag" summary:"Re-index a document"`
 	DocumentId  string `p:"document_id" dc:"document_id" v:"required"`
 	ChunkSize   int    `p:"chunk_size" dc:"chunk_size" d:"1000"`
 	OverlapSize int    `p:"overlap_size" dc:"overlap_size" d:"100"`
 }
 
 type DocumentsReIndexRes struct {
-	g.Meta   `mime:"application/json"`
-	ChunkIds []string `json:"chunk_ids" dc:"chunk ids"`
+	g.Meta  `mime:"application/json"`
+	Message string `json:"message" dc:"重新索引任务已启动"`
 }

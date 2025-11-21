@@ -3,401 +3,286 @@ package core
 import (
 	"context"
 	"fmt"
-	"strings"
+	"os"
 
-	v1 "github.com/Malowking/kbgo/api/rag/v1"
+	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/indexer"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
 	"github.com/Malowking/kbgo/internal/model/entity"
-	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/components/document"
 	"github.com/cloudwego/eino/schema"
 	"github.com/gogf/gf/v2/frame/g"
-	"github.com/gogf/gf/v2/os/gctx"
 	"github.com/gogf/gf/v2/os/gfile"
-	"github.com/milvus-io/milvus/client/v2/column"
+	"github.com/google/uuid"
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
 )
 
+// 批量索引请求参数
+type BatchIndexReq struct {
+	DocumentIds []string // 文档ID列表
+	ChunkSize   int      // 文档分块大小
+	OverlapSize int      // 分块重叠大小
+	Separator   string   // 自定义分隔符
+}
+
+// 统一索引请求参数
 type IndexReq struct {
-	Docs           []*schema.Document
-	KnowledgeId    string // 知识库ID
-	CollectionName string // Milvus text collection 名称
-	DocumentsId    string // 文档ID
-	ChunkSize      int    // 文档分块大小
-	OverlapSize    int    // 分块重叠大小
-}
-
-type IndexAsyncReq struct {
-	Docs           []*schema.Document
-	KnowledgeId    string // 知识库名称
-	CollectionName string // Milvus collection 名称
-	DocumentsId    string // 文档ID
-	ChunkSize      int    // 文档分块大小
-	OverlapSize    int    // 分块重叠大小
-}
-
-type IndexAsyncByDocsIDReq struct {
-	DocsIDs        []string
-	KnowledgeId    string // 知识库名称
-	CollectionName string // Milvus text collection 名称
-	//QACollectionName   string // Milvus QA collection 名称
-	DocumentId string // 文档ID
-}
-
-type ReIndexReq struct {
 	DocumentId  string // 文档ID
 	ChunkSize   int    // 文档分块大小
 	OverlapSize int    // 分块重叠大小
+	Separator   string // 自定义分隔符
 }
 
-// Index
-// 这里处理文档的读取、分割、合并和存储
-// 真正的embedding
-func (x *Rag) Index(ctx context.Context, req *IndexReq) (ids []string, err error) {
-	// 动态创建 text indexer，传递chunk参数
-	idxer, err := x.BuildIndexer(ctx, req.CollectionName, req.ChunkSize, req.OverlapSize)
-	if err != nil {
-		return nil, err
-	}
-	ctx = context.WithValue(ctx, common.KnowledgeId, req.KnowledgeId)
-	ctx = context.WithValue(ctx, common.DocumentId, req.DocumentsId)
-	ids, err = idxer.Invoke(ctx, req.Docs)
-	if err != nil {
-		return
-	}
-	go func() {
-		ctxN := gctx.New()
-		defer func() {
-			if e := recover(); e != nil {
-				g.Log().Errorf(ctxN, "recover indexAsyncByDocsID failed, err=%v", e)
+// BatchDocumentIndex 批量处理文档索引（异步操作）
+func (x *Rag) BatchDocumentIndex(ctx context.Context, req *BatchIndexReq) error {
+	g.Log().Infof(ctx, "开始批量文档索引，文档数量: %d", len(req.DocumentIds))
+
+	// 异步处理每个文档
+	for _, documentId := range req.DocumentIds {
+		go func(docId string) {
+			defer func() {
+				if e := recover(); e != nil {
+					g.Log().Errorf(ctx, "文档索引异, documentId=%s, err=%v", docId, e)
+					knowledge.UpdateDocumentsStatus(ctx, docId, int(v1.StatusFailed))
+				}
+			}()
+
+			indexReq := &IndexReq{
+				DocumentId:  docId,
+				ChunkSize:   req.ChunkSize,
+				OverlapSize: req.OverlapSize,
+				Separator:   req.Separator,
 			}
-		}()
-		_, err = x.indexAsyncByDocsID(ctxN, &IndexAsyncByDocsIDReq{
-			DocsIDs:        ids,
-			KnowledgeId:    req.KnowledgeId,
-			CollectionName: req.CollectionName,
-			//QACollectionName:   "", // Will be set in indexAsyncByDocsID
-			DocumentId: req.DocumentsId,
-		})
-		if err != nil {
-			g.Log().Errorf(ctxN, "indexAsyncByDocsID failed, err=%v", err)
-		}
-	}()
-	return
-}
 
-// TODO 添加QA功能
-// IndexAsync
-// 通过 schema.Document 异步 生成QA&embedding
-func (x *Rag) IndexAsync(ctx context.Context, req *IndexAsyncReq) (ids []string, err error) {
-	// 动态创建indexer
-	idxerAsync, err := x.BuildIndexer(ctx, req.CollectionName, req.ChunkSize, req.OverlapSize)
-	if err != nil {
-		return nil, err
-	}
-
-	ctx = context.WithValue(ctx, common.KnowledgeId, req.KnowledgeId)
-	ctx = context.WithValue(ctx, common.DocumentId, req.DocumentsId)
-	ids, err = idxerAsync.Invoke(ctx, req.Docs)
-	if err != nil {
-		return
-	}
-
-	return
-}
-
-func (x *Rag) indexAsyncByDocsID(ctx context.Context, req *IndexAsyncByDocsIDReq) (ids []string, err error) {
-	// 从 Milvus 查询数据，根据 ID 列表获取文档
-	client := x.Client
-	filter := fmt.Sprintf("id in [%s]", joinIDs(req.DocsIDs))
-
-	queryOpt := milvusclient.NewQueryOption(req.CollectionName).
-		WithFilter(filter).
-		WithOutputFields("id", "text", "document_id", "metadata")
-
-	queryResult, err := client.Query(ctx, queryOpt)
-	if err != nil {
-		g.Log().Errorf(ctx, "milvus query failed, err=%v", err)
-		return nil, err
-	}
-
-	var docs []*schema.Document
-	var chunks []entity.KnowledgeChunks
-
-	// 解析查询结果 - Milvus v2 SDK 的结果是 column 数据
-	resultCount := queryResult.ResultCount
-	if resultCount == 0 {
-		g.Log().Warningf(ctx, "indexAsyncByDocsID no docs found in Milvus, DocsIDs=%v", req.DocsIDs)
-		return nil, fmt.Errorf("no docs found for DocsIDs: %v", req.DocsIDs)
-	}
-
-	// 获取各个字段的 column
-	fields := queryResult.Fields
-
-	// 辅助函数：根据名称获取 column
-	getColumn := func(name string) column.Column {
-		for _, col := range fields {
-			if col.Name() == name {
-				return col
+			err := x.DocumentIndex(ctx, indexReq)
+			if err != nil {
+				g.Log().Errorf(ctx, "文档索引失败, documentId=%s, err=%v", docId, err)
+			} else {
+				g.Log().Infof(ctx, "文档索引成功, documentId=%s", docId)
 			}
-		}
+		}(documentId)
+	}
+
+	return nil
+}
+
+// UnifiedDocumentIndex 统一处理文档索引（包含状态检查和存储类型处理）
+func (x *Rag) DocumentIndex(ctx context.Context, req *IndexReq) error {
+	// 1. 获取文档信息
+	doc, err := knowledge.GetDocumentById(ctx, req.DocumentId)
+	if err != nil {
+		g.Log().Errorf(ctx, "获取文档信息失败, documentId=%s, err=%v", req.DocumentId, err)
+		knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
+		return err
+	}
+
+	// 2. 检查文档状态，如果已经是成功状态则跳过
+	if doc.Status == int(v1.StatusActive) {
+		g.Log().Infof(ctx, "文档已成功索引，跳过处理, documentId=%s", req.DocumentId)
 		return nil
 	}
 
-	idCol := getColumn("id")
-	textCol := getColumn("text")
-	metadataCol := getColumn("metadata")
-
-	if idCol == nil || textCol == nil {
-		g.Log().Errorf(ctx, "required columns not found in query result")
-		return nil, fmt.Errorf("required columns not found")
+	// 3. 首先删除该文档的所有相关数据
+	err = knowledge.DeleteDocumentDataOnly(ctx, req.DocumentId, x.Client)
+	if err != nil {
+		g.Log().Errorf(ctx, "删除文档旧数据失败, documentId=%s, err=%v", req.DocumentId, err)
+		_ = knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
+		return err
 	}
 
-	for i := 0; i < resultCount; i++ {
-		doc := &schema.Document{}
+	// 4. 获取存储类型配置
+	uploadDir := common.GetUploadDirByFileType(doc.FileExtension)
 
-		// 获取 ID
-		if idVal, err := idCol.GetAsString(i); err == nil {
-			doc.ID = idVal
-		} else {
-			g.Log().Errorf(ctx, "failed to get id at index %d: %v", i, err)
-			continue
-		}
+	// 5. 文件路径处理（只从upload目录读取文件）
+	localFilePath := gfile.Join(uploadDir, doc.FileName)
 
-		// 获取文本内容
-		if textVal, err := textCol.GetAsString(i); err == nil {
-			doc.Content = textVal
-		} else {
-			g.Log().Errorf(ctx, "failed to get text at index %d: %v", i, err)
-		}
-
-		// 获取元数据
-		if metadataCol != nil {
-			if metadataVal, err := metadataCol.Get(i); err == nil {
-				switch v := metadataVal.(type) {
-				case string:
-					var metadata map[string]any
-					if err := sonic.Unmarshal([]byte(v), &metadata); err == nil {
-						doc.MetaData = metadata
-					}
-				case []byte:
-					var metadata map[string]any
-					if err := sonic.Unmarshal(v, &metadata); err == nil {
-						doc.MetaData = metadata
-					}
-				}
-			}
-		}
-
-		// 如果 metadata 为空，初始化为空 map
-		if doc.MetaData == nil {
-			doc.MetaData = make(map[string]any)
-		}
-
-		docs = append(docs, doc)
-
-		// 准备保存到数据库的 chunks 数据
-		ext, err := sonic.Marshal(doc.MetaData)
-		if err != nil {
-			g.Log().Errorf(ctx, "sonic.Marshal failed, err=%v", err)
-			continue
-		}
-		chunks = append(chunks, entity.KnowledgeChunks{
-			Id:             doc.ID,
-			KnowledgeDocId: req.DocumentId,
-			Content:        doc.Content,
-			Ext:            string(ext),
-			CollectionName: req.CollectionName,
-		})
+	// 6. 检查upload目录下文件是否存在
+	if localFilePath == "" || !fileExists(localFilePath) {
+		err = fmt.Errorf("upload目录下文件不存在, path=%s", localFilePath)
+		g.Log().Errorf(ctx, "upload目录下文件不存在, documentId=%s, path=%s", req.DocumentId, localFilePath)
+		knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
+		return err
 	}
 
-	if len(docs) == 0 {
-		g.Log().Warningf(ctx, "indexAsyncByDocsID no valid docs after parsing")
-		return nil, fmt.Errorf("no valid docs found after parsing")
+	// 7. 创建Loader
+	loader, err := indexer.Loader(ctx)
+	if err != nil {
+		g.Log().Errorf(ctx, "创建Loader失败, documentId=%s, err=%v", req.DocumentId, err)
+		knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
+		// 删除upload目录下的文件
+		os.Remove(localFilePath)
+		return err
 	}
 
-	// 保存 chunks 数据到数据库
-	if err = knowledge.SaveChunksData(ctx, req.DocumentId, chunks); err != nil {
-		// 这里不返回err，不影响用户使用
-		g.Log().Errorf(ctx, "indexAsyncByDocsID insert chunks failed, err=%v", err)
+	// 8. 加载文档
+	docs, err := loader.Load(ctx, document.Source{URI: localFilePath})
+	if err != nil {
+		g.Log().Errorf(ctx, "加载文档失败, documentId=%s, err=%v", req.DocumentId, err)
+		knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
+		// 删除upload目录下的文件
+		os.Remove(localFilePath)
+		return err
 	}
 
+	// 9. 创建Transformer进行切分
+	var transformer document.Transformer
+	if req.Separator != "" {
+		// 使用自定义分隔符
+		transformer, err = indexer.SeparatorSplitter(ctx, req.Separator, req.ChunkSize, req.OverlapSize)
+	} else {
+		// 使用默认分隔符
+		transformer, err = indexer.NewTransformer(ctx, req.ChunkSize, req.OverlapSize)
+	}
+	if err != nil {
+		g.Log().Errorf(ctx, "创建Transformer失败, documentId=%s, err=%v", req.DocumentId, err)
+		knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
+		// 删除upload目录下的文件
+		os.Remove(localFilePath)
+		return err
+	}
+
+	// 10. 切分文档
+	chunks, err := transformer.Transform(ctx, docs)
+	if err != nil {
+		g.Log().Errorf(ctx, "文档切分失败, documentId=%s, err=%v", req.DocumentId, err)
+		knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
+		// 删除upload目录下的文件
+		os.Remove(localFilePath)
+		return err
+	}
+
+	g.Log().Infof(ctx, "文档切分完成, documentId=%s, chunk数量=%d", req.DocumentId, len(chunks))
+
+	// 11. 保存chunks到数据库
+	err = x.saveChunksToDatabase(ctx, req.DocumentId, doc.CollectionName, chunks)
+	if err != nil {
+		g.Log().Errorf(ctx, "保存chunks到数据库失败, documentId=%s, err=%v", req.DocumentId, err)
+		// 切分成功但向量化失败，设置状态为StatusIndexing
+		knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusIndexing))
+		// 删除upload目录下的文件
+		os.Remove(localFilePath)
+		return err
+	}
+
+	// 12. 进行向量化处理
+	err = x.processVectorization(ctx, req.DocumentId, doc.CollectionName, chunks)
+	if err != nil {
+		g.Log().Errorf(ctx, "向量化处理失败, documentId=%s, err=%v", req.DocumentId, err)
+		// 切分成功但向量化失败，设置状态为StatusIndexing
+		knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusIndexing))
+		// 删除upload目录下的文件
+		os.Remove(localFilePath)
+		return err
+	}
+
+	g.Log().Infof(ctx, "文档处理完成, documentId=%s", req.DocumentId)
+
+	// 13. 更新文档状态为Active
 	err = knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusActive))
 	if err != nil {
-		g.Log().Errorf(ctx, "update documents status failed, err=%v", err)
+		g.Log().Errorf(ctx, "更新文档状态失败, documentId=%s, err=%v", req.DocumentId, err)
 	}
-	// TODO 添加QA功能
-	// 获取 QA collection name
-	// 如果没有传入，则根据 text collection name 生成
-	//qaCollectionName := req.QACollectionName
-	//if qaCollectionName == "" {
-	//	// text_xxx -> qa_xxx
-	//	if len(req.TextCollectionName) > 5 && req.TextCollectionName[:5] == "text_" {
-	//		qaCollectionName = "qa_" + req.TextCollectionName[5:]
-	//	} else {
-	//		g.Log().Errorf(ctx, "invalid TextCollectionName: %s", req.TextCollectionName)
-	//		return nil, fmt.Errorf("invalid TextCollectionName: %s", req.TextCollectionName)
-	//	}
-	//}
-	//
-	//asyncReq := &IndexAsyncReq{
-	//	Docs:             docs,
-	//	KnowledgeId:      req.KnowledgeId,
-	//	QACollectionName: qaCollectionName,
-	//	DocumentsId:      req.DocumentsId,
-	//}
-	//ids, err = x.IndexAsync(ctx, asyncReq)
-	//if err != nil {
-	//	return
-	//}
-	//_ = knowledge.UpdateDocumentsStatus(ctx, req.DocumentsId, int(v1.StatusActive))
-	return
+
+	// 14. 删除upload目录下的文件
+	os.Remove(localFilePath)
+	g.Log().Infof(ctx, "删除upload目录文件, path=%s", localFilePath)
+
+	return nil
 }
 
-// joinIDs 将 ID 列表转换为 Milvus filter 表达式格式
-func joinIDs(ids []string) string {
-	if len(ids) == 0 {
-		return ""
+// saveChunksToDatabase 保存chunks到数据库
+func (x *Rag) saveChunksToDatabase(ctx context.Context, documentId, collectionName string, chunks []*schema.Document) error {
+	if len(chunks) == 0 {
+		return nil
 	}
-	quoted := make([]string, len(ids))
-	for i, id := range ids {
-		quoted[i] = fmt.Sprintf(`"%s"`, id)
+
+	chunkEntities := make([]entity.KnowledgeChunks, len(chunks))
+	for i, chunk := range chunks {
+		chunkId := uuid.New().String()
+		chunkEntities[i] = entity.KnowledgeChunks{
+			Id:             chunkId,
+			KnowledgeDocId: documentId,
+			Content:        chunk.Content,
+			CollectionName: collectionName,
+			Status:         int(v1.StatusPending),
+		}
 	}
-	return strings.Join(quoted, ",")
+
+	err := knowledge.SaveChunksData(ctx, documentId, chunkEntities)
+	if err != nil {
+		return fmt.Errorf("保存chunks到数据库失败: %w", err)
+	}
+
+	return nil
 }
 
-func (x *Rag) DeleteDocument(ctx context.Context, collectionName string, documentID string) error {
-	return common.DeleteMilvusDocument(ctx, x.Client, collectionName, documentID)
+// processVectorization 处理向量化
+func (x *Rag) processVectorization(ctx context.Context, documentId, collectionName string, chunks []*schema.Document) error {
+	// 获取配置
+	conf := x.conf
+
+	// 创建Milvus索引器
+	idxer, err := indexer.NewIndexer(ctx, conf, collectionName)
+	if err != nil {
+		return fmt.Errorf("创建Milvus索引器失败: %w", err)
+	}
+
+	// 设置上下文，传递必要的信息
+	ctx = context.WithValue(ctx, common.DocumentId, documentId)
+
+	// 如果需要知识库ID，从文档信息中获取
+	doc, err := knowledge.GetDocumentById(ctx, documentId)
+	if err == nil && doc.KnowledgeId != "" {
+		ctx = context.WithValue(ctx, common.KnowledgeId, doc.KnowledgeId)
+	}
+
+	// 使用索引器进行向量化并存储到Milvus
+	chunkIds, err := idxer.Store(ctx, chunks)
+	if err != nil {
+		return fmt.Errorf("向量化并存储到Milvus失败: %w", err)
+	}
+
+	g.Log().Infof(ctx, "向量化处理完成, documentId=%s, collectionName=%s, chunks数量=%d, 成功存储=%d",
+		documentId, collectionName, len(chunks), len(chunkIds))
+
+	return nil
 }
 
+// fileExists 检查文件是否存在
+func fileExists(filePath string) bool {
+	_, err := os.Stat(filePath)
+	return err == nil
+}
+
+// DeleteChunk 从 Milvus 中删除指定的知识块
 func (x *Rag) DeleteChunk(ctx context.Context, collectionName string, chunkID string) error {
-	return common.DeleteMilvusChunk(ctx, x.Client, collectionName, chunkID)
+	// 构造删除过滤条件
+	filter := fmt.Sprintf("id == '%s'", chunkID)
+
+	// 执行删除操作
+	deleteOpt := milvusclient.NewDeleteOption(collectionName).WithExpr(filter)
+	_, err := x.Client.Delete(ctx, deleteOpt)
+	if err != nil {
+		return fmt.Errorf("从 Milvus 删除 chunk 失败: %w", err)
+	}
+
+	g.Log().Infof(ctx, "成功从 Milvus 删除 chunk, collection=%s, chunkID=%s", collectionName, chunkID)
+	return nil
 }
 
-// ReIndex 重新索引失败的文档
-// 适用于文件已上传到rustfs和MySQL，但索引失败（status != 2）的情况
-func (x *Rag) ReIndex(ctx context.Context, req *ReIndexReq) (ids []string, err error) {
-	// 步骤1: 获取文档信息
-	doc, err := knowledge.GetDocumentById(ctx, req.DocumentId)
+// DeleteDocument 从 Milvus 中删除指定的文档
+func (x *Rag) DeleteDocument(ctx context.Context, collectionName string, documentID string) error {
+	// 构造删除过滤条件
+	filter := fmt.Sprintf("document_id == '%s'", documentID)
+
+	// 执行删除操作
+	deleteOpt := milvusclient.NewDeleteOption(collectionName).WithExpr(filter)
+	_, err := x.Client.Delete(ctx, deleteOpt)
 	if err != nil {
-		g.Log().Errorf(ctx, "get document by id failed, document_id=%s, err=%v", req.DocumentId, err)
-		return nil, fmt.Errorf("获取文档信息失败: %w", err)
+		return fmt.Errorf("从 Milvus 删除 document 失败: %w", err)
 	}
 
-	// 步骤2: 检查文档状态，如果已经是Active状态，则不需要重新索引
-	if doc.Status == int(v1.StatusActive) {
-		g.Log().Infof(ctx, "document already indexed, document_id=%s, status=%d", req.DocumentId, doc.Status)
-		return nil, fmt.Errorf("文档已经索引完成，无需重新索引")
-	}
-
-	// 步骤3: 检查存储信息
-	storageType := GetStorageType()
-	if storageType == StorageTypeRustFS {
-		// 检查RustFS信息
-		if doc.RustfsBucket == "" || doc.RustfsLocation == "" {
-			g.Log().Errorf(ctx, "document rustfs info is empty, document_id=%s", req.DocumentId)
-			return nil, fmt.Errorf("文档RustFS信息不完整，无法重新索引")
-		}
-	} else {
-		// 检查本地文件路径
-		if doc.LocalFilePath == "" {
-			g.Log().Errorf(ctx, "document local file path is empty, document_id=%s", req.DocumentId)
-			return nil, fmt.Errorf("文档本地文件路径信息不完整，无法重新索引")
-		}
-		// 检查文件是否存在
-		if !gfile.Exists(doc.LocalFilePath) {
-			g.Log().Errorf(ctx, "document local file not exists, path=%s, document_id=%s", doc.LocalFilePath, req.DocumentId)
-			return nil, fmt.Errorf("文档本地文件不存在，无法重新索引")
-		}
-	}
-
-	// 步骤4: 更新文档状态为索引中
-	err = knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusIndexing))
-	if err != nil {
-		g.Log().Errorf(ctx, "update document status to indexing failed, document_id=%s, err=%v", req.DocumentId, err)
-		return nil, fmt.Errorf("更新文档状态失败: %w", err)
-	}
-
-	// 步骤5: 设置默认值
-	chunkSize := req.ChunkSize
-	if chunkSize <= 0 {
-		chunkSize = 1000
-	}
-	overlapSize := req.OverlapSize
-	if overlapSize < 0 {
-		overlapSize = 100
-	}
-
-	// 步骤6: 获取存储配置并创建loader
-	var loader document.Loader
-	if storageType == StorageTypeRustFS {
-		rustfsConfig := GetRustfsConfig()
-		loader, err = indexer.Loader(ctx, rustfsConfig.Client, rustfsConfig.BucketName)
-		if err != nil {
-			g.Log().Errorf(ctx, "create loader failed, err=%v", err)
-			// 索引失败，更新状态为Failed
-			_ = knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
-			return nil, fmt.Errorf("创建loader失败: %w", err)
-		}
-	} else {
-		loader, err = indexer.Loader(ctx, nil, "")
-		if err != nil {
-			g.Log().Errorf(ctx, "create local loader failed, err=%v", err)
-			// 索引失败，更新状态为Failed
-			_ = knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
-			return nil, fmt.Errorf("创建本地loader失败: %w", err)
-		}
-	}
-
-	// 步骤7: 构造URI并加载文档
-	var docs []*schema.Document
-	if storageType == StorageTypeRustFS {
-		rustfsURI := fmt.Sprintf("rustfs://%s/%s", doc.RustfsBucket, doc.RustfsLocation)
-		g.Log().Infof(ctx, "loading document from rustfs, uri=%s", rustfsURI)
-		docs, err = loader.Load(ctx, document.Source{URI: rustfsURI})
-		if err != nil {
-			g.Log().Errorf(ctx, "load document from rustfs failed, uri=%s, err=%v", rustfsURI, err)
-			// 索引失败，更新状态为Failed
-			_ = knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
-			return nil, fmt.Errorf("从RustFS加载文档失败: %w", err)
-		}
-	} else {
-		g.Log().Infof(ctx, "loading document from local file, path=%s", doc.LocalFilePath)
-		docs, err = loader.Load(ctx, document.Source{URI: doc.LocalFilePath})
-		if err != nil {
-			g.Log().Errorf(ctx, "load document from local file failed, path=%s, err=%v", doc.LocalFilePath, err)
-			// 索引失败，更新状态为Failed
-			_ = knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
-			return nil, fmt.Errorf("从本地文件加载文档失败: %w", err)
-		}
-	}
-
-	// 步骤8: 执行索引
-	// 确保 CollectionName 不为空，如果为空则使用 KnowledgeId 作为默认值
-	collectionName := doc.CollectionName
-	if collectionName == "" {
-		collectionName = doc.KnowledgeId
-	}
-
-	indexReq := &IndexReq{
-		Docs:           docs,
-		KnowledgeId:    doc.KnowledgeId,
-		CollectionName: collectionName,
-		DocumentsId:    req.DocumentId,
-		ChunkSize:      chunkSize,
-		OverlapSize:    overlapSize,
-	}
-
-	ids, err = x.Index(ctx, indexReq)
-	if err != nil {
-		g.Log().Errorf(ctx, "index document failed, document_id=%s, err=%v", req.DocumentId, err)
-		// 索引失败，更新状态为Failed
-		_ = knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusFailed))
-		return nil, fmt.Errorf("索引文档失败: %w", err)
-	}
-
-	g.Log().Infof(ctx, "reindex document success, document_id=%s, chunks_count=%d", req.DocumentId, len(ids))
-	return ids, nil
+	g.Log().Infof(ctx, "成功从 Milvus 删除 document, collection=%s, documentID=%s", collectionName, documentID)
+	return nil
 }

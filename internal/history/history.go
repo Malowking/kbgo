@@ -3,7 +3,10 @@ package history
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Malowking/kbgo/internal/dao"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
@@ -11,6 +14,12 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
+
+// MessageWithContents 带内容块的消息结构
+type MessageWithContents struct {
+	*gormModel.Message // 包含 msg_id, role, tool_calls 等
+	Contents           []gormModel.MessageContent
+}
 
 // MessageWithMetrics 带指标的消息结构
 type MessageWithMetrics struct {
@@ -173,6 +182,132 @@ func (h *Manager) GetHistory(convID string, limit int) ([]*schema.Message, error
 	return result, nil
 }
 
+// GetConversationHistory 获取会话历史消息
+func (h *Manager) GetConversationHistory(convID string) ([]MessageWithContents, error) {
+	var msgs []MessageWithContents
+	err := dao.GetDB().
+		Where("conv_id = ?", convID).
+		Order("create_time ASC").
+		Find(&msgs).
+		Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	// 预加载消息内容
+	for i := range msgs {
+		var contents []gormModel.MessageContent
+		err := dao.GetDB().
+			Where("msg_id = ?", msgs[i].MsgID).
+			Order("sort_order ASC").
+			Find(&contents).
+			Error
+
+		if err != nil {
+			return nil, err
+		}
+
+		msgs[i].Contents = contents
+	}
+
+	return msgs, nil
+}
+
+// BuildLLMMessages 将历史消息转换为LLM格式
+func (h *Manager) BuildLLMMessages(history []MessageWithContents) []map[string]interface{} {
+	var llmMsgs []map[string]interface{}
+
+	for _, m := range history {
+		// 处理 tool 消息
+		if m.Role == "tool" {
+			// tool 消息：content 是 JSON 字符串，需解析为文本描述或保留原样
+			content := fmt.Sprintf("[Tool Result: %s]", m.Contents[0].TextContent)
+			llmMsgs = append(llmMsgs, map[string]interface{}{
+				"role":         "tool",
+				"content":      content,
+				"tool_call_id": m.ToolCallID,
+			})
+			continue
+		}
+
+		// 合并 message_contents 为纯文本
+		var parts []string
+		for _, c := range m.Contents {
+			switch c.ContentType {
+			case "text", "json_data", "tool_result":
+				parts = append(parts, c.TextContent)
+			case "image_url", "audio_url", "file_url":
+				// 当前仅 LLM，无法理解媒体，转为文本描述
+				parts = append(parts, fmt.Sprintf("[Uploaded file: %s]", extractFileName(c.MediaURL)))
+			case "file_binary_ref":
+				parts = append(parts, fmt.Sprintf("[File uploaded: %s]", c.StorageKey))
+			}
+		}
+		content := strings.Join(parts, "\n")
+
+		// 处理 assistant 的 tool_calls
+		if m.Role == "assistant" && len(m.ToolCalls) > 0 {
+			// OpenAI 格式：content 可为空，tool_calls 单独字段
+			msg := map[string]interface{}{
+				"role":       "assistant",
+				"content":    content,
+				"tool_calls": m.ToolCalls, // 假设 ToolCalls 是 json.RawMessage 或 map
+			}
+			llmMsgs = append(llmMsgs, msg)
+		} else {
+			llmMsgs = append(llmMsgs, map[string]interface{}{
+				"role":    m.Role,
+				"content": content,
+			})
+		}
+	}
+
+	return llmMsgs
+}
+
+// TruncateMessagesByToken 根据token数量截断消息
+func (h *Manager) TruncateMessagesByToken(messages []map[string]interface{}, maxTokens int, model string) []map[string]interface{} {
+	// 粗略估算：1 token 4 英文字符 or 1.5 中文字符
+	// 更准的方式：使用 tiktoken 库（见下方建议）
+	totalTokens := 0
+	startIdx := 0
+
+	for i, msg := range messages {
+		content, _ := msg["content"].(string)
+		tokens := h.estimateTokenCount(content) + 10 // + role 开销
+		if totalTokens+tokens > maxTokens {
+			startIdx = i
+			break
+		}
+		totalTokens += tokens
+	}
+
+	// 保证至少包含最后一条用户消息
+	if startIdx >= len(messages) {
+		startIdx = len(messages) - 1
+	}
+
+	return messages[startIdx:]
+}
+
+// estimateTokenCount 估算token数量
+func (h *Manager) estimateTokenCount(text string) int {
+	// 简化版：中文按 1.5 字/词，英文按 4 字/词
+	chinese := utf8.RuneCountInString(regexp.MustCompile(`[\p{Han}]`).ReplaceAllString(text, ""))
+	english := len(regexp.MustCompile(`[a-zA-Z0-9]+`).ReplaceAllString(text, "")) / 4
+	return chinese + english
+}
+
+// extractFileName 从URL中提取文件名
+func extractFileName(url string) string {
+	parts := strings.Split(url, "/")
+	if len(parts) > 0 {
+		return parts[len(parts)-1]
+	}
+	return url
+}
+
 // ensureConversationExists 确保对话存在
 func (h *Manager) ensureConversationExists(convID string) error {
 	conversation, err := dao.Conversation.GetByConvID(nil, convID)
@@ -200,7 +335,7 @@ func (h *Manager) ensureConversationExists(convID string) error {
 
 // generateMessageID 生成消息ID
 func generateMessageID() string {
-	return "msg_" + uuid.New().String()
+	return uuid.New().String()
 }
 
 // GetMessageMetadata 获取消息的元数据

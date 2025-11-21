@@ -1,13 +1,18 @@
 package common
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
+
+	"github.com/gogf/gf/v2/net/ghttp"
+	"github.com/gogf/gf/v2/os/gfile"
 )
 
 func Of[T any](v T) *T {
@@ -37,39 +42,96 @@ func RemoveDuplicates[T any, K comparable](slice []T, keyFunc func(T) K) []T {
 	return result
 }
 
-// CalculateFileSHA256 计算上传文件的SHA256哈希值
-func CalculateFileSHA256(file *multipart.FileHeader) (string, error) {
-	f, err := file.Open()
+// HandleFileUpload 处理文件上传的通用逻辑
+func HandleFileUpload(ctx context.Context, file *ghttp.UploadFile, urlStr string) (fileName string, fileExt string, fileSha256 string, tempFilePath string, err error) {
+	if file != nil {
+		fileName = file.Filename
+		fileExt = filepath.Ext(fileName)
+	} else if urlStr != "" {
+		fileName = GetFileNameFromURL(urlStr)
+		fileExt = filepath.Ext(fileName)
+	} else {
+		err = fmt.Errorf("file or url is required")
+		return
+	}
+
+	// 根据文件类型确定临时存储目录
+	tempUploadDir := GetUploadDirByFileType(fileExt)
+
+	// 确保目录存在
+	if !gfile.Exists(tempUploadDir) {
+		err = gfile.Mkdir(tempUploadDir)
+		if err != nil {
+			return
+		}
+	}
+
+	// 生成临时文件路径
+	tempFilePath = filepath.Join(tempUploadDir, fileName)
+
+	// 保存文件到临时位置
+	if file != nil {
+		_, err = file.Save(tempUploadDir)
+		if err != nil {
+			return
+		}
+	} else {
+		// 下载URL文件到临时位置
+		err = downloadURLFile(urlStr, tempUploadDir)
+		if err != nil {
+			return
+		}
+	}
+
+	// 计算文件 SHA256 以确保唯一性
+	fileSha256, err = calculateLocalFileSHA256(tempFilePath)
 	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	hash := sha256.New()
-	if _, err := io.Copy(hash, f); err != nil {
-		return "", err
+		return
 	}
 
-	return hex.EncodeToString(hash.Sum(nil)), nil
+	return
 }
 
-// CalculateURLFileSHA256 计算 URL 文件的 SHA256 哈希值
-func CalculateURLFileSHA256(fileURL string) (string, error) {
-	// 下载文件内容
-	resp, err := http.Get(fileURL)
+// downloadURLFile 下载URL文件到本地
+func downloadURLFile(url, localPath string) error {
+	// 创建文件
+	file, err := os.Create(localPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to download URL file: %w", err)
+		return fmt.Errorf("创建文件失败: %w", err)
+	}
+	defer file.Close()
+
+	// 下载文件
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("下载文件失败: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("URL returned status: %s", resp.Status)
+		return fmt.Errorf("下载文件失败，状态码: %d", resp.StatusCode)
 	}
 
-	// 计算 SHA256
+	// 保存文件内容
+	_, err = io.Copy(file, resp.Body)
+	if err != nil {
+		return fmt.Errorf("保存文件失败: %w", err)
+	}
+
+	return nil
+}
+
+// calculateLocalFileSHA256 计算本地文件的SHA256
+func calculateLocalFileSHA256(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("打开文件失败: %w", err)
+	}
+	defer file.Close()
+
 	hash := sha256.New()
-	if _, err := io.Copy(hash, resp.Body); err != nil {
-		return "", fmt.Errorf("failed to calculate SHA256: %w", err)
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
 	}
 
 	return hex.EncodeToString(hash.Sum(nil)), nil

@@ -3,7 +3,7 @@ package cmd
 import (
 	"context"
 
-	"github.com/Malowking/kbgo/internal/controller/rag"
+	"github.com/Malowking/kbgo/internal/controller/kbgo"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/os/gcmd"
@@ -19,7 +19,7 @@ var (
 			s.Group("/api", func(group *ghttp.RouterGroup) {
 				group.Middleware(MiddlewareHandlerResponse, ghttp.MiddlewareCORS)
 				group.Bind(
-					rag.NewV1(),
+					kbgo.NewV1(),
 				)
 			})
 			s.Run()

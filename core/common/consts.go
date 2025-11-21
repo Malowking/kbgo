@@ -3,11 +3,9 @@ package common
 const (
 	FieldContent       = "text"
 	FieldContentVector = "vector"
-	//FieldQAContent       = "qa_content"
-	//FieldQAContentVector = "qa_content_vector"
-	FieldMetadata = "metadata"
-	KnowledgeId   = "knowledge_id"
-	DocumentId    = "document_id"
+	FieldMetadata      = "metadata"
+	KnowledgeId        = "knowledge_id"
+	DocumentId         = "document_id"
 
 	RetrieverFieldKey = "_retriever_field"
 

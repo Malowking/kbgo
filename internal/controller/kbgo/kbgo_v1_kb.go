@@ -1,13 +1,13 @@
-package rag
+package kbgo
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/Malowking/kbgo/api/rag/v1"
-	"github.com/Malowking/kbgo/core"
+	"github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/rag"
@@ -40,16 +40,27 @@ func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *
 		return nil, err
 	}
 
+	// 创建 Milvus collection
+	ragSvrM := rag.GetRagSvr()
+	milvusClient := ragSvrM.Client
+	err = common.CreateCollection(ctx, milvusClient, knowledgeId)
+	if err != nil {
+		// 如果创建 Milvus collection 失败，删除已创建的数据库记录并返回错误
+		dao.GetDB().WithContext(ctx).Delete(&gormModel.KnowledgeBase{}, "id = ?", knowledgeId)
+		return nil, fmt.Errorf("创建 Milvus collection 失败: %w", err)
+	}
+	g.Log().Infof(ctx, "成功创建 Milvus collection: %s", knowledgeId)
+
 	// 如果使用本地存储，则创建对应的文件夹
-	storageType := core.GetStorageType()
-	if storageType == core.StorageTypeLocal {
+	storageType := common.GetStorageType()
+	if storageType == common.StorageTypeLocal {
 		// 创建 knowledge_file/{knowledge_id} 目录
 		knowledgeDir := filepath.Join("knowledge_file", knowledgeId)
 		if !gfile.Exists(knowledgeDir) {
 			err = os.MkdirAll(knowledgeDir, 0755)
 			if err != nil {
 				g.Log().Errorf(ctx, "创建知识库目录失败: %s, 错误: %v", knowledgeDir, err)
-				// 不返回错误，因为数据库记录已创建成功
+				// 不返回错误，因为数据库记录和 Milvus collection 已创建成功
 			} else {
 				g.Log().Infof(ctx, "成功创建知识库目录: %s", knowledgeDir)
 			}
@@ -97,10 +108,10 @@ func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *
 	localFiles := make(map[string]LocalFile)   // 使用 map 去重
 
 	// 根据存储类型收集需要删除的文件
-	storageType := core.GetStorageType()
+	storageType := common.GetStorageType()
 	for _, doc := range documents {
 		if doc.SHA256 != "" {
-			if storageType == core.StorageTypeRustFS {
+			if storageType == common.StorageTypeRustFS {
 				// RustFS 存储
 				if doc.RustfsBucket != "" && doc.RustfsLocation != "" {
 					rustfsFiles[doc.SHA256] = RustFSFile{
@@ -150,11 +161,6 @@ func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *
 		tx.Rollback()
 		return nil, err
 	}
-	//err = common.DeleteCollection(ctx, milvusClient, "qa_"+req.Id)
-	//if err != nil {
-	//	tx.Rollback()
-	//	return nil, err
-	//}
 
 	// 提交事务
 	if err = tx.Commit().Error; err != nil {
@@ -162,10 +168,10 @@ func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *
 	}
 
 	// 7. 事务成功提交后，删除存储中的文件（这个操作失败不影响数据一致性）
-	if storageType == core.StorageTypeRustFS {
+	if storageType == common.StorageTypeRustFS {
 		// 删除 RustFS 文件
 		if len(rustfsFiles) > 0 {
-			rustfsConfig := core.GetRustfsConfig()
+			rustfsConfig := common.GetRustfsConfig()
 			rustfsClient := rustfsConfig.Client
 
 			for _, file := range rustfsFiles {

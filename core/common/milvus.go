@@ -12,28 +12,6 @@ import (
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
 )
 
-//func CreateQACollection(ctx context.Context, MilvusClient *milvusclient.Client, CollectionName string) error {
-//	// 使用标准 QA collection schema
-//	qaSchema := &entity.Schema{
-//		CollectionName: CollectionName,
-//		Description:    "存储文档分片及其向量",
-//		AutoID:         false,
-//		Fields:         milvusModel.GetStandardQACollectionFields(),
-//	}
-//
-//	// 创建qa集合，并设置qa_vector为索引
-//	err := MilvusClient.CreateCollection(ctx, milvusclient.NewCreateCollectionOption(CollectionName, qaSchema).WithIndexOptions(
-//		milvusclient.NewCreateIndexOption(CollectionName, "qa_vector", index.NewHNSWIndex(entity.L2, 64, 128))))
-//
-//	if err != nil {
-//		fmt.Printf("failed to create Milvus qacollection: %v\n", err)
-//		return err
-//	}
-//
-//	fmt.Println("QACollection created and index built")
-//	return err
-//}
-
 func CreateCollection(ctx context.Context, MilvusClient *milvusclient.Client, CollectionName string) error {
 	// 使用标准 text collection schema
 	Schema := &entity.Schema{
