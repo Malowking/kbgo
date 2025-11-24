@@ -18,17 +18,17 @@ import (
 	"github.com/google/uuid"
 )
 
-// MCPHandler MCP工具调用处理器
+// MCPHandler MCP tool call handler
 type MCPHandler struct{}
 
-// NewMCPHandler 创建MCP处理器
+// NewMCPHandler Create MCP handler
 func NewMCPHandler() *MCPHandler {
 	return &MCPHandler{}
 }
 
 // CallMCPToolsWithLLM 使用 LLM 智能选择并调用 MCP 工具
 func (h *MCPHandler) CallMCPToolsWithLLM(ctx context.Context, req *v1.ChatReq) ([]*schema.Document, []*v1.MCPResult, error) {
-	g.Log().Debugf(ctx, "开始LLM智能工具调用, 问题: %s", req.Question)
+	g.Log().Debugf(ctx, "Starting LLM intelligent tool call, question: %s", req.Question)
 
 	// 创建 MCP 工具调用器
 	toolCaller, err := rag.NewMCPToolCaller(ctx)
@@ -41,30 +41,30 @@ func (h *MCPHandler) CallMCPToolsWithLLM(ctx context.Context, req *v1.ChatReq) (
 	// 传递 MCPServiceTools 作为过滤器，限制 LLM 只能选择指定的工具
 	documents, mcpResults, err := toolCaller.CallToolsWithLLM(ctx, req.Question, req.ConvID, req.MCPServiceTools)
 	if err != nil {
-		return nil, nil, fmt.Errorf("LLM智能工具调用失败: %w", err)
+		return nil, nil, fmt.Errorf("LLM intelligent tool call failed: %w", err)
 	}
 
-	g.Log().Debugf(ctx, "LLM智能工具调用完成，返回文档数量: %d, MCP结果数量: %d", len(documents), len(mcpResults))
+	g.Log().Debugf(ctx, "LLM intelligent tool call completed, returned document count: %d, MCP result count: %d", len(documents), len(mcpResults))
 
 	return documents, mcpResults, nil
 }
 
 // CallMCPTools 调用MCP工具（传统方式）
 func (h *MCPHandler) CallMCPTools(ctx context.Context, req *v1.ChatReq) ([]*schema.Document, error) {
-	g.Log().Debugf(ctx, "开始调用MCP工具, UseMCP: %v, MCPServiceTools: %v", req.UseMCP, req.MCPServiceTools)
+	g.Log().Debugf(ctx, "Starting MCP tool call, UseMCP: %v, MCPServiceTools: %v", req.UseMCP, req.MCPServiceTools)
 
-	// 获取所有启用的MCP服务
+	// Get all enabled MCP services
 	registries, _, err := dao.MCPRegistry.List(ctx, nil, 1, 100)
 	if err != nil {
-		g.Log().Errorf(ctx, "获取MCP服务列表失败: %v", err)
+		g.Log().Errorf(ctx, "Failed to get MCP service list: %v", err)
 		return nil, err
 	}
 
-	g.Log().Debugf(ctx, "获取到MCP服务数量: %d", len(registries))
+	g.Log().Debugf(ctx, "Obtained %d MCP services", len(registries))
 
 	// 如果没有注册的服务，直接返回
 	if len(registries) == 0 {
-		g.Log().Debug(ctx, "没有找到注册的MCP服务")
+		g.Log().Debug(ctx, "No registered MCP services found")
 		return nil, nil
 	}
 
@@ -72,34 +72,34 @@ func (h *MCPHandler) CallMCPTools(ctx context.Context, req *v1.ChatReq) ([]*sche
 
 	// 遍历所有MCP服务
 	for _, registry := range registries {
-		g.Log().Debugf(ctx, "检查MCP服务: %s, 状态: %d", registry.Name, registry.Status)
+		g.Log().Debugf(ctx, "Checking MCP service: %s, status: %d", registry.Name, registry.Status)
 
-		// 检查服务是否启用
+		// Check if service is enabled
 		if registry.Status != 1 {
-			g.Log().Debugf(ctx, "MCP服务 %s 未启用，跳过", registry.Name)
+			g.Log().Debugf(ctx, "MCP service %s is not enabled, skipping", registry.Name)
 			continue
 		}
 
 		// 处理服务的工具调用
 		serviceDocs, err := h.processServiceTools(ctx, registry, req)
 		if err != nil {
-			g.Log().Errorf(ctx, "处理服务 %s 的工具失败: %v", registry.Name, err)
+			g.Log().Errorf(ctx, "Failed to process tools for service %s: %v", registry.Name, err)
 			continue
 		}
 
 		documents = append(documents, serviceDocs...)
 	}
 
-	g.Log().Debugf(ctx, "MCP工具调用完成，返回文档数量: %d", len(documents))
+	g.Log().Debugf(ctx, "MCP tool call completed, returned document count: %d", len(documents))
 
 	return documents, nil
 }
 
-// processServiceTools 处理单个服务的工具调用
+// processServiceTools Process tool calls for a single service
 func (h *MCPHandler) processServiceTools(ctx context.Context, registry *gormModel.MCPRegistry, req *v1.ChatReq) ([]*schema.Document, error) {
 	// 创建客户端
 	mcpClient := client.NewMCPClient(registry)
-	g.Log().Debugf(ctx, "创建MCP客户端: %s", registry.Name)
+	g.Log().Debugf(ctx, "Creating MCP client: %s", registry.Name)
 
 	// 初始化连接
 	err := mcpClient.Initialize(ctx, map[string]interface{}{
@@ -107,35 +107,35 @@ func (h *MCPHandler) processServiceTools(ctx context.Context, registry *gormMode
 		"version": "1.0.0",
 	})
 	if err != nil {
-		return nil, fmt.Errorf("初始化MCP连接失败: %w", err)
+		return nil, fmt.Errorf("Failed to initialize MCP connection: %w", err)
 	}
-	g.Log().Debugf(ctx, "初始化MCP连接成功: %s", registry.Name)
+	g.Log().Debugf(ctx, "MCP connection initialized successfully: %s", registry.Name)
 
-	// 获取工具列表
+	// Get tool list
 	tools, err := h.getServiceTools(ctx, registry, mcpClient)
 	if err != nil {
-		return nil, fmt.Errorf("获取工具列表失败: %w", err)
+		return nil, fmt.Errorf("Failed to get tool list: %w", err)
 	}
 
-	g.Log().Debugf(ctx, "获取到MCP工具数量: %d, 工具列表: %v", len(tools), tools)
+	g.Log().Debugf(ctx, "Obtained %d MCP tools, tool list: %v", len(tools), tools)
 
 	var documents []*schema.Document
 
 	// 遍历工具并调用符合条件的工具
 	for _, tool := range tools {
-		g.Log().Debugf(ctx, "检查工具: %s", tool.Name)
+		g.Log().Debugf(ctx, "Checking tool: %s", tool.Name)
 
-		// 检查工具是否应该被调用
+		// Check if the tool should be called
 		if !h.shouldCallTool(ctx, registry.Name, tool.Name, req.MCPServiceTools) {
 			continue
 		}
 
-		g.Log().Debugf(ctx, "调用MCP工具: %s", tool.Name)
+		g.Log().Debugf(ctx, "Calling MCP tool: %s", tool.Name)
 
-		// 调用工具并获取结果
+		// Call tool and get results
 		doc, err := h.callTool(ctx, mcpClient, registry, tool, req)
 		if err != nil {
-			g.Log().Errorf(ctx, "调用工具 %s 失败: %v", tool.Name, err)
+			g.Log().Errorf(ctx, "Failed to call tool %s: %v", tool.Name, err)
 			continue
 		}
 
@@ -147,15 +147,15 @@ func (h *MCPHandler) processServiceTools(ctx context.Context, registry *gormMode
 	return documents, nil
 }
 
-// getServiceTools 获取服务的工具列表
+// getServiceTools Get tool list for a service
 func (h *MCPHandler) getServiceTools(ctx context.Context, registry *gormModel.MCPRegistry, mcpClient *client.MCPClient) ([]client.MCPTool, error) {
 	var tools []client.MCPTool
 
-	// 首先尝试从数据库缓存中获取工具列表
+	// First try to get tool list from database cache
 	if registry.Tools != "" && registry.Tools != "[]" {
 		var toolInfos []v1.MCPToolInfo
 		if err := json.Unmarshal([]byte(registry.Tools), &toolInfos); err == nil {
-			// 转换为client.MCPTool格式
+			// Convert to client.MCPTool format
 			tools = make([]client.MCPTool, len(toolInfos))
 			for i, info := range toolInfos {
 				tools[i] = client.MCPTool{
@@ -164,18 +164,18 @@ func (h *MCPHandler) getServiceTools(ctx context.Context, registry *gormModel.MC
 					InputSchema: info.InputSchema,
 				}
 			}
-			g.Log().Debugf(ctx, "从数据库缓存获取到MCP工具数量: %d", len(tools))
+			g.Log().Debugf(ctx, "Obtained %d MCP tools from database cache", len(tools))
 			return tools, nil
 		}
 	}
 
-	// 如果缓存中没有工具列表，则从远程服务获取
+	// If no tool list in cache, get from remote service
 	tools, err := mcpClient.ListTools(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("获取远程工具列表失败: %w", err)
+		return nil, fmt.Errorf("Failed to get remote tool list: %w", err)
 	}
 
-	// 更新数据库中的工具列表缓存
+	// Update tool list cache in database
 	if len(tools) > 0 {
 		h.updateToolsCache(ctx, registry, tools)
 	}
@@ -183,9 +183,9 @@ func (h *MCPHandler) getServiceTools(ctx context.Context, registry *gormModel.MC
 	return tools, nil
 }
 
-// updateToolsCache 更新工具缓存
+// updateToolsCache Update tool cache
 func (h *MCPHandler) updateToolsCache(ctx context.Context, registry *gormModel.MCPRegistry, tools []client.MCPTool) {
-	// 转换为MCPToolInfo格式
+	// Convert to MCPToolInfo format
 	toolInfos := make([]v1.MCPToolInfo, len(tools))
 	for i, tool := range tools {
 		toolInfos[i] = v1.MCPToolInfo{
@@ -195,7 +195,7 @@ func (h *MCPHandler) updateToolsCache(ctx context.Context, registry *gormModel.M
 		}
 	}
 
-	// 序列化并保存到数据库
+	// Serialize and save to database
 	toolsJSON, err := json.Marshal(toolInfos)
 	if err == nil {
 		registry.Tools = string(toolsJSON)
@@ -205,31 +205,31 @@ func (h *MCPHandler) updateToolsCache(ctx context.Context, registry *gormModel.M
 	}
 }
 
-// shouldCallTool 检查工具是否应该被调用
+// shouldCallTool Check if tool should be called
 func (h *MCPHandler) shouldCallTool(ctx context.Context, serviceName, toolName string, mcpServiceTools map[string][]string) bool {
-	// 处理工具调用逻辑：
-	// 1. 如果MCPServiceTools指定了该服务的工具，则只调用指定的工具
-	// 2. 如果MCPServiceTools为空或nil，调用所有工具
+	// Handle tool calling logic:
+	// 1. If MCPServiceTools specifies tools for this service, only call specified tools
+	// 2. If MCPServiceTools is empty or nil, call all tools
 
 	if mcpServiceTools != nil {
-		// 检查是否为特定服务指定了工具
+		// Check if tools are specified for a specific service
 		if serviceTools, exists := mcpServiceTools[serviceName]; exists {
-			g.Log().Debugf(ctx, "检查服务 %s 的指定工具列表: %v", serviceName, serviceTools)
+			g.Log().Debugf(ctx, "Checking specified tool list for service %s: %v", serviceName, serviceTools)
 			if len(serviceTools) == 0 {
-				// 空数组表示不调用该服务的任何工具
-				g.Log().Debugf(ctx, "服务 %s 的工具列表为空，跳过所有工具", serviceName)
+				// Empty array means no tools for this service should be called
+				g.Log().Debugf(ctx, "Service %s tool list is empty, skipping all tools", serviceName)
 				return false
 			}
 
-			// 检查工具是否在允许列表中
+			// Check if tool is in allowed list
 			for i, allowedTool := range serviceTools {
-				g.Log().Debugf(ctx, "比较工具名称: 索引%d, '%s' vs '%s'", i, allowedTool, toolName)
+				g.Log().Debugf(ctx, "Comparing tool names: index%d, '%s' vs '%s'", i, allowedTool, toolName)
 				if allowedTool == toolName {
-					g.Log().Debugf(ctx, "找到匹配的工具: %s", toolName)
+					g.Log().Debugf(ctx, "Found matching tool: %s", toolName)
 					return true
 				}
 			}
-			g.Log().Debugf(ctx, "工具 %s 不在服务 %s 的允许列表中，跳过", toolName, serviceName)
+			g.Log().Debugf(ctx, "Tool %s is not in the allowed list for service %s, skipping", toolName, serviceName)
 			return false
 		}
 	} else {
@@ -247,7 +247,7 @@ func (h *MCPHandler) callTool(ctx context.Context, mcpClient *client.MCPClient, 
 	toolMapper := NewToolMapper()
 	toolArgs, err := toolMapper.BuildToolArguments(tool, req.Question)
 	if err != nil {
-		g.Log().Warningf(ctx, "构建工具参数失败: %v", err)
+		g.Log().Warningf(ctx, "Failed to build tool parameters: %v", err)
 		// 使用fallback策略
 		toolArgs = toolMapper.FallbackToolArguments(tool, req.Question)
 	}
@@ -261,12 +261,12 @@ func (h *MCPHandler) callTool(ctx context.Context, mcpClient *client.MCPClient, 
 	// 记录调用日志
 	h.logToolCall(ctx, registry, tool, req, toolArgs, result, err, duration)
 
-	// 如果调用失败，记录错误并返回
+	// If call fails, log error and return
 	if err != nil {
-		return nil, fmt.Errorf("工具调用失败: %w", err)
+		return nil, fmt.Errorf("Tool call failed: %w", err)
 	}
 
-	g.Log().Debugf(ctx, "MCP工具调用成功: %s, 结果: %v", tool.Name, result)
+	g.Log().Debugf(ctx, "MCP tool call successful: %s, result: %v", tool.Name, result)
 
 	// 将结果转换为文档
 	return h.convertResultToDocument(registry, tool, result)
@@ -279,10 +279,10 @@ func (h *MCPHandler) logToolCall(ctx context.Context, registry *gormModel.MCPReg
 	respPayload, _ := json.Marshal(result)
 
 	// 记录调用日志
-	logStatus := int8(1) // 成功
+	logStatus := int8(1) // Success
 	errorMsg := ""
 	if err != nil {
-		logStatus = 0 // 失败
+		logStatus = 0 // Failed
 		errorMsg = err.Error()
 	}
 
@@ -305,7 +305,7 @@ func (h *MCPHandler) logToolCall(ctx context.Context, registry *gormModel.MCPReg
 	}
 }
 
-// convertResultToDocument 将工具调用结果转换为文档
+// convertResultToDocument Convert tool call result to document
 func (h *MCPHandler) convertResultToDocument(registry *gormModel.MCPRegistry, tool client.MCPTool, result *client.MCPCallToolResult) (*schema.Document, error) {
 	logID := strings.ReplaceAll(uuid.New().String(), "-", "")
 
@@ -329,7 +329,7 @@ func (h *MCPHandler) convertResultToDocument(registry *gormModel.MCPRegistry, to
 	return nil, nil
 }
 
-// ExtractMCPResults 从MCP文档中提取结果信息
+// ExtractMCPResults Extract result information from MCP documents
 func (h *MCPHandler) ExtractMCPResults(docs []*schema.Document) []*v1.MCPResult {
 	var results []*v1.MCPResult
 	for _, doc := range docs {
@@ -354,10 +354,10 @@ func (h *MCPHandler) ExtractMCPResults(docs []*schema.Document) []*v1.MCPResult 
 
 // CallSingleTool 调用单个工具
 func (h *MCPHandler) CallSingleTool(ctx context.Context, serviceName string, toolName string, args map[string]interface{}, convID string) (*schema.Document, *v1.MCPResult, error) {
-	// 获取MCP服务
+	// Get MCP service
 	registry, err := dao.MCPRegistry.GetByName(ctx, serviceName)
 	if err != nil {
-		return nil, nil, fmt.Errorf("获取MCP服务失败: %w", err)
+		return nil, nil, fmt.Errorf("Failed to get MCP service: %w", err)
 	}
 
 	// 创建客户端
@@ -369,13 +369,13 @@ func (h *MCPHandler) CallSingleTool(ctx context.Context, serviceName string, too
 		"version": "1.0.0",
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("初始化MCP连接失败: %w", err)
+		return nil, nil, fmt.Errorf("Failed to initialize MCP connection: %w", err)
 	}
 
 	// 调用工具
 	result, err := mcpClient.CallTool(ctx, toolName, args)
 	if err != nil {
-		return nil, nil, fmt.Errorf("调用工具失败: %w", err)
+		return nil, nil, fmt.Errorf("Failed to call tool: %w", err)
 	}
 
 	// 提取文本内容
@@ -409,7 +409,7 @@ func (h *MCPHandler) CallSingleTool(ctx context.Context, serviceName string, too
 	return doc, mcpResult, nil
 }
 
-// CallMCPToolsWithLLMAndSave 使用 LLM 智能选择并调用 MCP 工具，并保存消息历史
+// CallMCPToolsWithLLMAndSave Use LLM to intelligently select and call MCP tools, and save message history
 func (h *MCPHandler) CallMCPToolsWithLLMAndSave(ctx context.Context, convID string, messages []*schema.Message, llmTools []*schema.ToolInfo) ([]*schema.Document, []*v1.MCPResult, error) {
 	// 1. 创建 MCP 工具调用器
 	toolCaller, err := rag.NewMCPToolCaller(ctx)
@@ -418,9 +418,9 @@ func (h *MCPHandler) CallMCPToolsWithLLMAndSave(ctx context.Context, convID stri
 	}
 	defer toolCaller.Close()
 
-	// 2. 保存初始消息历史
+	// 2. Save initial message history
 	chatInstance := chat.GetChat()
-	// 注意：这里没有 SaveMessages 方法，我们会在 GenerateWithToolsAndSave 中保存响应
+	// Note: There is no SaveMessages method here, we will save the response in GenerateWithToolsAndSave
 
 	// 3. 调用 LLM（最多循环 5 次以支持多轮工具调用）
 	maxIterations := 5

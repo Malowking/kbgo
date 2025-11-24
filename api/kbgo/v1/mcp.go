@@ -4,7 +4,7 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// MCPRegistryCreateReq MCP服务注册请求
+// MCPRegistryCreateReq MCP service registration request
 type MCPRegistryCreateReq struct {
 	g.Meta      `path:"/v1/mcp/registry" method:"post" tags:"mcp" summary:"Register MCP service"`
 	Name        string `v:"required|length:1,100" dc:"MCP service name (unique)"`
@@ -19,7 +19,7 @@ type MCPRegistryCreateRes struct {
 	Id string `json:"id" dc:"MCP registry ID"`
 }
 
-// MCPRegistryUpdateReq MCP服务更新请求
+// MCPRegistryUpdateReq MCP service update request
 type MCPRegistryUpdateReq struct {
 	g.Meta      `path:"/v1/mcp/registry/{id}" method:"put" tags:"mcp" summary:"Update MCP service"`
 	Id          string  `v:"required" dc:"MCP registry ID"`
@@ -34,7 +34,7 @@ type MCPRegistryUpdateReq struct {
 
 type MCPRegistryUpdateRes struct{}
 
-// MCPRegistryDeleteReq MCP服务删除请求
+// MCPRegistryDeleteReq MCP service deletion request
 type MCPRegistryDeleteReq struct {
 	g.Meta `path:"/v1/mcp/registry/{id}" method:"delete" tags:"mcp" summary:"Delete MCP service"`
 	Id     string `v:"required" dc:"MCP registry ID"`
@@ -42,7 +42,7 @@ type MCPRegistryDeleteReq struct {
 
 type MCPRegistryDeleteRes struct{}
 
-// MCPRegistryGetOneReq 获取单个MCP服务请求
+// MCPRegistryGetOneReq Get single MCP service request
 type MCPRegistryGetOneReq struct {
 	g.Meta `path:"/v1/mcp/registry/{id}" method:"get" tags:"mcp" summary:"Get one MCP service"`
 	Id     string `v:"required" dc:"MCP registry ID"`
@@ -61,7 +61,7 @@ type MCPRegistryGetOneRes struct {
 	UpdateTime  string `json:"update_time" dc:"Update time"`
 }
 
-// MCPRegistryGetListReq 获取MCP服务列表请求
+// MCPRegistryGetListReq Get MCP services list request
 type MCPRegistryGetListReq struct {
 	g.Meta   `path:"/v1/mcp/registry" method:"get" tags:"mcp" summary:"Get MCP services list"`
 	Status   *int8 `v:"in:0,1" dc:"Status filter: 1-enabled, 0-disabled"`
@@ -86,7 +86,7 @@ type MCPRegistryItem struct {
 	UpdateTime  string `json:"update_time" dc:"Update time"`
 }
 
-// MCPRegistryUpdateStatusReq 更新MCP服务状态请求
+// MCPRegistryUpdateStatusReq Update MCP service status request
 type MCPRegistryUpdateStatusReq struct {
 	g.Meta `path:"/v1/mcp/registry/{id}/status" method:"patch" tags:"mcp" summary:"Update MCP service status"`
 	Id     string `v:"required" dc:"MCP registry ID"`
@@ -95,7 +95,7 @@ type MCPRegistryUpdateStatusReq struct {
 
 type MCPRegistryUpdateStatusRes struct{}
 
-// MCPRegistryTestReq 测试MCP服务连通性请求
+// MCPRegistryTestReq Test MCP service connectivity request
 type MCPRegistryTestReq struct {
 	g.Meta `path:"/v1/mcp/registry/{id}/test" method:"post" tags:"mcp" summary:"Test MCP service connectivity"`
 	Id     string `v:"required" dc:"MCP registry ID"`
@@ -106,7 +106,7 @@ type MCPRegistryTestRes struct {
 	Message string `json:"message" dc:"Test message"`
 }
 
-// MCPListToolsReq 列出MCP服务工具请求
+// MCPListToolsReq List MCP service tools request
 type MCPListToolsReq struct {
 	g.Meta   `path:"/v1/mcp/registry/{id}/tools" method:"get" tags:"mcp" summary:"List MCP service tools"`
 	Id       string `v:"required" dc:"MCP registry ID"`
@@ -124,7 +124,7 @@ type MCPToolInfo struct {
 	InputSchema map[string]interface{} `json:"inputSchema" dc:"Input schema"`
 }
 
-// MCPCallToolReq 调用MCP工具请求
+// MCPCallToolReq Call MCP tool request
 type MCPCallToolReq struct {
 	g.Meta         `path:"/v1/mcp/call" method:"post" tags:"mcp" summary:"Call MCP tool"`
 	RegistryID     string                 `v:"required" dc:"MCP registry ID or service name" json:"registry_id"`
@@ -145,7 +145,7 @@ type MCPContentItem struct {
 	Data string `json:"data,omitempty" dc:"Binary data (base64)"`
 }
 
-// MCPCallLogGetListReq 获取MCP调用日志列表请求
+// MCPCallLogGetListReq Get MCP call logs list request
 type MCPCallLogGetListReq struct {
 	g.Meta         `path:"/v1/mcp/logs" method:"get" tags:"mcp" summary:"Get MCP call logs"`
 	ConversationID *string `dc:"Filter by conversation ID" json:"conversation_id"`
@@ -179,7 +179,7 @@ type MCPCallLogItem struct {
 	CreateTime      string `json:"create_time" dc:"Create time"`
 }
 
-// MCPCallLogGetByConversationReq 根据对话ID获取调用日志请求
+// MCPCallLogGetByConversationReq Get call logs by conversation ID request
 type MCPCallLogGetByConversationReq struct {
 	g.Meta         `path:"/v1/mcp/logs/conversation/{conversation_id}" method:"get" tags:"mcp" summary:"Get MCP call logs by conversation ID"`
 	ConversationID string `v:"required" dc:"Conversation ID"`
@@ -193,7 +193,7 @@ type MCPCallLogGetByConversationRes struct {
 	Page  int               `json:"page" dc:"Current page"`
 }
 
-// MCPRegistryStatsReq 获取MCP服务统计信息请求
+// MCPRegistryStatsReq Get MCP service statistics request
 type MCPRegistryStatsReq struct {
 	g.Meta `path:"/v1/mcp/registry/{id}/stats" method:"get" tags:"mcp" summary:"Get MCP service statistics"`
 	Id     string `v:"required" dc:"MCP registry ID"`

@@ -91,6 +91,17 @@ func DeleteChunkByIdWithTx(ctx context.Context, tx *gorm.DB, id string) error {
 	return result.Error
 }
 
+// DeleteChunksByDocumentId 根据文档ID删除该文档的所有chunks（事务版本）
+func DeleteChunksByDocumentId(ctx context.Context, tx *gorm.DB, documentId string) error {
+	result := tx.WithContext(ctx).Where("knowledge_doc_id = ?", documentId).Delete(&entity.KnowledgeChunks{})
+	if result.Error != nil {
+		g.Log().Errorf(ctx, "DeleteChunksByDocumentId failed for document %s, err: %v", documentId, result.Error)
+		return result.Error
+	}
+	g.Log().Infof(ctx, "DeleteChunksByDocumentId: Deleted %d chunks for document %s", result.RowsAffected, documentId)
+	return nil
+}
+
 // UpdateChunkByIdsWithTx 根据ID更新知识块（事务版本）
 func UpdateChunkByIdsWithTx(ctx context.Context, tx *gorm.DB, ids []string, data entity.KnowledgeChunks) error {
 	updates := make(map[string]interface{})

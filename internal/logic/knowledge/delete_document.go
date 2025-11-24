@@ -9,11 +9,10 @@ import (
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
 )
 
-// DeleteDocumentDataOnly 删除指定文档的所有相关数据，但不删除存储中的文件
+// DeleteDocumentDataOnly 删除指定文档的chunks数据，但保留文档记录
 // 这包括:
 // 1. 删除 knowledge_chunks 表中与该文档相关的所有 chunks
 // 2. 删除 Milvus 中与该文档相关的所有向量数据
-// 3. 删除 knowledge_documents 表中的文档记录
 func DeleteDocumentDataOnly(ctx context.Context, documentId string, milvusClient *milvusclient.Client) error {
 	// 开始事务
 	tx := dao.GetDB().Begin()
@@ -45,12 +44,12 @@ func DeleteDocumentDataOnly(ctx context.Context, documentId string, milvusClient
 		g.Log().Infof(ctx, "DeleteDocumentDataOnly: Successfully deleted document %s from Milvus collection %s", documentId, document.CollectionName)
 	}
 
-	// 从数据库删除文档记录（会级联删除相关的 chunks）使用事务版本
-	err = DeleteDocumentWithTx(ctx, tx, documentId)
+	// 只删除 chunks 数据，保留 document 记录
+	err = DeleteChunksByDocumentId(ctx, tx, documentId)
 	if err != nil {
-		g.Log().Errorf(ctx, "DeleteDocumentDataOnly: DeleteDocumentWithTx failed for id %s, err: %v", documentId, err)
+		g.Log().Errorf(ctx, "DeleteDocumentDataOnly: DeleteChunksByDocumentId failed for id %s, err: %v", documentId, err)
 		tx.Rollback()
-		return fmt.Errorf("删除数据库中的文档数据失败: %w", err)
+		return fmt.Errorf("删除chunks数据失败: %w", err)
 	}
 
 	// 提交事务
@@ -59,7 +58,7 @@ func DeleteDocumentDataOnly(ctx context.Context, documentId string, milvusClient
 		return fmt.Errorf("提交事务失败: %w", err)
 	}
 
-	g.Log().Infof(ctx, "DeleteDocumentDataOnly: Successfully deleted all data for document id %s", documentId)
+	g.Log().Infof(ctx, "DeleteDocumentDataOnly: Successfully deleted chunks data for document id %s", documentId)
 	return nil
 }
 

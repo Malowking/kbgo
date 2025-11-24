@@ -10,23 +10,23 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// ChatHandler 聊天处理器
+// ChatHandler Chat handler
 type ChatHandler struct{}
 
-// NewChatHandler 创建聊天处理器
+// NewChatHandler Create chat handler
 func NewChatHandler() *ChatHandler {
 	return &ChatHandler{}
 }
 
-// 处理基础聊天请求（非流式）
+// Handle basic chat request (non-streaming)
 func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq) (*v1.ChatRes, error) {
-	// 获取检索配置
+	// Get retriever configuration
 	cfg := rag.GetRetrieverConfig()
 
-	// 初始化返回结果
+	// Initialize response
 	res := &v1.ChatRes{}
 
-	// 如果启用了知识库检索且提供了知识库ID，则进行检索
+	// If knowledge base retrieval is enabled and knowledge base ID is provided, perform retrieval
 	var documents []*schema.Document
 	if req.EnableRetriever && req.KnowledgeId != "" {
 		retrieverHandler := NewRetrieverHandler()
@@ -53,7 +53,7 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq) (*v1.ChatRes, e
 		mcpHandler := NewMCPHandler()
 		mcpDocs, mcpRes, err := mcpHandler.CallMCPToolsWithLLM(ctx, req)
 		if err != nil {
-			g.Log().Errorf(ctx, "MCP智能工具调用失败: %v", err)
+			g.Log().Errorf(ctx, "MCP intelligent tool call failed: %v", err)
 		} else {
 			// 将MCP结果合并到上下文中
 			documents = append(documents, mcpDocs...)
@@ -61,7 +61,7 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq) (*v1.ChatRes, e
 		}
 	}
 
-	// 获取Chat实例并生成答案
+	// Get Chat instance and generate answer
 	chatI := chat.GetChat()
 
 	answer, err := chatI.GetAnswer(ctx, req.ConvID, documents, req.Question)
@@ -74,7 +74,7 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq) (*v1.ChatRes, e
 		res.MCPResults = mcpResults
 	}
 
-	// 注意：GetAnswer方法已经保存了助手消息，这里不需要再保存
+	// Note: GetAnswer method has already saved the assistant message, no need to save again
 
 	return res, nil
 }

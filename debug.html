@@ -64,6 +64,20 @@
             border-radius: 4px;
         }
 
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-weight: normal;
+            cursor: pointer;
+        }
+
         .main-content {
             display: flex;
             gap: 20px;
@@ -339,7 +353,6 @@
                 <div class="menu-section">
                     <div class="menu-section-title">文档管理</div>
                     <div class="menu-item" data-section="doc-list">文档列表</div>
-                    <div class="menu-item" data-section="doc-reindex">重新索引文档</div>
                     <div class="menu-item" data-section="doc-delete">删除文档</div>
                 </div>
 
@@ -348,7 +361,7 @@
                     <div class="menu-section-title">Chunk管理</div>
                     <div class="menu-item" data-section="chunk-list">Chunk列表</div>
                     <div class="menu-item" data-section="chunk-delete">删除Chunk</div>
-                    <div class="menu-item" data-section="chunk-update-content">更新Chunk内容</div>
+                    <div class="menu-item" data-section="chunk-update-content">更新Chunk状态</div>
                 </div>
 
                 <!-- 文档索引 -->
@@ -439,7 +452,7 @@
 
                 <div class="form-group">
                     <label class="form-label">状态</label>
-                    <select class="form-select" id="kb_list_status">
+                    <select class="form-select" id="kb_filter_status">
                         <option value="">全部</option>
                         <option value="1">启用</option>
                         <option value="2">禁用</option>
@@ -633,45 +646,7 @@
                 </div>
             </div>
 
-            <!-- 重新索引文档 -->
-            <div class="api-section" id="doc-reindex">
-                <h2 class="api-title">
-                    <span class="api-method method-post">POST</span>
-                    重新索引文档
-                </h2>
-                <p class="api-description">对索引失败的文档进行重新索引（适用于文件已上传但向量化失败的情况）</p>
 
-                <div class="form-group">
-                    <label class="form-label">文档ID <span class="required">*</span></label>
-                    <input type="text" class="form-input" id="doc_reindex_id" placeholder="输入文档ID">
-                    <div class="helper-text">只能重新索引status不为2（Active）的文档</div>
-                </div>
-
-                <div class="inline-group">
-                    <div class="form-group">
-                        <label class="form-label">Chunk Size</label>
-                        <input type="number" class="form-input" id="doc_reindex_chunk_size" value="1000" min="1">
-                        <div class="helper-text">文档分块大小，默认1000</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Overlap Size</label>
-                        <input type="number" class="form-input" id="doc_reindex_overlap_size" value="100" min="0">
-                        <div class="helper-text">分块重叠大小，默认100</div>
-                    </div>
-                </div>
-
-                <button class="btn btn-primary" onclick="reindexDoc()">重新索引</button>
-                <button class="btn btn-secondary" onclick="clearForm('doc-reindex')">清空</button>
-
-                <div class="loading" id="doc_reindex_loading">请求中...</div>
-
-                <div class="response-section" id="doc_reindex_response">
-                    <div class="response-title">响应结果</div>
-                    <div class="response-status" id="doc_reindex_status"></div>
-                    <div class="response-body" id="doc_reindex_body"></div>
-                </div>
-            </div>
 
             <!-- 删除文档 -->
             <div class="api-section" id="doc-delete">
@@ -760,25 +735,31 @@
                 </div>
             </div>
 
-            <!-- 更新Chunk内容 -->
+            <!-- 更新Chunk状态 -->
             <div class="api-section" id="chunk-update-content">
                 <h2 class="api-title">
                     <span class="api-method method-put">PUT</span>
-                    更新Chunk内容
+                    更新Chunk状态
                 </h2>
-                <p class="api-description">更新指定chunk的内容</p>
+                <p class="api-description">更新指定chunk的状态</p>
 
                 <div class="form-group">
-                    <label class="form-label">Chunk ID <span class="required">*</span></label>
-                    <input type="text" class="form-input" id="chunk_content_id" placeholder="输入Chunk ID">
+                    <label class="form-label">Chunk ID列表 <span class="required">*</span></label>
+                    <textarea class="form-textarea" id="chunk_content_ids" placeholder="多个Chunk ID用逗号分隔，例如: id1,id2,id3"></textarea>
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">新内容 <span class="required">*</span></label>
-                    <textarea class="form-textarea" id="chunk_content_value" placeholder="输入新的chunk内容"></textarea>
+                    <label class="form-label">状态 <span class="required">*</span></label>
+                    <select class="form-select" id="chunk_update_status">
+                        <option value="1">启用 (Active)</option>
+                        <option value="2">禁用 (Inactive)</option>
+                        <option value="3">待处理 (Pending)</option>
+                        <option value="4">索引中 (Indexing)</option>
+                        <option value="5">失败 (Failed)</option>
+                    </select>
                 </div>
 
-                <button class="btn btn-primary" onclick="updateChunkContent()">更新</button>
+                <button class="btn btn-primary" onclick="updateChunkStatus()">更新</button>
                 <button class="btn btn-secondary" onclick="clearForm('chunk-update-content')">清空</button>
 
                 <div class="loading" id="chunk_content_loading">请求中...</div>
@@ -963,8 +944,8 @@
 
                 <div class="form-group">
                     <label class="form-label">启用知识库检索</label>
-                    <div class="checkbox-group">
-                        <label class="checkbox-label">
+                    <div>
+                        <label>
                             <input type="checkbox" id="chat_enable_retriever" checked>
                             启用知识库检索
                         </label>
@@ -991,8 +972,8 @@
 
                 <div class="form-group">
                     <label class="form-label">启用MCP</label>
-                    <div class="checkbox-group">
-                        <label class="checkbox-label">
+                    <div>
+                        <label>
                             <input type="checkbox" id="chat_use_mcp">
                             启用MCP工具调用
                         </label>
@@ -1076,7 +1057,7 @@
 
                 <div class="form-group">
                     <label class="form-label">状态</label>
-                    <select class="form-select" id="mcp_list_status">
+                    <select class="form-select" id="mcp_filter_status">
                         <option value="">全部</option>
                         <option value="1">启用</option>
                         <option value="0">禁用</option>
@@ -1476,10 +1457,10 @@
 
         async function getKBList() {
             const name = document.getElementById('kb_list_name').value.trim();
-            const status = document.getElementById('kb_list_status').value;
+            const status = document.getElementById('kb_filter_status').value;
             const category = document.getElementById('kb_list_category').value.trim();
-            const page = document.getElementById('kb_list_page').value;
-            const size = document.getElementById('kb_list_size').value;
+            const page = document.getElementById('kb_list_page') ? document.getElementById('kb_list_page').value || 1 : 1;
+            const size = document.getElementById('kb_list_size') ? document.getElementById('kb_list_size').value || 10 : 10;
 
             let url = getBaseUrl() + '/api/v1/kb?';
             const params = new URLSearchParams();
@@ -1502,6 +1483,8 @@
                 showResponse('kb_list', false, {error: error.message});
             }
         }
+
+
 
         async function getKB() {
             const id = document.getElementById('kb_get_id').value.trim();
@@ -1636,35 +1619,7 @@
             }
         }
 
-        async function reindexDoc() {
-            const docId = document.getElementById('doc_reindex_id').value.trim();
-            const chunkSize = document.getElementById('doc_reindex_chunk_size').value;
-            const overlapSize = document.getElementById('doc_reindex_overlap_size').value;
 
-            if (!docId) {
-                alert('请输入文档ID');
-                return;
-            }
-
-            showLoading('doc_reindex');
-
-            try {
-                const response = await fetch(getBaseUrl() + '/api/v1/documents/reindex', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        document_id: docId,
-                        chunk_size: parseInt(chunkSize),
-                        overlap_size: parseInt(overlapSize)
-                    })
-                });
-
-                const data = await response.json();
-                showResponse('doc_reindex', response.ok, data);
-            } catch (error) {
-                showResponse('doc_reindex', false, {error: error.message});
-            }
-        }
 
         async function deleteDoc() {
             const docId = document.getElementById('doc_delete_id').value.trim();
@@ -1742,24 +1697,31 @@
             }
         }
 
-        async function updateChunkContent() {
-            const chunkId = document.getElementById('chunk_content_id').value.trim();
-            const content = document.getElementById('chunk_content_value').value.trim();
+        async function updateChunkStatus() {
+            const chunkIds = document.getElementById('chunk_content_ids').value.trim();
+            const status = document.getElementById('chunk_update_status').value;
 
-            if (!chunkId || !content) {
-                alert('请填写所有必填字段');
+            if (!chunkIds) {
+                alert('请输入Chunk ID列表');
+                return;
+            }
+
+            const ids = chunkIds.split(',').map(id => id.trim()).filter(id => id);
+
+            if (ids.length === 0) {
+                alert('请输入有效的Chunk ID列表');
                 return;
             }
 
             showLoading('chunk_content');
 
             try {
-                const response = await fetch(getBaseUrl() + '/api/v1/chunks', {
+                const response = await fetch(getBaseUrl() + '/api/v1/chunks/status', {
                     method: 'PUT',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        ids: [chunkId],
-                        status: 1 // Active
+                        ids: ids,
+                        status: parseInt(status)
                     })
                 });
 
@@ -1983,7 +1945,7 @@
         }
 
         async function getMCPRegistryList() {
-            const status = document.getElementById('mcp_list_status').value;
+            const status = document.getElementById('mcp_filter_status').value;
             const page = document.getElementById('mcp_list_page').value;
             const size = document.getElementById('mcp_list_size').value;
 

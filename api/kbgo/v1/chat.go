@@ -10,7 +10,7 @@ type ChatReq struct {
 	ConvID          string              `json:"conv_id" v:"required"` // 会话id
 	Question        string              `json:"question" v:"required"`
 	KnowledgeId     string              `json:"knowledge_id"`
-	EnableRetriever bool                `json:"enable_retriever"`  // 是否启用知识库检索
+	EnableRetriever bool                `json:"enable_retriever"`  // Whether to enable knowledge base retrieval
 	TopK            int                 `json:"top_k"`             // 默认为5
 	Score           float64             `json:"score"`             // 默认为0.2 （默认是rrf检索模式，相似度分数不重要）
 	UseMCP          bool                `json:"use_mcp"`           // 是否使用MCP
@@ -34,15 +34,15 @@ type MCPResult struct {
 // ChatStreamReq 流式输出请求 (保留兼容性)
 type ChatStreamReq struct {
 	g.Meta      `path:"/v1/chat/stream" method:"post" tags:"rag"`
-	ConvID      string  `json:"conv_id" v:"required"` // 会话id
+	ConvID      string  `json:"conv_id" v:"required"` // Session ID
 	Question    string  `json:"question" v:"required"`
 	KnowledgeId string  `json:"knowledge_id"`
-	TopK        int     `json:"top_k"` // 默认为5
-	Score       float64 `json:"score"` // 默认为0.2 （默认是rrf检索模式，相似度分数不重要）
+	TopK        int     `json:"top_k"` // Default is 5
+	Score       float64 `json:"score"` // Default is 0.2 (similarity score is not important in RRF retrieval mode)
 }
 
-// ChatStreamRes 流式输出响应
+// ChatStreamRes Streaming output response
 type ChatStreamRes struct {
 	g.Meta `mime:"text/event-stream"`
-	// 流式输出不需要返回具体内容，内容通过HTTP响应流返回
+	// Streaming output does not need to return specific content, content is returned via HTTP response stream
 }

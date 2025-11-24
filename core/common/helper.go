@@ -97,25 +97,25 @@ func downloadURLFile(url, localPath string) error {
 	// 创建文件
 	file, err := os.Create(localPath)
 	if err != nil {
-		return fmt.Errorf("创建文件失败: %w", err)
+		return fmt.Errorf("Failed to create file: %w", err)
 	}
 	defer file.Close()
 
 	// 下载文件
 	resp, err := http.Get(url)
 	if err != nil {
-		return fmt.Errorf("下载文件失败: %w", err)
+		return fmt.Errorf("Failed to download file: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("下载文件失败，状态码: %d", resp.StatusCode)
+		return fmt.Errorf("Failed to download file, status code: %d", resp.StatusCode)
 	}
 
 	// 保存文件内容
 	_, err = io.Copy(file, resp.Body)
 	if err != nil {
-		return fmt.Errorf("保存文件失败: %w", err)
+		return fmt.Errorf("Failed to save file: %w", err)
 	}
 
 	return nil
@@ -125,7 +125,7 @@ func downloadURLFile(url, localPath string) error {
 func calculateLocalFileSHA256(filePath string) (string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return "", fmt.Errorf("打开文件失败: %w", err)
+		return "", fmt.Errorf("Failed to open file: %w", err)
 	}
 	defer file.Close()
 

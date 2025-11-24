@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	StatusPending  Status = 0 //文件准备切分
-	StatusIndexing Status = 1 //文件准备索引
+	StatusPending  Status = 0 // File ready to be split
+	StatusIndexing Status = 1 // File ready to be indexed
 	StatusActive   Status = 2
 	StatusFailed   Status = 3
 )
@@ -45,5 +45,5 @@ type DocumentsReIndexReq struct {
 
 type DocumentsReIndexRes struct {
 	g.Meta  `mime:"application/json"`
-	Message string `json:"message" dc:"重新索引任务已启动"`
+	Message string `json:"message" dc:"Re-indexing task started"`
 }

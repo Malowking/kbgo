@@ -10,7 +10,7 @@ import (
 	"github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/internal/dao"
-	"github.com/Malowking/kbgo/internal/logic/rag"
+	"github.com/Malowking/kbgo/internal/logic/index"
 	"github.com/Malowking/kbgo/internal/model/do"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/errors/gerror"
@@ -41,9 +41,8 @@ func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *
 	}
 
 	// 创建 Milvus collection
-	ragSvrM := rag.GetRagSvr()
-	milvusClient := ragSvrM.Client
-	err = common.CreateCollection(ctx, milvusClient, knowledgeId)
+	docIndexSvr := index.GetDocIndexSvr()
+	err = docIndexSvr.GetVectorStore().CreateCollection(ctx, knowledgeId)
 	if err != nil {
 		// 如果创建 Milvus collection 失败，删除已创建的数据库记录并返回错误
 		dao.GetDB().WithContext(ctx).Delete(&gormModel.KnowledgeBase{}, "id = ?", knowledgeId)
@@ -72,8 +71,7 @@ func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *
 }
 
 func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *v1.KBDeleteRes, err error) {
-	ragSvrM := rag.GetRagSvr()
-	milvusClient := ragSvrM.Client
+	docIndexSvr := index.GetDocIndexSvr()
 
 	// 开始事务
 	tx := dao.GetDB().Begin()
@@ -156,7 +154,7 @@ func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *
 	}
 
 	// 6. 删除 Milvus collection
-	err = common.DeleteCollection(ctx, milvusClient, req.Id)
+	err = docIndexSvr.GetVectorStore().DeleteCollection(ctx, req.Id)
 	if err != nil {
 		tx.Rollback()
 		return nil, err

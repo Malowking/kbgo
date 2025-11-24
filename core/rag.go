@@ -6,7 +6,7 @@ import (
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/config"
-	"github.com/Malowking/kbgo/core/indexer"
+	"github.com/Malowking/kbgo/core/indexer/vector_store"
 	"github.com/Malowking/kbgo/core/retriever"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/compose"
@@ -16,32 +16,12 @@ import (
 )
 
 // Rag represents the core RAG (Retrieval-Augmented Generation) service
-// It provides methods to build indexers and retrievers on-demand rather than
-// pre-creating and storing them in the struct, which is more resource-efficient
+// It provides methods to build retrievers for RAG functionality
 type Rag struct {
 	Client *milvusclient.Client
 	cm     model.BaseChatModel
 	conf   *config.Config
 }
-
-// BuildIndexer creates an indexer for the specified collection
-// collectionName: the Milvus collection name
-func (r *Rag) BuildIndexer(ctx context.Context, collectionName string, chunkSize, overlapSize int) (compose.Runnable[any, []string], error) {
-	return indexer.BuildIndexer(ctx, r.conf, collectionName, chunkSize, overlapSize)
-}
-
-// BuildIndexerWithSeparator creates an indexer for the specified collection with custom separator
-// collectionName: the Milvus collection name
-// separator: custom separator for document splitting
-func (r *Rag) BuildIndexerWithSeparator(ctx context.Context, collectionName string, chunkSize, overlapSize int, separator string) (compose.Runnable[any, []string], error) {
-	return indexer.BuildIndexerWithSeparator(ctx, r.conf, collectionName, chunkSize, overlapSize, separator)
-}
-
-// BuildIndexerAsync creates an async indexer for the specified collection
-// collectionName: the Milvus collection name
-//func (r *Rag) BuildIndexerAsync(ctx context.Context, collectionName string) (compose.Runnable[[]*schema.Document, []string], error) {
-//	return indexer.BuildIndexerAsync(ctx, r.conf, collectionName)
-//}
 
 // BuildRetriever creates a retriever for the specified collection
 // collectionName: the Milvus collection name
@@ -68,19 +48,33 @@ func New(ctx context.Context, conf *config.Config) (*Rag, error) {
 	if len(conf.Database) == 0 {
 		return nil, fmt.Errorf("Database is empty")
 	}
-	// 确保milvus database存在
-	err := common.CreateDatabaseIfNotExists(ctx, conf.Client, conf.Database)
+
+	// 创建向量存储配置并确保数据库存在
+	vectorStoreConfig := &vector_store.VectorStoreConfig{
+		Type:     vector_store.VectorStoreTypeMilvus,
+		Client:   conf.Client,
+		Database: conf.Database,
+	}
+
+	// 使用向量存储来确保数据库存在
+	vs, err := vector_store.NewVectorStore(vectorStoreConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create vector store: %w", err)
+	}
+
+	err = vs.CreateDatabaseIfNotExists(ctx)
 	if err != nil {
 		return nil, err
 	}
+
 	cm, err := common.GetChatModel(ctx, nil)
 	if err != nil {
 		g.Log().Error(ctx, "GetChatModel failed, err=%v", err)
 		return nil, err
 	}
 
-	// 不再在 init 时创建 indexer 和 retriever
-	// 而是在需要时通过 BuildIndexer/BuildRetriever 方法动态创建
+	// Rag 服务专注于检索功能，不再提供 indexer 方法
+	// 文档索引应该使用独立的 DocumentIndexService
 	return &Rag{
 		Client: conf.Client,
 		conf:   conf,

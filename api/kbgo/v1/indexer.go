@@ -5,31 +5,31 @@ import (
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
-// UploadFileReq 文件上传请求（原Indexer接口修改为纯上传）
+// UploadFileReq File upload request (Indexer interface modified to pure upload)
 type UploadFileReq struct {
 	g.Meta      `path:"/v1/upload" method:"post" mime:"multipart/form-data" tags:"rag"`
-	File        *ghttp.UploadFile `p:"file" type:"file" dc:"如果是本地文件，则直接上传文件"`
-	URL         string            `p:"url" dc:"如果是网络文件则直接输入url即可"`
-	KnowledgeId string            `p:"knowledge_id" dc:"知识库ID" v:"required"`
+	File        *ghttp.UploadFile `p:"file" type:"file" dc:"If it's a local file, upload the file directly"`
+	URL         string            `p:"url" dc:"If it's a web file, just enter the URL"`
+	KnowledgeId string            `p:"knowledge_id" dc:"Knowledge base ID" v:"required"`
 }
 
 type UploadFileRes struct {
 	g.Meta     `mime:"application/json"`
-	DocumentId string `json:"document_id" dc:"文档ID"`
-	Status     string `json:"status" dc:"上传状态"`
-	Message    string `json:"message" dc:"状态消息"`
+	DocumentId string `json:"document_id" dc:"Document ID"`
+	Status     string `json:"status" dc:"Upload status"`
+	Message    string `json:"message" dc:"Status message"`
 }
 
-// IndexDocumentsReq 文件索引请求（批量切分并向量化）
+// IndexDocumentsReq Document indexing request (batch splitting and vectorization)
 type IndexDocumentsReq struct {
 	g.Meta      `path:"/v1/index" method:"post" tags:"rag"`
-	DocumentIds []string `p:"document_ids" dc:"文档ID列表" v:"required"`
-	ChunkSize   int      `p:"chunk_size" dc:"文档分块大小" d:"1000"`
-	OverlapSize int      `p:"overlap_size" dc:"分块重叠大小" d:"100"`
-	Separator   string   `p:"separator" dc:"自定义分隔符，用于文档切分"`
+	DocumentIds []string `p:"document_ids" dc:"Document ID list" v:"required"`
+	ChunkSize   int      `p:"chunk_size" dc:"Document chunk size" d:"1000"`
+	OverlapSize int      `p:"overlap_size" dc:"Chunk overlap size" d:"100"`
+	Separator   string   `p:"separator" dc:"Custom separator for document splitting"`
 }
 
 type IndexDocumentsRes struct {
 	g.Meta  `mime:"application/json"`
-	Message string `json:"message" dc:"索引任务已启动"`
+	Message string `json:"message" dc:"Indexing task started"`
 }

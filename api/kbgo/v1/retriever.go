@@ -8,12 +8,12 @@ import (
 type RetrieverReq struct {
 	g.Meta          `path:"/v1/retriever" method:"post" tags:"rag"`
 	Question        string  `json:"question" v:"required"`
-	TopK            int     `json:"top_k"` // 默认为5
-	Score           float64 `json:"score"` // 默认为0.2
+	TopK            int     `json:"top_k"` // Default is 5
+	Score           float64 `json:"score"` // Default is 0.2
 	KnowledgeId     string  `json:"knowledge_id" v:"required"`
-	EnableRewrite   bool    `json:"enable_rewrite"`   // 是否启用查询重写（默认 false）
-	RewriteAttempts int     `json:"rewrite_attempts"` // 查询重写尝试次数（默认 3，仅在 enable_rewrite=true 时生效）
-	RetrieveMode    string  `json:"retrieve_mode"`    // 检索模式: milvus/rerank/rrf（默认 rerank）
+	EnableRewrite   bool    `json:"enable_rewrite"`   // Whether to enable query rewriting (default false)
+	RewriteAttempts int     `json:"rewrite_attempts"` // Number of query rewriting attempts (default 3, only effective when enable_rewrite=true)
+	RetrieveMode    string  `json:"retrieve_mode"`    // Retrieval mode: milvus/rerank/rrf (default rerank)
 }
 
 type RetrieverRes struct {

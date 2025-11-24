@@ -7,15 +7,15 @@ import (
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/internal/dao"
+	"github.com/Malowking/kbgo/internal/logic/index"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
-	"github.com/Malowking/kbgo/internal/logic/rag"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
 func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDeleteReq) (res *v1.DocumentsDeleteRes, err error) {
-	svr := rag.GetRagSvr()
+	docIndexSvr := index.GetDocIndexSvr()
 
 	// 开始事务
 	tx := dao.GetDB().Begin()
@@ -78,7 +78,7 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 		g.Log().Warningf(ctx, "DocumentsDelete: CollectionName is empty for document id %s, skipping Milvus deletion", req.DocumentId)
 	} else {
 		// 使用 DeleteDocument 函数删除 Milvus 中所有该文档的分片
-		err = svr.DeleteDocument(ctx, document.CollectionName, req.DocumentId)
+		err = docIndexSvr.DeleteDocument(ctx, document.CollectionName, req.DocumentId)
 		if err != nil {
 			g.Log().Errorf(ctx, "DocumentsDelete: Milvus DeleteDocument failed for documentId %s in collection %s, err: %v", req.DocumentId, document.CollectionName, err)
 			tx.Rollback()
