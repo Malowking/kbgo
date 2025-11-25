@@ -9,6 +9,7 @@ import (
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/config"
+	"github.com/Malowking/kbgo/core/indexer/file_store"
 	"github.com/Malowking/kbgo/core/indexer/vector_store"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
 	"github.com/Malowking/kbgo/internal/model/entity"
@@ -83,7 +84,7 @@ type indexContext struct {
 	ctx            context.Context
 	documentId     string
 	doc            entity.KnowledgeDocuments
-	storageType    common.StorageType
+	storageType    file_store.StorageType
 	localFilePath  string
 	chunks         []*schema.Document
 	needCleanup    bool // Whether temporary files need to be cleaned up
@@ -218,20 +219,20 @@ func (s *DocumentIndexer) stepCleanOldData(idxCtx *indexContext) error {
 
 // stepPrepareFile Step 4: Prepare file (handle storage type and file path)
 func (s *DocumentIndexer) stepPrepareFile(idxCtx *indexContext) error {
-	storageType := common.GetStorageType()
+	storageType := file_store.GetStorageType()
 	idxCtx.storageType = storageType
 
-	if storageType == common.StorageTypeRustFS {
+	if storageType == file_store.StorageTypeRustFS {
 		// RustFS storage: Need to download file to local temporary path first
-		uploadDir := common.GetUploadDirByFileType(idxCtx.doc.FileExtension)
+		uploadDir := file_store.GetUploadDirByFileType(idxCtx.doc.FileExtension)
 		localFilePath := idxCtx.doc.LocalFilePath
 		if localFilePath == "" {
 			localFilePath = gfile.Join(uploadDir, idxCtx.doc.FileName)
 		}
 
 		// Download file from RustFS to local temporary path
-		rustfsConfig := common.GetRustfsConfig()
-		err := common.DownloadFileToPath(idxCtx.ctx, rustfsConfig.Client, idxCtx.doc.RustfsBucket, idxCtx.doc.RustfsLocation, localFilePath)
+		rustfsConfig := file_store.GetRustfsConfig()
+		err := file_store.DownloadFile(idxCtx.ctx, rustfsConfig.Client, idxCtx.doc.RustfsBucket, idxCtx.doc.RustfsLocation, localFilePath)
 		if err != nil {
 			g.Log().Errorf(idxCtx.ctx, "Failed to download file from RustFS, documentId=%s, bucket=%s, location=%s, err=%v",
 				idxCtx.documentId, idxCtx.doc.RustfsBucket, idxCtx.doc.RustfsLocation, err)

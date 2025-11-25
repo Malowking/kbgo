@@ -9,7 +9,7 @@ import (
 type UploadFileReq struct {
 	g.Meta      `path:"/v1/upload" method:"post" mime:"multipart/form-data" tags:"rag"`
 	File        *ghttp.UploadFile `p:"file" type:"file" dc:"If it's a local file, upload the file directly"`
-	URL         string            `p:"url" dc:"If it's a web file, just enter the URL"`
+	URL         string            `p:"url" dc:"If it's a web file, just enter the URL" d:""`
 	KnowledgeId string            `p:"knowledge_id" dc:"Knowledge base ID" v:"required"`
 }
 

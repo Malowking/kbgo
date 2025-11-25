@@ -3,203 +3,194 @@ package kbgo
 import (
 	"context"
 	"fmt"
-	"mime/multipart"
 	"os"
 	"path/filepath"
 	"strings"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/common"
+	"github.com/Malowking/kbgo/core/indexer/file_store"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
 	"github.com/Malowking/kbgo/internal/model/entity"
 	"github.com/gogf/gf/v2/frame/g"
-	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/os/gfile"
 	"github.com/google/uuid"
 )
 
-// UploadFile 文件上传接口
+// UploadFile File upload interface
 func (c *ControllerV1) UploadFile(ctx context.Context, req *v1.UploadFileReq) (res *v1.UploadFileRes, err error) {
 	res = &v1.UploadFileRes{}
 
-	// 获取存储类型
-	storageType := common.GetStorageType()
+	// Get storage type
+	storageType := file_store.GetStorageType()
 
-	if storageType == common.StorageTypeRustFS {
-		// 使用 RustFS 存储
+	if storageType == file_store.StorageTypeRustFS {
+		// Use RustFS storage
 		return c.uploadToRustFS(ctx, req)
 	} else {
-		// 使用本地存储
+		// Use local storage
 		return c.uploadToLocal(ctx, req)
 	}
 }
 
-// uploadToRustFS 上传文件到 RustFS
+// uploadToRustFS Upload file to RustFS
 func (c *ControllerV1) uploadToRustFS(ctx context.Context, req *v1.UploadFileReq) (res *v1.UploadFileRes, err error) {
 	res = &v1.UploadFileRes{}
 
-	rustfsConfig := common.GetRustfsConfig()
+	rustfsConfig := file_store.GetRustfsConfig()
 
 	fileName, fileExt, fileSha256, tempFilePath, err := common.HandleFileUpload(ctx, req.File, req.URL)
 	if err != nil {
-		g.Log().Errorf(ctx, "处理文件上传前置步骤失败: %v", err)
+		g.Log().Errorf(ctx, "Failed to process file upload pre-steps: %v", err)
 		res.Status = "failed"
-		res.Message = "处理文件上传前置步骤失败: " + err.Error()
-		// 清理临时文件
+		res.Message = "Failed to process file upload pre-steps: " + err.Error()
+		// Clean up temporary file
 		_ = gfile.Remove(tempFilePath)
 		return res, err
 	}
 
-	// 检查是否已存在相同 SHA256 的文件
+	// Check if a file with the same SHA256 already exists
 	existingDoc, err := knowledge.GetDocumentBySHA256(ctx, req.KnowledgeId, fileSha256)
 	if err != nil {
-		g.Log().Errorf(ctx, "查询已存在文档失败: %v", err)
-		// 继续处理，不中断上传流程
+		g.Log().Errorf(ctx, "Failed to query existing document: %v", err)
+		// Continue processing, don't interrupt upload process
 	} else if existingDoc.Id != "" {
-		// 文件已存在，拒绝上传
-		g.Log().Infof(ctx, "文件已存在，SHA256: %s, 拒绝上传", fileSha256)
+		// File already exists, reject upload
+		g.Log().Infof(ctx, "File already exists, SHA256: %s, upload rejected", fileSha256)
 
-		// 清理临时文件
+		// Clean up temporary file
 		_ = gfile.Remove(tempFilePath)
 
-		// 返回错误信息
+		// Return error message
 		res.DocumentId = ""
 		res.Status = "failed"
-		res.Message = "文件重复，拒绝上传"
+		res.Message = "File already exists, upload rejected"
 		return res, nil
 	}
-
-	// 上传到 RustFS
-	uploadFile := &ghttp.UploadFile{
-		FileHeader: &multipart.FileHeader{
-			Filename: fileName,
-			Size:     gfile.Size(tempFilePath),
-		},
-	}
-
-	info, err := common.UploadToRustFS(ctx, rustfsConfig.Client, rustfsConfig.BucketName, req.KnowledgeId, uploadFile, "")
+	//TODO 全部修改为本地upload文件上传
+	info, err := file_store.UploadToRustFS(ctx, rustfsConfig.Client, rustfsConfig.BucketName, req.KnowledgeId, tempFilePath)
 	if err != nil {
-		g.Log().Errorf(ctx, "上传文件到RustFS失败: %v", err)
+		g.Log().Errorf(ctx, "Failed to upload file to RustFS: %v", err)
 		res.Status = "failed"
-		res.Message = "上传文件到RustFS失败: " + err.Error()
-		// 删除临时文件
+		res.Message = "Failed to upload file to RustFS: " + err.Error()
+		// Clean up temporary file
 		_ = gfile.Remove(tempFilePath)
 		return res, err
 	}
 
-	// 保存文档信息到数据库
+	// Save document information to database
 	documents := entity.KnowledgeDocuments{
 		Id:             strings.ReplaceAll(uuid.New().String(), "-", ""),
 		KnowledgeId:    req.KnowledgeId,
 		FileName:       fileName,
 		FileExtension:  fileExt,
-		CollectionName: req.KnowledgeId, // 使用知识库ID作为默认的CollectionName
+		CollectionName: req.KnowledgeId, // Use knowledge base ID as default CollectionName
 		SHA256:         fileSha256,
 		RustfsBucket:   rustfsConfig.BucketName,
 		RustfsLocation: info.Key,
-		LocalFilePath:  "", // 保存本地文件路径
+		LocalFilePath:  "", // Save local file path
 		Status:         int(v1.StatusPending),
 	}
 
-	// 保存到数据库
+	// Save to database
 	_, err = knowledge.SaveDocumentsInfo(ctx, documents)
 	if err != nil {
-		g.Log().Errorf(ctx, "保存文档信息到数据库失败: %v", err)
+		g.Log().Errorf(ctx, "Failed to save document information to database: %v", err)
 		res.Status = "failed"
-		res.Message = "保存文档信息到数据库失败: " + err.Error()
-		// 清理文件
+		res.Message = "Failed to save document information to database: " + err.Error()
+		// Clean up file
 		_ = gfile.Remove(tempFilePath)
 		return res, err
 	}
 	res.DocumentId = documents.Id
 	res.Status = "success"
-	res.Message = "文件上传成功"
+	res.Message = "File uploaded successfully"
 	return res, nil
 }
 
-// uploadToLocal 上传文件到本地
+// uploadToLocal Upload file to local
 func (c *ControllerV1) uploadToLocal(ctx context.Context, req *v1.UploadFileReq) (res *v1.UploadFileRes, err error) {
 	res = &v1.UploadFileRes{}
 
 	fileName, fileExt, fileSha256, tempFilePath, err := common.HandleFileUpload(ctx, req.File, req.URL)
 	if err != nil {
-		g.Log().Errorf(ctx, "处理文件失败: %v", err)
+		g.Log().Errorf(ctx, "Failed to process file: %v", err)
 		res.Status = "failed"
-		res.Message = "处理文件失败: " + err.Error()
-		// 清理临时文件
+		res.Message = "Failed to process file: " + err.Error()
+		// Clean up temporary file
 		_ = gfile.Remove(tempFilePath)
 		return res, err
 	}
 
-	// 检查是否已存在相同 SHA256 的文件
+	// Check if a file with the same SHA256 already exists
 	existingDoc, err := knowledge.GetDocumentBySHA256(ctx, req.KnowledgeId, fileSha256)
 	if err != nil {
-		g.Log().Errorf(ctx, "查询已存在文档失败: %v", err)
-		// 继续处理，不中断上传流程
+		g.Log().Errorf(ctx, "Failed to query existing document: %v", err)
+		// Continue processing, don't interrupt upload process
 	} else if existingDoc.Id != "" {
-		// 文件已存在，拒绝上传
-		g.Log().Infof(ctx, "文件已存在，SHA256: %s, 拒绝上传", fileSha256)
+		// File already exists, reject upload
+		g.Log().Infof(ctx, "File already exists, SHA256: %s, upload rejected", fileSha256)
 
-		// 清理临时文件
+		// Clean up temporary file
 		_ = gfile.Remove(tempFilePath)
 
-		// 返回错误信息
+		// Return error message
 		res.DocumentId = ""
 		res.Status = "failed"
-		res.Message = "文件重复，拒绝上传"
+		res.Message = "File duplicated, upload rejected"
 		return res, nil
 	}
 
 	uploadDir := filepath.Join("knowledge_file", req.KnowledgeId)
 
-	// 检查目录是否存在，不存在则报错
+	// Check if directory exists, report error if not
 	if !gfile.Exists(uploadDir) {
 		err = fmt.Errorf("upload directory does not exist: %s", uploadDir)
-		g.Log().Errorf(ctx, "上传目录不存在: %v", err)
+		g.Log().Errorf(ctx, "Upload directory does not exist: %v", err)
 		res.Status = "failed"
-		res.Message = "上传目录不存在: " + err.Error()
-		// 清理临时文件
+		res.Message = "Upload directory does not exist: " + err.Error()
+		// Clean up temporary file
 		_ = gfile.Remove(tempFilePath)
 		return res, err
 	}
 
 	finalFilePath := filepath.Join(uploadDir, fileName)
 
-	// 移动文件到最终位置
+	// Move file to final location
 	err = os.Rename(tempFilePath, finalFilePath)
 	if err != nil {
-		g.Log().Errorf(ctx, "移动文件到最终位置失败: %v", err)
+		g.Log().Errorf(ctx, "Failed to move file to final location: %v", err)
 		res.Status = "failed"
-		res.Message = "移动文件到最终位置失败: " + err.Error()
-		// 清理临时文件
+		res.Message = "Failed to move file to final location: " + err.Error()
+		// Clean up temporary file
 		_ = gfile.Remove(tempFilePath)
 		return res, err
 	}
 
-	// 保存文档信息到数据库
+	// Save document information to database
 	documents := entity.KnowledgeDocuments{
 		Id:             strings.ReplaceAll(uuid.New().String(), "-", ""),
 		KnowledgeId:    req.KnowledgeId,
 		FileName:       fileName,
 		FileExtension:  fileExt,
-		CollectionName: req.KnowledgeId, // 使用知识库ID作为默认的CollectionName
+		CollectionName: req.KnowledgeId, // Use knowledge base ID as default CollectionName
 		SHA256:         fileSha256,
 		LocalFilePath:  finalFilePath,
 		Status:         int(v1.StatusPending),
 	}
 
-	// 保存到数据库
+	// Save to database
 	_, err = knowledge.SaveDocumentsInfo(ctx, documents)
 	if err != nil {
-		g.Log().Errorf(ctx, "保存文档信息到数据库失败: %v", err)
+		g.Log().Errorf(ctx, "Failed to save document information to database: %v", err)
 		res.Status = "failed"
-		res.Message = "保存文档信息到数据库失败: " + err.Error()
-		// 清理文件
+		res.Message = "Failed to save document information to database: " + err.Error()
+		// Clean up file
 		_ = gfile.Remove(finalFilePath)
 		return res, err
 	}
 	res.DocumentId = documents.Id
 	res.Status = "success"
-	res.Message = "文件上传成功"
+	res.Message = "File uploaded successfully"
 	return res, nil
 }

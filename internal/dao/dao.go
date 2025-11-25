@@ -11,13 +11,6 @@ import (
 
 var db *gorm.DB
 
-func init() {
-	err := InitDB()
-	if err != nil {
-		g.Log().Fatal(context.Background(), "database connection not initialized")
-	}
-}
-
 // InitDB 初始化数据库连接
 func InitDB() error {
 	var err error

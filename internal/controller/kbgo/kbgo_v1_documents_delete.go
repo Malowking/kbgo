@@ -5,7 +5,7 @@ import (
 	"os"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
-	"github.com/Malowking/kbgo/core/common"
+	"github.com/Malowking/kbgo/core/indexer/file_store"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/index"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
@@ -53,8 +53,8 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 		// 如果只有当前这一个文档，则需要删除存储中的文件
 		if count == 1 {
 			// 根据存储类型决定删除方式
-			storageType := common.GetStorageType()
-			if storageType == common.StorageTypeRustFS {
+			storageType := file_store.GetStorageType()
+			if storageType == file_store.StorageTypeRustFS {
 				// 使用 RustFS 存储
 				if document.RustfsBucket != "" && document.RustfsLocation != "" {
 					needDeleteFromRustFS = true
@@ -104,8 +104,8 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 	if needDeleteFromRustFS && rustfsBucket != "" && rustfsLocation != "" {
 		g.Log().Infof(ctx, "DocumentsDelete: deleting file from RustFS, bucket=%s, location=%s", rustfsBucket, rustfsLocation)
 
-		rustfsConfig := common.GetRustfsConfig()
-		err = common.DeleteObject(ctx, rustfsConfig.Client, rustfsBucket, rustfsLocation)
+		rustfsConfig := file_store.GetRustfsConfig()
+		err = file_store.DeleteObject(ctx, rustfsConfig.Client, rustfsBucket, rustfsLocation)
 		if err != nil {
 			g.Log().Errorf(ctx, "DocumentsDelete: failed to delete from RustFS, bucket=%s, location=%s, err: %v", rustfsBucket, rustfsLocation, err)
 			// 不返回错误，因为数据库操作已经成功

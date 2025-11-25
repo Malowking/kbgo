@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Malowking/kbgo/api/kbgo/v1"
-	"github.com/Malowking/kbgo/core/common"
+	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/indexer/file_store"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/index"
 	"github.com/Malowking/kbgo/internal/model/do"
@@ -51,8 +51,8 @@ func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *
 	g.Log().Infof(ctx, "成功创建 Milvus collection: %s", knowledgeId)
 
 	// 如果使用本地存储，则创建对应的文件夹
-	storageType := common.GetStorageType()
-	if storageType == common.StorageTypeLocal {
+	storageType := file_store.GetStorageType()
+	if storageType == file_store.StorageTypeLocal {
 		// 创建 knowledge_file/{knowledge_id} 目录
 		knowledgeDir := filepath.Join("knowledge_file", knowledgeId)
 		if !gfile.Exists(knowledgeDir) {
@@ -106,10 +106,10 @@ func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *
 	localFiles := make(map[string]LocalFile)   // 使用 map 去重
 
 	// 根据存储类型收集需要删除的文件
-	storageType := common.GetStorageType()
+	storageType := file_store.GetStorageType()
 	for _, doc := range documents {
 		if doc.SHA256 != "" {
-			if storageType == common.StorageTypeRustFS {
+			if storageType == file_store.StorageTypeRustFS {
 				// RustFS 存储
 				if doc.RustfsBucket != "" && doc.RustfsLocation != "" {
 					rustfsFiles[doc.SHA256] = RustFSFile{
@@ -166,14 +166,14 @@ func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *
 	}
 
 	// 7. 事务成功提交后，删除存储中的文件（这个操作失败不影响数据一致性）
-	if storageType == common.StorageTypeRustFS {
+	if storageType == file_store.StorageTypeRustFS {
 		// 删除 RustFS 文件
 		if len(rustfsFiles) > 0 {
-			rustfsConfig := common.GetRustfsConfig()
+			rustfsConfig := file_store.GetRustfsConfig()
 			rustfsClient := rustfsConfig.Client
 
 			for _, file := range rustfsFiles {
-				err = common.DeleteObject(ctx, rustfsClient, file.Bucket, file.Location)
+				err = file_store.DeleteObject(ctx, rustfsClient, file.Bucket, file.Location)
 				if err != nil {
 					// 记录错误但不返回，因为数据库操作已经成功
 					_ = err // 避免未使用变量的警告

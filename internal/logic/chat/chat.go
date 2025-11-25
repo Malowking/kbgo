@@ -28,7 +28,8 @@ func GetChat() *Chat {
 	return chatInstance
 }
 
-func init() {
+// TODO不需要初始化，从数据库中读取模型参数
+func InitChat() {
 	ctx := gctx.New()
 
 	// 加载聊天配置

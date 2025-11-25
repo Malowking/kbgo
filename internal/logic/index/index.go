@@ -12,7 +12,7 @@ import (
 
 var docIndexSvr *indexer.DocumentIndexer
 
-func init() {
+func InitVectorDatabase() {
 	ctx := gctx.New()
 
 	// 确保共享服务已初始化

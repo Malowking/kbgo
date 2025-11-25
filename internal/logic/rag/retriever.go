@@ -10,6 +10,7 @@ import (
 
 var ragSvr = &core.Rag{}
 
+// TODO milvus客户端以及经被创建需要修改
 func init() {
 	ctx := gctx.New()
 	// 检查Milvus配置是否存在

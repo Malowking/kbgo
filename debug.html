@@ -752,10 +752,7 @@
                     <label class="form-label">状态 <span class="required">*</span></label>
                     <select class="form-select" id="chunk_update_status">
                         <option value="1">启用 (Active)</option>
-                        <option value="2">禁用 (Inactive)</option>
-                        <option value="3">待处理 (Pending)</option>
-                        <option value="4">索引中 (Indexing)</option>
-                        <option value="5">失败 (Failed)</option>
+                        <option value="0">禁用 (Inactive)</option>
                     </select>
                 </div>
 
@@ -1716,7 +1713,7 @@
             showLoading('chunk_content');
 
             try {
-                const response = await fetch(getBaseUrl() + '/api/v1/chunks/status', {
+                const response = await fetch(getBaseUrl() + '/api/v1/chunks', {
                     method: 'PUT',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Malowking/kbgo/core/indexer/file_store"
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/os/gfile"
 )
@@ -48,7 +49,7 @@ func HandleFileUpload(ctx context.Context, file *ghttp.UploadFile, urlStr string
 		fileName = file.Filename
 		fileExt = filepath.Ext(fileName)
 	} else if urlStr != "" {
-		fileName = GetFileNameFromURL(urlStr)
+		fileName = file_store.GetFileNameFromURL(urlStr)
 		fileExt = filepath.Ext(fileName)
 	} else {
 		err = fmt.Errorf("file or url is required")
@@ -56,7 +57,7 @@ func HandleFileUpload(ctx context.Context, file *ghttp.UploadFile, urlStr string
 	}
 
 	// 根据文件类型确定临时存储目录
-	tempUploadDir := GetUploadDirByFileType(fileExt)
+	tempUploadDir := file_store.GetUploadDirByFileType(fileExt)
 
 	// 确保目录存在
 	if !gfile.Exists(tempUploadDir) {

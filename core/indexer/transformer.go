@@ -44,7 +44,7 @@ func NewTransformer(ctx context.Context, chunkSize, overlapSize int, separator s
 		return nil, err
 	}
 
-	// md 文档特殊处理
+	// md 文档特殊处理 - 先按标题分割，然后按大小分割
 	mdTrans, err := markdown.NewHeaderSplitter(ctx, &markdown.HeaderConfig{
 		Headers:     map[string]string{"#": common.Title1, "##": common.Title2, "###": common.Title3},
 		TrimHeaders: false,
@@ -55,13 +55,17 @@ func NewTransformer(ctx context.Context, chunkSize, overlapSize int, separator s
 
 	trans.recursive = recTrans
 	trans.markdown = mdTrans
+	trans.chunkSize = chunkSize
+	trans.overlapSize = overlapSize
 	return trans, nil
 }
 
 type transformer struct {
-	markdown  document.Transformer
-	recursive document.Transformer
-	separator string // 自定义分隔符
+	markdown    document.Transformer
+	recursive   document.Transformer
+	chunkSize   int
+	overlapSize int
+	separator   string // 自定义分隔符
 }
 
 func (x *transformer) Transform(ctx context.Context, docs []*schema.Document, opts ...document.TransformerOption) ([]*schema.Document, error) {
@@ -74,7 +78,35 @@ func (x *transformer) Transform(ctx context.Context, docs []*schema.Document, op
 		}
 	}
 	if isMd {
-		return x.markdown.Transform(ctx, docs, opts...)
+		// 对于Markdown文件，先按标题分割，然后按大小分割
+		headerSplitDocs, err := x.markdown.Transform(ctx, docs, opts...)
+		if err != nil {
+			return nil, err
+		}
+
+		// 如果标题分割后的文档仍然过大，继续使用递归分割器按大小分割
+		finalDocs := make([]*schema.Document, 0)
+		for _, doc := range headerSplitDocs {
+			if len(doc.Content) > x.chunkSize {
+				// 创建一个临时的递归分割器来处理过大的chunks
+				sizeSplitter, err := recursive.NewSplitter(ctx, &recursive.Config{
+					ChunkSize:   x.chunkSize,
+					OverlapSize: x.overlapSize,
+					Separators:  []string{"\n", "。", "?", "？", "!", "！"},
+				})
+				if err != nil {
+					return nil, err
+				}
+				subDocs, err := sizeSplitter.Transform(ctx, []*schema.Document{doc}, opts...)
+				if err != nil {
+					return nil, err
+				}
+				finalDocs = append(finalDocs, subDocs...)
+			} else {
+				finalDocs = append(finalDocs, doc)
+			}
+		}
+		return finalDocs, nil
 	}
 	return x.recursive.Transform(ctx, docs, opts...)
 }

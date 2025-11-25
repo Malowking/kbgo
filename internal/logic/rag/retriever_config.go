@@ -15,7 +15,7 @@ type RetrieverConfig struct {
 var retrieverConfig *RetrieverConfig
 
 // init 初始化检索配置
-func init() {
+func InitRetrieverConfig() {
 	ctx := gctx.New()
 
 	// 加载检索配置
