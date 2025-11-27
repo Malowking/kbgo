@@ -8,9 +8,13 @@ import (
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
 	"github.com/Malowking/kbgo/internal/model/entity"
 	"github.com/gogf/gf/v2/errors/gerror"
+	"github.com/gogf/gf/v2/frame/g"
 )
 
 func (c *ControllerV1) UpdateChunk(ctx context.Context, req *v1.UpdateChunkReq) (res *v1.UpdateChunkRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "UpdateChunk request received - Ids: %v, Status: %d", req.Ids, req.Status)
+
 	// 开始事务
 	tx := dao.GetDB().Begin()
 	defer func() {

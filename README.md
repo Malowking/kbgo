@@ -49,6 +49,11 @@ KBGO 是一个基于 Go 语言开发的知识库管理系统，集成了 Milvus 
        name: "kbgo"      # 数据库名
        type: "mysql"     # 数据库类型，支持 mysql 和 postgresql
    
+   #向量数据库
+   vector_db:
+      type: "milvus"
+
+   
    # Milvus向量数据库配置
    milvus:
      address: "http://localhost:19530"
@@ -152,9 +157,6 @@ KBGO 是一个基于 Go 语言开发的知识库管理系统，集成了 Milvus 
 │   ├── logic           # 业务逻辑层
 │   ├── mcp             # MCP 协议实现
 │   └── model           # 数据模型
-├── milvus_new          # Milvus 相关封装
-├── milvus_new_re       # Milvus 检索相关封装
-└── test_mcp_server    # MCP 测试服务器
 ```
 
 ## 许可证

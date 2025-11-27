@@ -10,7 +10,7 @@ import (
 	"github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/chat"
-	"github.com/Malowking/kbgo/internal/logic/rag"
+	"github.com/Malowking/kbgo/internal/mcp"
 	"github.com/Malowking/kbgo/internal/mcp/client"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/cloudwego/eino/schema"
@@ -31,7 +31,7 @@ func (h *MCPHandler) CallMCPToolsWithLLM(ctx context.Context, req *v1.ChatReq) (
 	g.Log().Debugf(ctx, "Starting LLM intelligent tool call, question: %s", req.Question)
 
 	// 创建 MCP 工具调用器
-	toolCaller, err := rag.NewMCPToolCaller(ctx)
+	toolCaller, err := mcp.NewMCPToolCaller(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("创建MCP工具调用器失败: %w", err)
 	}
@@ -412,7 +412,7 @@ func (h *MCPHandler) CallSingleTool(ctx context.Context, serviceName string, too
 // CallMCPToolsWithLLMAndSave Use LLM to intelligently select and call MCP tools, and save message history
 func (h *MCPHandler) CallMCPToolsWithLLMAndSave(ctx context.Context, convID string, messages []*schema.Message, llmTools []*schema.ToolInfo) ([]*schema.Document, []*v1.MCPResult, error) {
 	// 1. 创建 MCP 工具调用器
-	toolCaller, err := rag.NewMCPToolCaller(ctx)
+	toolCaller, err := mcp.NewMCPToolCaller(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("创建MCP工具调用器失败: %w", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Malowking/kbgo/core/common"
 	"github.com/cloudwego/eino/components/prompt"
 	"github.com/cloudwego/eino/schema"
 	"github.com/gogf/gf/v2/frame/g"
@@ -33,14 +34,6 @@ func formatDocuments(docs []*schema.Document) string {
 			if docID, ok := doc.MetaData["document_id"]; ok {
 				builder.WriteString(fmt.Sprintf("文档ID: %v\n", docID))
 			}
-
-			// 从顶层获取可能存在的其他字段
-			//if page, ok := doc.MetaData["page"]; ok {
-			//	builder.WriteString(fmt.Sprintf("页码: %v\n", page))
-			//}
-			//if title, ok := doc.MetaData["title"]; ok {
-			//	builder.WriteString(fmt.Sprintf("标题: %v\n", title))
-			//}
 
 			// 处理嵌套的metadata字段，从里面提取_source、_knowledge_id等
 			if metadata, ok := doc.MetaData["metadata"]; ok {
@@ -152,5 +145,69 @@ func (x *Chat) docsMessages(ctx context.Context, convID string, docs []*schema.D
 	if err != nil {
 		return
 	}
+	return
+}
+
+// docsMessagesWithFiles 将检索到的上下文、问题和文件转换为多模态消息列表
+func (x *Chat) docsMessagesWithFiles(ctx context.Context, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile) (messages []*schema.Message, err error) {
+	chatHistory, err := x.eh.GetHistory(convID, 100)
+	if err != nil {
+		return
+	}
+
+	// 构建多模态消息
+	multimodalBuilder := common.NewMultimodalMessageBuilder()
+
+	// 使用base64编码方式（根据实际需求可以改为false使用URL方式）
+	userMessage, err := multimodalBuilder.BuildMultimodalMessage(question, files, true)
+	if err != nil {
+		return nil, fmt.Errorf("构建多模态消息失败: %w", err)
+	}
+
+	// 插入用户消息
+	err = x.eh.SaveMessage(userMessage, convID)
+	if err != nil {
+		return
+	}
+
+	template := createTemplate()
+	for i, doc := range docs {
+		g.Log().Debugf(context.Background(), "docs[%d]: %s", i, doc.Content)
+	}
+
+	// 格式化文档为包含元数据的字符串
+	formattedDocs := formatDocuments(docs)
+	g.Log().Debugf(context.Background(), "formatted docs: %s", formattedDocs)
+
+	data := map[string]any{
+		"role":           role,
+		"question":       userMessage.Content, // 使用处理后的消息内容
+		"formatted_docs": formattedDocs,
+		"chat_history":   chatHistory,
+	}
+
+	// 生成系统消息和历史消息
+	messages, err = formatMessages(template, data)
+	if err != nil {
+		return
+	}
+
+	// 如果有多模态内容，需要特殊处理最后一条用户消息
+	// 将多模态信息添加到消息的Extra字段中
+	if userMessage.Extra != nil {
+		if multimodalContents, ok := userMessage.Extra["multimodal_contents"]; ok {
+			// 找到最后一条用户消息并添加多模态内容
+			for i := len(messages) - 1; i >= 0; i-- {
+				if messages[i].Role == schema.User {
+					if messages[i].Extra == nil {
+						messages[i].Extra = make(map[string]any)
+					}
+					messages[i].Extra["multimodal_contents"] = multimodalContents
+					break
+				}
+			}
+		}
+	}
+
 	return
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/internal/logic/chat"
-	"github.com/Malowking/kbgo/internal/logic/rag"
+	"github.com/Malowking/kbgo/internal/logic/retriever"
 	"github.com/cloudwego/eino/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
@@ -23,77 +23,120 @@ func NewStreamHandler() *StreamHandler {
 }
 
 // ProcessStreamChat 处理流式聊天请求
-func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq) error {
-	var streamReader *schema.StreamReader[*schema.Message]
-
+func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploadedFiles []*common.MultimodalFile) error {
 	// 获取检索配置
-	cfg := rag.GetRetrieverConfig()
+	cfg := retriever.GetRetrieverConfig()
 
-	// 如果启用了知识库检索且提供了知识库ID，则进行检索
-	var documents []*schema.Document
-	var retrieverMetadata map[string]interface{}
-	if req.EnableRetriever && req.KnowledgeId != "" {
-		retrieverHandler := NewRetrieverHandler()
-		retriever, err := retrieverHandler.ProcessRetrieval(ctx, &v1.RetrieverReq{
-			Question:        req.Question,
-			TopK:            req.TopK,
-			Score:           req.Score,
-			KnowledgeId:     req.KnowledgeId,
-			EnableRewrite:   cfg.EnableRewrite,
-			RewriteAttempts: cfg.RewriteAttempts,
-			RetrieveMode:    cfg.RetrieveMode,
-		})
-		if err != nil {
-			g.Log().Error(ctx, err)
-			return err
-		}
-		documents = retriever.Document
-
-		// 准备检索器元数据
-		retrieverMetadata = map[string]interface{}{
-			"type":           "retriever",
-			"knowledge_id":   req.KnowledgeId,
-			"top_k":          req.TopK,
-			"score":          req.Score,
-			"document_count": len(retriever.Document),
-		}
+	// 使用channel并行处理检索和MCP
+	type retrievalResult struct {
+		documents         []*schema.Document
+		retrieverMetadata map[string]interface{}
+		err               error
 	}
 
-	var mcpResults []*v1.MCPResult
-	var mcpMetadata []map[string]interface{}
-	// 如果启用MCP，则执行MCP逻辑
-	if req.UseMCP {
-		// 使用新的智能工具调用逻辑
-		mcpHandler := NewMCPHandler()
-		mcpDocs, mcpRes, err := mcpHandler.CallMCPToolsWithLLM(ctx, req)
-		if err != nil {
-			g.Log().Errorf(ctx, "MCP智能工具调用失败: %v", err)
-		} else {
-			// 将MCP结果合并到上下文中
-			documents = append(documents, mcpDocs...)
-			mcpResults = mcpRes
+	type mcpResult struct {
+		mcpResults  []*v1.MCPResult
+		mcpMetadata []map[string]interface{}
+		err         error
+	}
 
-			// 准备MCP元数据
-			mcpMetadata = make([]map[string]interface{}, len(mcpRes))
-			for i, result := range mcpRes {
-				mcpMetadata[i] = map[string]interface{}{
-					"type":         "mcp",
-					"service_name": result.ServiceName,
-					"tool_name":    result.ToolName,
-					"content":      result.Content,
+	retrievalChan := make(chan retrievalResult, 1)
+	mcpChan := make(chan mcpResult, 1)
+
+	// 并行执行检索
+	go func() {
+		var result retrievalResult
+		if req.EnableRetriever && req.KnowledgeId != "" {
+			retrieverRes, err := retriever.ProcessRetrieval(ctx, &v1.RetrieverReq{
+				Question:        req.Question,
+				TopK:            req.TopK,
+				Score:           req.Score,
+				KnowledgeId:     req.KnowledgeId,
+				EnableRewrite:   cfg.EnableRewrite,
+				RewriteAttempts: cfg.RewriteAttempts,
+				RetrieveMode:    cfg.RetrieveMode,
+			})
+			if err != nil {
+				g.Log().Error(ctx, err)
+				result.err = err
+			} else {
+				result.documents = retrieverRes.Document
+				result.retrieverMetadata = map[string]interface{}{
+					"type":           "retriever",
+					"knowledge_id":   req.KnowledgeId,
+					"top_k":          req.TopK,
+					"score":          req.Score,
+					"document_count": len(retrieverRes.Document),
 				}
 			}
 		}
+		retrievalChan <- result
+	}()
+
+	// 并行执行MCP
+	go func() {
+		var result mcpResult
+		if req.UseMCP {
+			mcpHandler := NewMCPHandler()
+			_, mcpRes, err := mcpHandler.CallMCPToolsWithLLM(ctx, req)
+			if err != nil {
+				g.Log().Errorf(ctx, "MCP智能工具调用失败: %v", err)
+				result.err = err
+			} else {
+				result.mcpResults = mcpRes
+				result.mcpMetadata = make([]map[string]interface{}, len(mcpRes))
+				for i, res := range mcpRes {
+					result.mcpMetadata[i] = map[string]interface{}{
+						"type":         "mcp",
+						"service_name": res.ServiceName,
+						"tool_name":    res.ToolName,
+						"content":      res.Content,
+					}
+				}
+			}
+		}
+		mcpChan <- result
+	}()
+
+	// 等待并行任务完成
+	retrievalRes := <-retrievalChan
+	mcpRes := <-mcpChan
+
+	if retrievalRes.err != nil {
+		return retrievalRes.err
 	}
+
+	// 合并文档
+	var documents []*schema.Document
+	documents = retrievalRes.documents
 
 	// 获取Chat实例
 	chatI := chat.GetChat()
+
+	// 过滤出多模态文件（只有图片、音频、视频才使用多模态）
+	var multimodalFiles []*common.MultimodalFile
+	for _, file := range uploadedFiles {
+		if file.FileType == common.FileTypeImage ||
+			file.FileType == common.FileTypeAudio ||
+			file.FileType == common.FileTypeVideo {
+			multimodalFiles = append(multimodalFiles, file)
+		} else {
+			g.Log().Infof(ctx, "Skipping non-multimodal file in stream: %s (type: %s)", file.FileName, file.FileType)
+		}
+	}
 
 	// 记录开始时间
 	start := time.Now()
 
 	// 获取流式响应
-	streamReader, err := chatI.GetAnswerStream(ctx, req.ConvID, documents, req.Question)
+	var streamReader *schema.StreamReader[*schema.Message]
+	var err error
+	if len(multimodalFiles) > 0 {
+		g.Log().Infof(ctx, "Using multimodal stream chat with %d files", len(multimodalFiles))
+		streamReader, err = chatI.GetAnswerStreamWithFiles(ctx, req.ConvID, documents, req.Question, multimodalFiles)
+	} else {
+		streamReader, err = chatI.GetAnswerStream(ctx, req.ConvID, documents, req.Question)
+	}
 	if err != nil {
 		g.Log().Error(ctx, err)
 		return err
@@ -101,10 +144,10 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq) error {
 	defer streamReader.Close()
 
 	// 在流式响应中添加MCP结果
-	allDocuments := h.buildAllDocuments(documents, mcpResults)
+	allDocuments := h.buildAllDocuments(documents, mcpRes.mcpResults)
 
 	// 准备元数据
-	metadata := h.buildMetadata(retrieverMetadata, mcpMetadata)
+	metadata := h.buildMetadata(retrievalRes.retrieverMetadata, mcpRes.mcpMetadata)
 
 	// 将元数据添加到所有文档中
 	if len(metadata) > 0 {

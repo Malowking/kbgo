@@ -5,7 +5,7 @@ import (
 	"os"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
-	"github.com/Malowking/kbgo/core/indexer/file_store"
+	"github.com/Malowking/kbgo/core/file_store"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/index"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
@@ -15,6 +15,9 @@ import (
 )
 
 func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDeleteReq) (res *v1.DocumentsDeleteRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "DocumentsDelete request received - DocumentId: %s", req.DocumentId)
+
 	docIndexSvr := index.GetDocIndexSvr()
 
 	// 开始事务
@@ -55,11 +58,16 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 			// 根据存储类型决定删除方式
 			storageType := file_store.GetStorageType()
 			if storageType == file_store.StorageTypeRustFS {
-				// 使用 RustFS 存储
+				// 使用 RustFS 存储，需要删除 RustFS 上的文件和本地文件
 				if document.RustfsBucket != "" && document.RustfsLocation != "" {
 					needDeleteFromRustFS = true
 					rustfsBucket = document.RustfsBucket
 					rustfsLocation = document.RustfsLocation
+				}
+				// RustFS 模式也需要删除本地文件
+				if document.LocalFilePath != "" {
+					needDeleteLocalFile = true
+					localFilePath = document.LocalFilePath
 				}
 			} else {
 				// 使用本地存储
@@ -112,7 +120,10 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 		} else {
 			g.Log().Infof(ctx, "DocumentsDelete: successfully deleted from RustFS, bucket=%s, location=%s", rustfsBucket, rustfsLocation)
 		}
-	} else if needDeleteLocalFile && localFilePath != "" {
+	}
+
+	// 删除本地文件（RustFS 模式和本地存储模式都需要）
+	if needDeleteLocalFile && localFilePath != "" {
 		g.Log().Infof(ctx, "DocumentsDelete: deleting local file, path=%s", localFilePath)
 
 		err = os.Remove(localFilePath)

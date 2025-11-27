@@ -1,16 +1,19 @@
 package history
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
 	"github.com/Malowking/kbgo/internal/dao"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/cloudwego/eino/schema"
+	"github.com/gogf/gf/v2/frame/g"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -47,8 +50,19 @@ func (h *Manager) SaveMessage(message *schema.Message, convID string) error {
 	return h.SaveMessageWithMetadata(message, convID, nil)
 }
 
-// SaveMessageWithMetrics 保存带指标的消息
+// SaveMessageWithMetrics 保存带指标的消息（异步）
 func (h *Manager) SaveMessageWithMetrics(message *MessageWithMetrics, convID string) error {
+	// 使用全局异步保存器
+	asyncSaver := GetGlobalAsyncSaver()
+
+	// 异步保存，不等待结果（提升性能）
+	asyncSaver.SaveMessageAsync(message, convID)
+
+	return nil
+}
+
+// SaveMessageWithMetricsSync 保存带指标的消息（同步）
+func (h *Manager) SaveMessageWithMetricsSync(message *MessageWithMetrics, convID string) error {
 	// 确保对话存在
 	if err := h.ensureConversationExists(convID); err != nil {
 		return err
@@ -356,4 +370,211 @@ func (h *Manager) GetMessageMetadata(msgID string) (map[string]interface{}, erro
 	}
 
 	return metadata, nil
+}
+
+// ========== 异步消息保存器 ==========
+
+// SaveTask 消息保存任务
+type SaveTask struct {
+	Message *MessageWithMetrics
+	ConvID  string
+	Result  chan error
+}
+
+// AsyncMessageSaver 异步消息保存器
+type AsyncMessageSaver struct {
+	db         *gorm.DB
+	taskQueue  chan *SaveTask
+	workerPool int
+	wg         sync.WaitGroup
+	ctx        context.Context
+	cancel     context.CancelFunc
+}
+
+// NewAsyncMessageSaver 创建异步消息保存器
+func NewAsyncMessageSaver(workerPool int) *AsyncMessageSaver {
+	if workerPool <= 0 {
+		workerPool = 5 // 默认5个worker
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	saver := &AsyncMessageSaver{
+		db:         dao.GetDB(),
+		taskQueue:  make(chan *SaveTask, 200), // 缓冲队列
+		workerPool: workerPool,
+		ctx:        ctx,
+		cancel:     cancel,
+	}
+
+	// 启动worker pool
+	saver.start()
+
+	return saver
+}
+
+// start 启动worker pool
+func (s *AsyncMessageSaver) start() {
+	for i := 0; i < s.workerPool; i++ {
+		s.wg.Add(1)
+		go s.worker()
+	}
+}
+
+// worker 处理消息保存任务
+func (s *AsyncMessageSaver) worker() {
+	defer s.wg.Done()
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case task, ok := <-s.taskQueue:
+			if !ok {
+				return
+			}
+			// 处理消息保存
+			err := s.saveMessageSync(task.Message, task.ConvID)
+			if task.Result != nil {
+				task.Result <- err
+				close(task.Result)
+			}
+		}
+	}
+}
+
+// saveMessageSync 同步保存消息（worker使用）
+func (s *AsyncMessageSaver) saveMessageSync(message *MessageWithMetrics, convID string) error {
+	// 确保对话存在
+	if err := s.ensureConversationExists(convID); err != nil {
+		return err
+	}
+
+	now := time.Now()
+
+	// 处理工具调用
+	var toolCallsJSON gormModel.JSON
+	if message.ToolCalls != nil {
+		data, err := json.Marshal(message.ToolCalls)
+		if err != nil {
+			g.Log().Errorf(context.Background(), "failed to marshal tool calls: %v", err)
+		} else {
+			toolCallsJSON = gormModel.JSON(data)
+		}
+	}
+
+	// 创建消息记录
+	msg := &gormModel.Message{
+		MsgID:      generateMessageID(),
+		ConvID:     convID,
+		Role:       string(message.Role),
+		CreateTime: &now,
+		TokensUsed: message.TokensUsed,
+		LatencyMs:  message.LatencyMs,
+		TraceID:    message.TraceID,
+		ToolCalls:  toolCallsJSON,
+	}
+
+	// 处理内容块
+	var contents []*gormModel.MessageContent
+	content := &gormModel.MessageContent{
+		ContentType: "text",
+		TextContent: message.Content,
+		SortOrder:   0,
+		CreateTime:  &now,
+	}
+	contents = append(contents, content)
+
+	return dao.Message.CreateWithContents(nil, msg, contents)
+}
+
+// SaveMessageAsync 异步保存消息（不等待结果）
+func (s *AsyncMessageSaver) SaveMessageAsync(message *MessageWithMetrics, convID string) {
+	task := &SaveTask{
+		Message: message,
+		ConvID:  convID,
+		Result:  nil, // 不需要结果通知
+	}
+
+	select {
+	case s.taskQueue <- task:
+		// 任务提交成功
+	default:
+		// 队列满了，记录警告但不阻塞
+		g.Log().Warning(context.Background(), "Message save queue is full, message may be lost")
+	}
+}
+
+// SaveMessageAsyncWait 异步保存消息（等待结果）
+func (s *AsyncMessageSaver) SaveMessageAsyncWait(ctx context.Context, message *MessageWithMetrics, convID string) error {
+	task := &SaveTask{
+		Message: message,
+		ConvID:  convID,
+		Result:  make(chan error, 1),
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case s.taskQueue <- task:
+		// 任务提交成功，等待结果
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-task.Result:
+			return err
+		}
+	default:
+		// 队列满了，同步保存
+		g.Log().Warning(ctx, "Message save queue is full, saving synchronously")
+		return s.saveMessageSync(message, convID)
+	}
+}
+
+// ensureConversationExists 确保对话存在（AsyncMessageSaver使用）
+func (s *AsyncMessageSaver) ensureConversationExists(convID string) error {
+	conversation, err := dao.Conversation.GetByConvID(nil, convID)
+	if err != nil {
+		return err
+	}
+
+	if conversation == nil {
+		now := time.Now()
+		conversation := &gormModel.Conversation{
+			ConvID:           convID,
+			UserID:           "default_user",
+			Title:            "New Conversation",
+			ModelName:        "default_model",
+			ConversationType: "text",
+			Status:           "active",
+			CreateTime:       &now,
+			UpdateTime:       &now,
+		}
+		return dao.Conversation.Create(nil, conversation)
+	}
+
+	return nil
+}
+
+// Shutdown 关闭异步保存器
+func (s *AsyncMessageSaver) Shutdown() {
+	s.cancel()
+	close(s.taskQueue)
+	s.wg.Wait()
+}
+
+// GetQueueSize 获取当前队列大小
+func (s *AsyncMessageSaver) GetQueueSize() int {
+	return len(s.taskQueue)
+}
+
+// 全局异步保存器实例
+var globalAsyncSaver *AsyncMessageSaver
+var saverOnce sync.Once
+
+// GetGlobalAsyncSaver 获取全局异步保存器
+func GetGlobalAsyncSaver() *AsyncMessageSaver {
+	saverOnce.Do(func() {
+		globalAsyncSaver = NewAsyncMessageSaver(5)
+	})
+	return globalAsyncSaver
 }

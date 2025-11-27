@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
-	"github.com/Malowking/kbgo/core/indexer/file_store"
+	"github.com/Malowking/kbgo/core/file_store"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/index"
 	"github.com/Malowking/kbgo/internal/model/do"
@@ -20,6 +20,10 @@ import (
 )
 
 func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *v1.KBCreateRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "KBCreate request received - Name: %s, Description: %s, Category: %s",
+		req.Name, req.Description, req.Category)
+
 	res = &v1.KBCreateRes{}
 
 	// 生成 UUID 作为知识库 ID (使用与项目其他地方相同的格式)
@@ -71,6 +75,9 @@ func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *
 }
 
 func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *v1.KBDeleteRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "KBDelete request received - Id: %s", req.Id)
+
 	docIndexSvr := index.GetDocIndexSvr()
 
 	// 开始事务
@@ -222,6 +229,10 @@ func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *
 }
 
 func (c *ControllerV1) KBGetList(ctx context.Context, req *v1.KBGetListReq) (res *v1.KBGetListRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "KBGetList request received - Name: %v, Status: %v, Category: %v",
+		req.Name, req.Status, req.Category)
+
 	res = &v1.KBGetListRes{}
 	err = dao.KnowledgeBase.Ctx(ctx).Where(do.KnowledgeBase{
 		Status:   req.Status,
@@ -232,12 +243,19 @@ func (c *ControllerV1) KBGetList(ctx context.Context, req *v1.KBGetListReq) (res
 }
 
 func (c *ControllerV1) KBGetOne(ctx context.Context, req *v1.KBGetOneReq) (res *v1.KBGetOneRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "KBGetOne request received - Id: %s", req.Id)
+
 	res = &v1.KBGetOneRes{}
 	err = dao.KnowledgeBase.Ctx(ctx).WherePri(req.Id).Scan(&res.KnowledgeBase)
 	return
 }
 
 func (c *ControllerV1) KBUpdate(ctx context.Context, req *v1.KBUpdateReq) (res *v1.KBUpdateRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "KBUpdate request received - Id: %s, Name: %v, Description: %v, Category: %v, Status: %v",
+		req.Id, req.Name, req.Description, req.Category, req.Status)
+
 	// 开始事务
 	tx := dao.GetDB().Begin()
 	defer func() {
@@ -269,6 +287,9 @@ func (c *ControllerV1) KBUpdate(ctx context.Context, req *v1.KBUpdateReq) (res *
 }
 
 func (c *ControllerV1) KBUpdateStatus(ctx context.Context, req *v1.KBUpdateStatusReq) (res *v1.KBUpdateStatusRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "KBUpdateStatus request received - Id: %s, Status: %d", req.Id, req.Status)
+
 	// 开始事务
 	tx := dao.GetDB().Begin()
 	defer func() {

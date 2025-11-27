@@ -11,7 +11,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-// Loader component initialization function of node 'Loader1' in graph 'rag'
+// Loader component initialization function of node 'Loader1' in graph 'retriever'
 func Loader(ctx context.Context) (ldr document.Loader, err error) {
 	mldr := &multiLoader{}
 

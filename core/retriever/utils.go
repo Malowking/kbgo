@@ -1,0 +1,78 @@
+package retriever
+
+import (
+	"context"
+
+	"github.com/Malowking/kbgo/core/config"
+	"github.com/Malowking/kbgo/core/vector_store"
+	er "github.com/cloudwego/eino/components/retriever"
+	"github.com/cloudwego/eino/schema"
+	"github.com/gogf/gf/v2/frame/g"
+)
+
+// retrieve 执行底层的 Milvus 检索
+func retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveReq) ([]*schema.Document, error) {
+	var filter string
+	// 如果有需要排除的ID，添加到 filter 中
+	if len(req.excludeIDs) > 0 {
+		// 构建 id not in [...] 表达式
+		filter = "id not in ["
+		for i, id := range req.excludeIDs {
+			if i > 0 {
+				filter += ", "
+			}
+			filter += `"` + id + `"`
+		}
+		filter += "]"
+	}
+
+	// knowledge name == collection name
+	collectionName := req.KnowledgeId
+
+	// 使用配置中的VectorStore
+	vectorStore := conf.VectorStore
+
+	// 直接传入整个配置，让 NewMilvusRetriever 内部处理
+	r, err := vectorStore.NewMilvusRetriever(ctx, conf, collectionName)
+	if err != nil {
+		g.Log().Errorf(ctx, "failed to create retriever for collection %s, err=%v", collectionName, err)
+		return nil, err
+	}
+
+	// 获取 TopK 值（从配置或请求中）
+	topK := conf.TopK
+	if req.TopK != nil {
+		topK = *req.TopK
+	}
+
+	// Milvus 检索的 TopK，可以设置得比最终需要的数量大一些
+	// 因为后续会经过 rerank 重新排序
+	milvusTopK := topK * 5 // 取5倍数量，给 rerank 更多选择空间
+	if milvusTopK < 20 {
+		milvusTopK = 20 // 至少取20个
+	}
+
+	// 执行检索
+	var options []er.Option
+	options = append(options, er.WithTopK(milvusTopK))
+
+	// 只有在有过滤条件时才添加 filter
+	if filter != "" {
+		options = append(options, vector_store.WithFilter(filter))
+	}
+
+	msg, err := r.Retrieve(ctx, req.optQuery, options...)
+	if err != nil {
+		return nil, err
+	}
+
+	// 归一化Milvus的COSINE分数（0-2范围）到标准的0-1范围
+	// Milvus COSINE分数含义：0=完全相反, 1=正交, 2=完全相同
+	// 归一化后：0=完全相反, 0.5=正交, 1=完全相同
+	for _, s := range msg {
+		normalizedScore := s.Score() / 2.0
+		s.WithScore(normalizedScore)
+	}
+
+	return msg, nil
+}

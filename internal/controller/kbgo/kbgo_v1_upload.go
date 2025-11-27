@@ -2,14 +2,14 @@ package kbgo
 
 import (
 	"context"
-	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/common"
-	"github.com/Malowking/kbgo/core/indexer/file_store"
+	"github.com/Malowking/kbgo/core/file_store"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
 	"github.com/Malowking/kbgo/internal/model/entity"
 	"github.com/gogf/gf/v2/frame/g"
@@ -19,6 +19,9 @@ import (
 
 // UploadFile File upload interface
 func (c *ControllerV1) UploadFile(ctx context.Context, req *v1.UploadFileReq) (res *v1.UploadFileRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "UploadFile request received - URL: %s, KnowledgeId: %s", req.URL, req.KnowledgeId)
+
 	res = &v1.UploadFileRes{}
 
 	// Get storage type
@@ -39,15 +42,18 @@ func (c *ControllerV1) uploadToRustFS(ctx context.Context, req *v1.UploadFileReq
 
 	rustfsConfig := file_store.GetRustfsConfig()
 
-	fileName, fileExt, fileSha256, tempFilePath, err := common.HandleFileUpload(ctx, req.File, req.URL)
+	fileName, fileExt, fileSha256, fileReader, err := common.HandleFileUpload(ctx, req.File, req.URL)
 	if err != nil {
 		g.Log().Errorf(ctx, "Failed to process file upload pre-steps: %v", err)
 		res.Status = "failed"
 		res.Message = "Failed to process file upload pre-steps: " + err.Error()
-		// Clean up temporary file
-		_ = gfile.Remove(tempFilePath)
 		return res, err
 	}
+	defer func() {
+		if closer, ok := fileReader.(io.Closer); ok {
+			_ = closer.Close()
+		}
+	}()
 
 	// Check if a file with the same SHA256 already exists
 	existingDoc, err := knowledge.GetDocumentBySHA256(ctx, req.KnowledgeId, fileSha256)
@@ -58,23 +64,23 @@ func (c *ControllerV1) uploadToRustFS(ctx context.Context, req *v1.UploadFileReq
 		// File already exists, reject upload
 		g.Log().Infof(ctx, "File already exists, SHA256: %s, upload rejected", fileSha256)
 
-		// Clean up temporary file
-		_ = gfile.Remove(tempFilePath)
-
 		// Return error message
 		res.DocumentId = ""
 		res.Status = "failed"
 		res.Message = "File already exists, upload rejected"
 		return res, nil
 	}
-	//TODO 全部修改为本地upload文件上传
-	info, err := file_store.UploadToRustFS(ctx, rustfsConfig.Client, rustfsConfig.BucketName, req.KnowledgeId, tempFilePath)
+
+	// Upload to RustFS using new method
+	localPath, rustfsKey, err := file_store.SaveFileToRustFS(ctx, rustfsConfig.Client, rustfsConfig.BucketName, req.KnowledgeId, fileName, fileReader)
 	if err != nil {
 		g.Log().Errorf(ctx, "Failed to upload file to RustFS: %v", err)
 		res.Status = "failed"
 		res.Message = "Failed to upload file to RustFS: " + err.Error()
-		// Clean up temporary file
-		_ = gfile.Remove(tempFilePath)
+		// Clean up local file if it was created
+		if localPath != "" {
+			_ = gfile.Remove(localPath)
+		}
 		return res, err
 	}
 
@@ -87,8 +93,8 @@ func (c *ControllerV1) uploadToRustFS(ctx context.Context, req *v1.UploadFileReq
 		CollectionName: req.KnowledgeId, // Use knowledge base ID as default CollectionName
 		SHA256:         fileSha256,
 		RustfsBucket:   rustfsConfig.BucketName,
-		RustfsLocation: info.Key,
-		LocalFilePath:  "", // Save local file path
+		RustfsLocation: rustfsKey,
+		LocalFilePath:  localPath, // Save local file path
 		Status:         int(v1.StatusPending),
 	}
 
@@ -98,8 +104,8 @@ func (c *ControllerV1) uploadToRustFS(ctx context.Context, req *v1.UploadFileReq
 		g.Log().Errorf(ctx, "Failed to save document information to database: %v", err)
 		res.Status = "failed"
 		res.Message = "Failed to save document information to database: " + err.Error()
-		// Clean up file
-		_ = gfile.Remove(tempFilePath)
+		// Clean up local file
+		_ = gfile.Remove(localPath)
 		return res, err
 	}
 	res.DocumentId = documents.Id
@@ -112,15 +118,18 @@ func (c *ControllerV1) uploadToRustFS(ctx context.Context, req *v1.UploadFileReq
 func (c *ControllerV1) uploadToLocal(ctx context.Context, req *v1.UploadFileReq) (res *v1.UploadFileRes, err error) {
 	res = &v1.UploadFileRes{}
 
-	fileName, fileExt, fileSha256, tempFilePath, err := common.HandleFileUpload(ctx, req.File, req.URL)
+	fileName, fileExt, fileSha256, fileReader, err := common.HandleFileUpload(ctx, req.File, req.URL)
 	if err != nil {
 		g.Log().Errorf(ctx, "Failed to process file: %v", err)
 		res.Status = "failed"
 		res.Message = "Failed to process file: " + err.Error()
-		// Clean up temporary file
-		_ = gfile.Remove(tempFilePath)
 		return res, err
 	}
+	defer func() {
+		if closer, ok := fileReader.(io.Closer); ok {
+			_ = closer.Close()
+		}
+	}()
 
 	// Check if a file with the same SHA256 already exists
 	existingDoc, err := knowledge.GetDocumentBySHA256(ctx, req.KnowledgeId, fileSha256)
@@ -131,9 +140,6 @@ func (c *ControllerV1) uploadToLocal(ctx context.Context, req *v1.UploadFileReq)
 		// File already exists, reject upload
 		g.Log().Infof(ctx, "File already exists, SHA256: %s, upload rejected", fileSha256)
 
-		// Clean up temporary file
-		_ = gfile.Remove(tempFilePath)
-
 		// Return error message
 		res.DocumentId = ""
 		res.Status = "failed"
@@ -141,30 +147,54 @@ func (c *ControllerV1) uploadToLocal(ctx context.Context, req *v1.UploadFileReq)
 		return res, nil
 	}
 
-	uploadDir := filepath.Join("knowledge_file", req.KnowledgeId)
+	// Convert fileReader to multipart.File if it's from an uploaded file
+	var finalPath string
+	if req.File != nil {
+		// For uploaded files, open it directly
+		multipartFile, err := req.File.Open()
+		if err != nil {
+			g.Log().Errorf(ctx, "Failed to open file: %v", err)
+			res.Status = "failed"
+			res.Message = "Failed to open file: " + err.Error()
+			return res, err
+		}
+		defer multipartFile.Close()
 
-	// Check if directory exists, report error if not
-	if !gfile.Exists(uploadDir) {
-		err = fmt.Errorf("upload directory does not exist: %s", uploadDir)
-		g.Log().Errorf(ctx, "Upload directory does not exist: %v", err)
-		res.Status = "failed"
-		res.Message = "Upload directory does not exist: " + err.Error()
-		// Clean up temporary file
-		_ = gfile.Remove(tempFilePath)
-		return res, err
-	}
+		// Save to local storage
+		finalPath, err = file_store.SaveFileToLocal(ctx, req.KnowledgeId, fileName, multipartFile)
+		if err != nil {
+			g.Log().Errorf(ctx, "Failed to save file to local storage: %v", err)
+			res.Status = "failed"
+			res.Message = "Failed to save file to local storage: " + err.Error()
+			return res, err
+		}
+	} else {
+		// For URL files, the fileReader is an os.File, we need to save it
+		if osFile, ok := fileReader.(*os.File); ok {
+			tempPath := osFile.Name()
+			defer func() {
+				_ = osFile.Close()
+				_ = os.Remove(tempPath) // 清理临时文件
+			}()
 
-	finalFilePath := filepath.Join(uploadDir, fileName)
+			// Create target directory
+			targetDir := filepath.Join("upload", "knowledge_file", req.KnowledgeId)
+			if err := os.MkdirAll(targetDir, 0755); err != nil {
+				g.Log().Errorf(ctx, "Failed to create directory: %v", err)
+				res.Status = "failed"
+				res.Message = "Failed to create directory: " + err.Error()
+				return res, err
+			}
 
-	// Move file to final location
-	err = os.Rename(tempFilePath, finalFilePath)
-	if err != nil {
-		g.Log().Errorf(ctx, "Failed to move file to final location: %v", err)
-		res.Status = "failed"
-		res.Message = "Failed to move file to final location: " + err.Error()
-		// Clean up temporary file
-		_ = gfile.Remove(tempFilePath)
-		return res, err
+			// Move file to final location
+			finalPath = filepath.Join(targetDir, fileName)
+			if err := os.Rename(tempPath, finalPath); err != nil {
+				g.Log().Errorf(ctx, "Failed to move file: %v", err)
+				res.Status = "failed"
+				res.Message = "Failed to move file: " + err.Error()
+				return res, err
+			}
+		}
 	}
 
 	// Save document information to database
@@ -175,7 +205,7 @@ func (c *ControllerV1) uploadToLocal(ctx context.Context, req *v1.UploadFileReq)
 		FileExtension:  fileExt,
 		CollectionName: req.KnowledgeId, // Use knowledge base ID as default CollectionName
 		SHA256:         fileSha256,
-		LocalFilePath:  finalFilePath,
+		LocalFilePath:  finalPath,
 		Status:         int(v1.StatusPending),
 	}
 
@@ -186,7 +216,7 @@ func (c *ControllerV1) uploadToLocal(ctx context.Context, req *v1.UploadFileReq)
 		res.Status = "failed"
 		res.Message = "Failed to save document information to database: " + err.Error()
 		// Clean up file
-		_ = gfile.Remove(finalFilePath)
+		_ = gfile.Remove(finalPath)
 		return res, err
 	}
 	res.DocumentId = documents.Id

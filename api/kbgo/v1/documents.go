@@ -13,7 +13,7 @@ const (
 )
 
 type DocumentsListReq struct {
-	g.Meta      `path:"/v1/documents" method:"get" tags:"rag"`
+	g.Meta      `path:"/v1/documents" method:"get" tags:"retriever"`
 	KnowledgeId string `p:"knowledge_id" dc:"knowledge_id" v:"required"`
 	Page        int    `p:"page" dc:"page" v:"required|min:1" d:"1"`
 	Size        int    `p:"size" dc:"size" v:"required|min:1|max:100" d:"10"`
@@ -28,7 +28,7 @@ type DocumentsListRes struct {
 }
 
 type DocumentsDeleteReq struct {
-	g.Meta     `path:"/v1/documents" method:"delete" tags:"rag" summary:"Delete a document and its chunks"`
+	g.Meta     `path:"/v1/documents" method:"delete" tags:"retriever" summary:"Delete a document and its chunks"`
 	DocumentId string `p:"document_id" dc:"document_id" v:"required"`
 }
 
@@ -37,7 +37,7 @@ type DocumentsDeleteRes struct {
 }
 
 type DocumentsReIndexReq struct {
-	g.Meta      `path:"/v1/documents/reindex" method:"post" tags:"rag" summary:"Re-index a document"`
+	g.Meta      `path:"/v1/documents/reindex" method:"post" tags:"retriever" summary:"Re-index a document"`
 	DocumentId  string `p:"document_id" dc:"document_id" v:"required"`
 	ChunkSize   int    `p:"chunk_size" dc:"chunk_size" d:"1000"`
 	OverlapSize int    `p:"overlap_size" dc:"overlap_size" d:"100"`

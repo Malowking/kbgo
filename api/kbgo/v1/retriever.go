@@ -6,7 +6,7 @@ import (
 )
 
 type RetrieverReq struct {
-	g.Meta          `path:"/v1/retriever" method:"post" tags:"rag"`
+	g.Meta          `path:"/v1/retriever" method:"post" tags:"retriever"`
 	Question        string  `json:"question" v:"required"`
 	TopK            int     `json:"top_k"` // Default is 5
 	Score           float64 `json:"score"` // Default is 0.2

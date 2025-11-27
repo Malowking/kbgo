@@ -13,6 +13,9 @@ import (
 )
 
 func (c *ControllerV1) ChunkDelete(ctx context.Context, req *v1.ChunkDeleteReq) (res *v1.ChunkDeleteRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "ChunkDelete request received - ChunkId: %s", req.ChunkId)
+
 	docIndexSvr := index.GetDocIndexSvr()
 
 	// 开始事务

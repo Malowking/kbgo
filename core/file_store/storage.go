@@ -48,6 +48,7 @@ func InitUploadDirectories() {
 		filepath.Join(projectRoot, "upload/video"),
 		filepath.Join(projectRoot, "upload/audio"),
 		filepath.Join(projectRoot, "upload/file"),
+		filepath.Join(projectRoot, "upload/knowledge_file"),
 	}
 
 	// 创建所有目录

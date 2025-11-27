@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Malowking/kbgo/core/indexer/vector_store"
+	"github.com/Malowking/kbgo/core/vector_store"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
 // DeleteChunk Delete specified chunk from vector database
 func (s *DocumentIndexer) DeleteChunk(ctx context.Context, collectionName string, chunkID string) error {
-	err := s.vectorStore.DeleteByChunkID(ctx, collectionName, chunkID)
+	err := s.VectorStore.DeleteByChunkID(ctx, collectionName, chunkID)
 	if err != nil {
 		return fmt.Errorf("Failed to delete chunk: %w", err)
 	}
@@ -21,7 +21,7 @@ func (s *DocumentIndexer) DeleteChunk(ctx context.Context, collectionName string
 
 // DeleteDocument Delete all chunks of specified document from vector database
 func (s *DocumentIndexer) DeleteDocument(ctx context.Context, collectionName string, documentID string) error {
-	err := s.vectorStore.DeleteByDocumentID(ctx, collectionName, documentID)
+	err := s.VectorStore.DeleteByDocumentID(ctx, collectionName, documentID)
 	if err != nil {
 		return fmt.Errorf("Failed to delete document: %w", err)
 	}
@@ -32,5 +32,5 @@ func (s *DocumentIndexer) DeleteDocument(ctx context.Context, collectionName str
 
 // GetVectorStore Get vector store instance
 func (s *DocumentIndexer) GetVectorStore() vector_store.VectorStore {
-	return s.vectorStore
+	return s.VectorStore
 }

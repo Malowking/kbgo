@@ -17,6 +17,10 @@ import (
 
 // MCPRegistryCreate 创建MCP服务注册
 func (c *ControllerV1) MCPRegistryCreate(ctx context.Context, req *v1.MCPRegistryCreateReq) (res *v1.MCPRegistryCreateRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "MCPRegistryCreate request received - Name: %s, Description: %s, Endpoint: %s, Timeout: %v",
+		req.Name, req.Description, req.Endpoint, req.Timeout)
+
 	// 检查名称是否已存在
 	exists, err := dao.MCPRegistry.Exists(ctx, req.Name)
 	if err != nil {
@@ -57,6 +61,10 @@ func (c *ControllerV1) MCPRegistryCreate(ctx context.Context, req *v1.MCPRegistr
 
 // MCPRegistryUpdate 更新MCP服务注册
 func (c *ControllerV1) MCPRegistryUpdate(ctx context.Context, req *v1.MCPRegistryUpdateReq) (res *v1.MCPRegistryUpdateRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "MCPRegistryUpdate request received - Id: %s, Name: %v, Description: %v, Endpoint: %v, Status: %v",
+		req.Id, req.Name, req.Description, req.Endpoint, req.Status)
+
 	// 查询现有记录
 	registry, err := dao.MCPRegistry.GetByID(ctx, req.Id)
 	if err != nil {
@@ -104,6 +112,9 @@ func (c *ControllerV1) MCPRegistryUpdate(ctx context.Context, req *v1.MCPRegistr
 
 // MCPRegistryDelete 删除MCP服务注册
 func (c *ControllerV1) MCPRegistryDelete(ctx context.Context, req *v1.MCPRegistryDeleteReq) (res *v1.MCPRegistryDeleteRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "MCPRegistryDelete request received - Id: %s", req.Id)
+
 	// 检查是否存在
 	_, err = dao.MCPRegistry.GetByID(ctx, req.Id)
 	if err != nil {
@@ -120,6 +131,9 @@ func (c *ControllerV1) MCPRegistryDelete(ctx context.Context, req *v1.MCPRegistr
 
 // MCPRegistryGetOne 获取单个MCP服务
 func (c *ControllerV1) MCPRegistryGetOne(ctx context.Context, req *v1.MCPRegistryGetOneReq) (res *v1.MCPRegistryGetOneRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "MCPRegistryGetOne request received - Id: %s", req.Id)
+
 	registry, err := dao.MCPRegistry.GetByID(ctx, req.Id)
 	if err != nil {
 		return nil, gerror.Wrap(err, "MCP service not found")
@@ -151,6 +165,10 @@ func (c *ControllerV1) MCPRegistryGetOne(ctx context.Context, req *v1.MCPRegistr
 
 // MCPRegistryGetList 获取MCP服务列表
 func (c *ControllerV1) MCPRegistryGetList(ctx context.Context, req *v1.MCPRegistryGetListReq) (res *v1.MCPRegistryGetListRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "MCPRegistryGetList request received - Status: %v, Page: %d, PageSize: %d",
+		req.Status, req.Page, req.PageSize)
+
 	registries, total, err := dao.MCPRegistry.List(ctx, req.Status, req.Page, req.PageSize)
 	if err != nil {
 		return nil, gerror.Wrap(err, "failed to get MCP registry list")
@@ -179,6 +197,9 @@ func (c *ControllerV1) MCPRegistryGetList(ctx context.Context, req *v1.MCPRegist
 
 // MCPRegistryUpdateStatus 更新MCP服务状态
 func (c *ControllerV1) MCPRegistryUpdateStatus(ctx context.Context, req *v1.MCPRegistryUpdateStatusReq) (res *v1.MCPRegistryUpdateStatusRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "MCPRegistryUpdateStatus request received - Id: %s, Status: %d", req.Id, req.Status)
+
 	if err := dao.MCPRegistry.UpdateStatus(ctx, req.Id, req.Status); err != nil {
 		return nil, gerror.Wrap(err, "failed to update MCP registry status")
 	}
@@ -187,6 +208,9 @@ func (c *ControllerV1) MCPRegistryUpdateStatus(ctx context.Context, req *v1.MCPR
 
 // MCPRegistryTest 测试MCP服务连通性
 func (c *ControllerV1) MCPRegistryTest(ctx context.Context, req *v1.MCPRegistryTestReq) (res *v1.MCPRegistryTestRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "MCPRegistryTest request received - Id: %s", req.Id)
+
 	registry, err := dao.MCPRegistry.GetByID(ctx, req.Id)
 	if err != nil {
 		return &v1.MCPRegistryTestRes{
@@ -218,6 +242,10 @@ func (c *ControllerV1) MCPRegistryTest(ctx context.Context, req *v1.MCPRegistryT
 
 // MCPListTools 列出MCP服务的所有工具
 func (c *ControllerV1) MCPListTools(ctx context.Context, req *v1.MCPListToolsReq) (res *v1.MCPListToolsRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "MCPListTools request received - Id: %s, Cached: %v, CacheTTL: %v",
+		req.Id, req.Cached, req.CacheTTL)
+
 	registry, err := dao.MCPRegistry.GetByID(ctx, req.Id)
 	if err != nil {
 		return nil, gerror.Wrap(err, "MCP service not found")
@@ -287,6 +315,10 @@ func (c *ControllerV1) MCPListTools(ctx context.Context, req *v1.MCPListToolsReq
 
 // MCPCallTool 调用MCP工具
 func (c *ControllerV1) MCPCallTool(ctx context.Context, req *v1.MCPCallToolReq) (res *v1.MCPCallToolRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "MCPCallTool request received - RegistryID: %s, ToolName: %s, ConversationID: %s",
+		req.RegistryID, req.ToolName, req.ConversationID)
+
 	startTime := time.Now()
 
 	// 查询MCP服务（支持ID或名称）
@@ -377,6 +409,10 @@ func (c *ControllerV1) MCPCallTool(ctx context.Context, req *v1.MCPCallToolReq) 
 
 // MCPCallLogGetList 获取MCP调用日志列表
 func (c *ControllerV1) MCPCallLogGetList(ctx context.Context, req *v1.MCPCallLogGetListReq) (res *v1.MCPCallLogGetListRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "MCPCallLogGetList request received - ConversationID: %v, RegistryID: %v, ServiceName: %v, ToolName: %v, Status: %v, StartTime: %v, EndTime: %v, Page: %d, PageSize: %d",
+		req.ConversationID, req.RegistryID, req.ServiceName, req.ToolName, req.Status, req.StartTime, req.EndTime, req.Page, req.PageSize)
+
 	// 构建过滤条件
 	filter := &dao.MCPCallLogFilter{}
 
@@ -474,6 +510,9 @@ func (c *ControllerV1) MCPCallLogGetByConversation(ctx context.Context, req *v1.
 
 // MCPRegistryStats 获取MCP服务统计信息
 func (c *ControllerV1) MCPRegistryStats(ctx context.Context, req *v1.MCPRegistryStatsReq) (res *v1.MCPRegistryStatsRes, err error) {
+	// Log request parameters
+	g.Log().Infof(ctx, "MCPRegistryStats request received - Id: %s", req.Id)
+
 	stats, err := dao.MCPCallLog.GetStatsByMCPRegistry(ctx, req.Id)
 	if err != nil {
 		return nil, gerror.Wrap(err, "failed to get MCP registry stats")

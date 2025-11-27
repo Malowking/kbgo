@@ -11,9 +11,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Malowking/kbgo/core/indexer/file_store"
+	"github.com/Malowking/kbgo/core/file_store"
 	"github.com/gogf/gf/v2/net/ghttp"
-	"github.com/gogf/gf/v2/os/gfile"
 )
 
 func Of[T any](v T) *T {
@@ -44,49 +43,62 @@ func RemoveDuplicates[T any, K comparable](slice []T, keyFunc func(T) K) []T {
 }
 
 // HandleFileUpload 处理文件上传的通用逻辑
-func HandleFileUpload(ctx context.Context, file *ghttp.UploadFile, urlStr string) (fileName string, fileExt string, fileSha256 string, tempFilePath string, err error) {
+// 返回文件名、文件扩展名、文件SHA256和文件读取器
+func HandleFileUpload(ctx context.Context, file *ghttp.UploadFile, urlStr string) (fileName string, fileExt string, fileSha256 string, fileReader io.ReadSeeker, err error) {
 	if file != nil {
 		fileName = file.Filename
 		fileExt = filepath.Ext(fileName)
+
+		// 打开上传的文件
+		fileReader, err = file.Open()
+		if err != nil {
+			err = fmt.Errorf("failed to open uploaded file: %w", err)
+			return
+		}
+
+		// 计算 SHA256
+		hash := sha256.New()
+		if _, err = io.Copy(hash, fileReader); err != nil {
+			return
+		}
+		fileSha256 = hex.EncodeToString(hash.Sum(nil))
+
+		// 重置文件指针到开头
+		_, err = fileReader.Seek(0, io.SeekStart)
+		if err != nil {
+			err = fmt.Errorf("failed to seek file: %w", err)
+			return
+		}
+
 	} else if urlStr != "" {
 		fileName = file_store.GetFileNameFromURL(urlStr)
 		fileExt = filepath.Ext(fileName)
+
+		// 下载URL文件到临时位置
+		tempFilePath := filepath.Join(os.TempDir(), fileName)
+		err = downloadURLFile(urlStr, tempFilePath)
+		if err != nil {
+			return
+		}
+
+		// 计算文件 SHA256
+		fileSha256, err = calculateLocalFileSHA256(tempFilePath)
+		if err != nil {
+			_ = os.Remove(tempFilePath)
+			return
+		}
+
+		// 打开文件作为 ReadSeeker
+		var f *os.File
+		f, err = os.Open(tempFilePath)
+		if err != nil {
+			_ = os.Remove(tempFilePath)
+			return
+		}
+		fileReader = f
+
 	} else {
 		err = fmt.Errorf("file or url is required")
-		return
-	}
-
-	// 根据文件类型确定临时存储目录
-	tempUploadDir := file_store.GetUploadDirByFileType(fileExt)
-
-	// 确保目录存在
-	if !gfile.Exists(tempUploadDir) {
-		err = gfile.Mkdir(tempUploadDir)
-		if err != nil {
-			return
-		}
-	}
-
-	// 生成临时文件路径
-	tempFilePath = filepath.Join(tempUploadDir, fileName)
-
-	// 保存文件到临时位置
-	if file != nil {
-		_, err = file.Save(tempUploadDir)
-		if err != nil {
-			return
-		}
-	} else {
-		// 下载URL文件到临时位置
-		err = downloadURLFile(urlStr, tempUploadDir)
-		if err != nil {
-			return
-		}
-	}
-
-	// 计算文件 SHA256 以确保唯一性
-	fileSha256, err = calculateLocalFileSHA256(tempFilePath)
-	if err != nil {
 		return
 	}
 

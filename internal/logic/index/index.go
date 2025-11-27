@@ -1,56 +1,52 @@
 package index
 
 import (
+	"fmt"
+
 	"github.com/Malowking/kbgo/core"
 	"github.com/Malowking/kbgo/core/config"
 	"github.com/Malowking/kbgo/core/indexer"
 	"github.com/Malowking/kbgo/internal/service"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gctx"
-	"github.com/milvus-io/milvus/client/v2/milvusclient"
 )
 
-var docIndexSvr *indexer.DocumentIndexer
+var (
+	docIndexSvr *indexer.DocumentIndexer
+	indexConfig *config.IndexerConfig
+)
 
-func InitVectorDatabase() {
+func InitDocumentIndexer() {
 	ctx := gctx.New()
 
-	// 确保共享服务已初始化
-	if service.GetSharedConfig() == nil {
-		if err := service.InitSharedServices(ctx); err != nil {
-			g.Log().Fatalf(ctx, "Failed to init shared services: %v", err)
-			return
-		}
-	}
+	vectorDBType := g.Cfg().MustGet(ctx, "vectordb.type", "milvus").String()
+	Database := g.Cfg().MustGet(ctx, fmt.Sprintf("%s.database", vectorDBType)).String()
+	APIKey := g.Cfg().MustGet(ctx, "embedding.apiKey").String()
+	BaseURL := g.Cfg().MustGet(ctx, "embedding.baseURL").String()
+	EmbeddingModel := g.Cfg().MustGet(ctx, "embedding.model").String()
 
-	// 获取共享配置
-	sharedConfig := service.GetSharedConfig()
+	// 距离度量类型
+	MetricType := g.Cfg().MustGet(ctx, "vectordb.metricType", "L2").String()
 
-	// 创建 Milvus 客户端（DocumentIndexService 专用）
-	milvusAddress := g.Cfg().MustGet(ctx, "milvus.address", "").String()
-	if milvusAddress == "" {
-		g.Log().Fatalf(ctx, "Milvus configuration is missing: milvus.address is required")
-		return
-	}
-
-	milvusClient, err := milvusclient.New(ctx, &milvusclient.ClientConfig{
-		Address: milvusAddress,
-		DBName:  sharedConfig.Database,
-	})
+	// 初始化全局 IndexerConfig
+	vectorStore, err := service.GetVectorStore()
 	if err != nil {
-		g.Log().Fatalf(ctx, "Failed to create Milvus client for DocumentIndexService: %v", err)
+		g.Log().Fatalf(ctx, "Failed to get vector store: %v", err)
+		return
+	}
+	err = vectorStore.CreateDatabaseIfNotExists(ctx)
+	if err != nil {
+		g.Log().Fatalf(ctx, "Failed to create vector database: %v", err)
 		return
 	}
 
-	// 创建 DocumentIndexer 配置
-	indexConfig := &config.Config{
-		Client:         milvusClient,
-		Database:       sharedConfig.Database,
-		APIKey:         sharedConfig.APIKey,
-		BaseURL:        sharedConfig.BaseURL,
-		EmbeddingModel: sharedConfig.EmbeddingModel,
-		ChatModel:      sharedConfig.ChatModel,
-		MetricType:     sharedConfig.MetricType,
+	indexConfig = &config.IndexerConfig{
+		VectorStore:    vectorStore,
+		Database:       Database,
+		APIKey:         APIKey,
+		BaseURL:        BaseURL,
+		EmbeddingModel: EmbeddingModel,
+		MetricType:     MetricType,
 	}
 
 	// 初始化 DocumentIndexer

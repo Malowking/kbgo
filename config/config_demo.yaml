@@ -18,6 +18,10 @@ database:
     charset: "utf8mb4" # 数据库编码，一定要加上，因为文档里面经常出现特殊字符
     maxLifeTime: 3600 # 连接最大生命周期(秒)
 
+#向量数据库
+vector_db:
+  type: "milvus"
+
 # Milvus向量数据库配置
 milvus:
   address: "http://localhost:19530"

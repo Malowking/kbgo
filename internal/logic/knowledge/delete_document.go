@@ -4,17 +4,17 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Malowking/kbgo/core/vector_store"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/gogf/gf/v2/frame/g"
-	"github.com/milvus-io/milvus/client/v2/milvusclient"
 )
 
-// DeleteDocumentDataOnly 删除指定文档的chunks数据，但保留文档记录
-// 这包括:
-// 1. 删除 knowledge_chunks 表中与该文档相关的所有 chunks
-// 2. 删除 Milvus 中与该文档相关的所有向量数据
-func DeleteDocumentDataOnly(ctx context.Context, documentId string, milvusClient *milvusclient.Client) error {
-	// 开始事务
+// DeleteDocumentDataOnly deletes the chunks data for the specified document, but keeps the document record
+// This includes:
+// 1. Deleting all chunks related to this document in the knowledge_chunks table
+// 2. Deleting all vector data related to this document in Milvus
+func DeleteDocumentDataOnly(ctx context.Context, documentId string, vectorStore vector_store.VectorStore) error {
+	// Begin transaction
 	tx := dao.GetDB().Begin()
 	defer func() {
 		if r := recover(); r != nil {
@@ -22,63 +22,42 @@ func DeleteDocumentDataOnly(ctx context.Context, documentId string, milvusClient
 		}
 	}()
 
-	// 获取文档信息
+	// Get document information
 	document, err := GetDocumentById(ctx, documentId)
 	if err != nil {
 		g.Log().Errorf(ctx, "DeleteDocumentDataOnly: GetDocumentById failed for id %s, err: %v", documentId, err)
 		tx.Rollback()
-		return fmt.Errorf("获取文档信息失败: %w", err)
+		return fmt.Errorf("failed to get document information: %w", err)
 	}
 
-	// 检查 CollectionName 是否存在
+	// Check if CollectionName exists
 	if document.CollectionName == "" {
 		g.Log().Warningf(ctx, "DeleteDocumentDataOnly: CollectionName is empty for document id %s", documentId)
 	} else {
-		// 使用 DeleteDocument 函数删除 Milvus 中所有该文档的分片
-		err = deleteMilvusDocument(ctx, milvusClient, document.CollectionName, documentId)
+		// Use VectorStore interface to delete all chunks of this document in Milvus
+		err = vectorStore.DeleteByDocumentID(ctx, document.CollectionName, documentId)
 		if err != nil {
 			g.Log().Errorf(ctx, "DeleteDocumentDataOnly: Milvus deleteDocument failed for documentId %s in collection %s, err: %v", documentId, document.CollectionName, err)
 			tx.Rollback()
-			return fmt.Errorf("删除 Milvus 中的文档数据失败: %w", err)
+			return fmt.Errorf("failed to delete document data in Milvus: %w", err)
 		}
 		g.Log().Infof(ctx, "DeleteDocumentDataOnly: Successfully deleted document %s from Milvus collection %s", documentId, document.CollectionName)
 	}
 
-	// 只删除 chunks 数据，保留 document 记录
+	// Only delete chunks data, keep the document record
 	err = DeleteChunksByDocumentId(ctx, tx, documentId)
 	if err != nil {
 		g.Log().Errorf(ctx, "DeleteDocumentDataOnly: DeleteChunksByDocumentId failed for id %s, err: %v", documentId, err)
 		tx.Rollback()
-		return fmt.Errorf("删除chunks数据失败: %w", err)
+		return fmt.Errorf("failed to delete chunks data: %w", err)
 	}
 
-	// 提交事务
+	// Commit transaction
 	if err = tx.Commit().Error; err != nil {
 		g.Log().Errorf(ctx, "DeleteDocumentDataOnly: transaction commit failed, err: %v", err)
-		return fmt.Errorf("提交事务失败: %w", err)
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	g.Log().Infof(ctx, "DeleteDocumentDataOnly: Successfully deleted chunks data for document id %s", documentId)
-	return nil
-}
-
-// deleteMilvusDocument 从 Milvus 中删除文档的所有 chunks
-func deleteMilvusDocument(ctx context.Context, milvusClient *milvusclient.Client, collectionName string, documentID string) error {
-	// Build filter expression to match document_id
-	filterExpr := fmt.Sprintf(`document_id == "%s"`, documentID)
-
-	g.Log().Infof(ctx, "Attempting to delete document %s from collection %s with filter: %s", documentID, collectionName, filterExpr)
-
-	// Create delete option with filter expression
-	deleteOpt := milvusclient.NewDeleteOption(collectionName).WithExpr(filterExpr)
-
-	// Execute delete operation
-	result, err := milvusClient.Delete(ctx, deleteOpt)
-	if err != nil {
-		return fmt.Errorf("failed to delete document (id=%s) from collection %s: %w", documentID, collectionName, err)
-	}
-
-	g.Log().Infof(ctx, "Delete operation completed for document id=%s, affected rows: %d", documentID, result.DeleteCount)
-
 	return nil
 }

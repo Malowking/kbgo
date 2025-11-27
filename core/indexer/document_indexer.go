@@ -9,58 +9,20 @@ import (
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/config"
-	"github.com/Malowking/kbgo/core/indexer/file_store"
-	"github.com/Malowking/kbgo/core/indexer/vector_store"
+	"github.com/Malowking/kbgo/core/file_store"
+	"github.com/Malowking/kbgo/core/vector_store"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
 	"github.com/Malowking/kbgo/internal/model/entity"
 	"github.com/cloudwego/eino/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gfile"
 	"github.com/google/uuid"
-	"github.com/milvus-io/milvus/client/v2/milvusclient"
 )
 
 // DocumentIndexer Document indexing service
 type DocumentIndexer struct {
-	config      *config.Config
-	vectorStore vector_store.VectorStore
-	client      *milvusclient.Client
-}
-
-// NewDocumentIndexer Create document indexing service
-func NewDocumentIndexer(ctx context.Context, conf *config.Config) (*DocumentIndexer, error) {
-	if conf == nil {
-		return nil, fmt.Errorf("config cannot be nil")
-	}
-
-	if conf.Client == nil {
-		return nil, fmt.Errorf("milvus client cannot be nil")
-	}
-
-	// Create vector store configuration
-	vectorStoreConfig := &vector_store.VectorStoreConfig{
-		Type:     vector_store.VectorStoreTypeMilvus,
-		Client:   conf.Client,
-		Database: conf.Database,
-	}
-
-	// Initialize vector store
-	vs, err := vector_store.NewVectorStore(vectorStoreConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create vector store: %w", err)
-	}
-
-	// 确保数据库存在
-	err = vs.CreateDatabaseIfNotExists(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create database: %w", err)
-	}
-
-	return &DocumentIndexer{
-		config:      conf,
-		vectorStore: vs,
-		client:      conf.Client,
-	}, nil
+	Config      *config.IndexerConfig
+	VectorStore vector_store.VectorStore
 }
 
 // BatchIndexReq Batch indexing request parameters
@@ -87,7 +49,6 @@ type indexContext struct {
 	storageType    file_store.StorageType
 	localFilePath  string
 	chunks         []*schema.Document
-	needCleanup    bool // Whether temporary files need to be cleaned up
 	chunkSize      int
 	overlapSize    int
 	separator      string
@@ -155,7 +116,6 @@ func (s *DocumentIndexer) DocumentIndex(ctx context.Context, req *IndexReq) erro
 		fn   func(*indexContext) error
 	}{
 		{"Get document info", s.stepGetDocument},
-		{"Check document status", s.stepCheckStatus},
 		{"Clean old data", s.stepCleanOldData},
 		{"Prepare file", s.stepPrepareFile},
 		{"Load document", s.stepLoadDocument},
@@ -169,14 +129,10 @@ func (s *DocumentIndexer) DocumentIndex(ctx context.Context, req *IndexReq) erro
 	for _, step := range pipeline {
 		g.Log().Debugf(ctx, "Executing step: %s, documentId=%s", step.name, req.DocumentId)
 		if err := step.fn(idxCtx); err != nil {
-			// Clean up temporary files
-			s.cleanup(idxCtx)
 			return fmt.Errorf("%s failed: %w", step.name, err)
 		}
 	}
 
-	// Finally clean up temporary files
-	s.cleanup(idxCtx)
 	return nil
 }
 
@@ -193,22 +149,9 @@ func (s *DocumentIndexer) stepGetDocument(idxCtx *indexContext) error {
 	return nil
 }
 
-// stepCheckStatus Step 2: Check document status
-func (s *DocumentIndexer) stepCheckStatus(idxCtx *indexContext) error {
-	doc, err := knowledge.GetDocumentById(idxCtx.ctx, idxCtx.documentId)
-	if err != nil {
-		g.Log().Errorf(idxCtx.ctx, "Failed to get document info, documentId=%s, err=%v", idxCtx.documentId, err)
-		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))
-		return err
-	}
-	idxCtx.doc = doc
-	idxCtx.collectionName = doc.CollectionName
-	return nil
-}
-
-// stepCleanOldData Step 3: Clean old document data
+// stepCleanOldData Step 2: Clean old document data
 func (s *DocumentIndexer) stepCleanOldData(idxCtx *indexContext) error {
-	err := knowledge.DeleteDocumentDataOnly(idxCtx.ctx, idxCtx.documentId, s.client)
+	err := knowledge.DeleteDocumentDataOnly(idxCtx.ctx, idxCtx.documentId, s.VectorStore)
 	if err != nil {
 		g.Log().Errorf(idxCtx.ctx, "Failed to delete old document data, documentId=%s, err=%v", idxCtx.documentId, err)
 		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))
@@ -217,20 +160,21 @@ func (s *DocumentIndexer) stepCleanOldData(idxCtx *indexContext) error {
 	return nil
 }
 
-// stepPrepareFile Step 4: Prepare file (handle storage type and file path)
+// stepPrepareFile Step 3: Prepare file (handle storage type and file path)
 func (s *DocumentIndexer) stepPrepareFile(idxCtx *indexContext) error {
 	storageType := file_store.GetStorageType()
 	idxCtx.storageType = storageType
 
 	if storageType == file_store.StorageTypeRustFS {
-		// RustFS storage: Need to download file to local temporary path first
-		uploadDir := file_store.GetUploadDirByFileType(idxCtx.doc.FileExtension)
+		// RustFS storage: Download file from RustFS to upload/knowledge_file/知识库id/文件名 and overwrite existing file
+		// 使用 LocalFilePath，如果为空则构建路径
 		localFilePath := idxCtx.doc.LocalFilePath
 		if localFilePath == "" {
-			localFilePath = gfile.Join(uploadDir, idxCtx.doc.FileName)
+			// 构建目标路径：upload/knowledge_file/知识库id/文件名
+			localFilePath = gfile.Join("upload", "knowledge_file", idxCtx.doc.KnowledgeId, idxCtx.doc.FileName)
 		}
 
-		// Download file from RustFS to local temporary path
+		// Download file from RustFS to local path, overwrite if exists
 		rustfsConfig := file_store.GetRustfsConfig()
 		err := file_store.DownloadFile(idxCtx.ctx, rustfsConfig.Client, idxCtx.doc.RustfsBucket, idxCtx.doc.RustfsLocation, localFilePath)
 		if err != nil {
@@ -239,9 +183,8 @@ func (s *DocumentIndexer) stepPrepareFile(idxCtx *indexContext) error {
 			knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))
 			return err
 		}
-		g.Log().Infof(idxCtx.ctx, "File downloaded successfully from RustFS, documentId=%s, localPath=%s", idxCtx.documentId, localFilePath)
+		g.Log().Infof(idxCtx.ctx, "File downloaded and overwritten from RustFS to %s, documentId=%s", localFilePath, idxCtx.documentId)
 		idxCtx.localFilePath = localFilePath
-		idxCtx.needCleanup = true // Need to clean up downloaded temporary files
 	} else {
 		// Local storage: Directly use the local_file_path stored in database (relative path)
 		if idxCtx.doc.LocalFilePath == "" {
@@ -251,7 +194,6 @@ func (s *DocumentIndexer) stepPrepareFile(idxCtx *indexContext) error {
 			return err
 		}
 		idxCtx.localFilePath = idxCtx.doc.LocalFilePath
-		idxCtx.needCleanup = false // Do not delete locally stored files
 	}
 
 	// Check if file exists
@@ -265,7 +207,7 @@ func (s *DocumentIndexer) stepPrepareFile(idxCtx *indexContext) error {
 	return nil
 }
 
-// stepLoadDocument Step 5: Load document
+// stepLoadDocument Step 4: Load document
 func (s *DocumentIndexer) stepLoadDocument(idxCtx *indexContext) error {
 	// Create document loader
 	docLoader, err := NewStandardDocumentLoader(idxCtx.ctx)
@@ -288,7 +230,7 @@ func (s *DocumentIndexer) stepLoadDocument(idxCtx *indexContext) error {
 	return nil
 }
 
-// stepTransformDocument Step 6: Split document
+// stepTransformDocument Step 5: Split document
 func (s *DocumentIndexer) stepTransformDocument(idxCtx *indexContext) error {
 	// Create document transformer
 	docTransformer, err := NewStandardDocumentTransformer(idxCtx.ctx, idxCtx.chunkSize, idxCtx.overlapSize, idxCtx.separator)
@@ -311,7 +253,7 @@ func (s *DocumentIndexer) stepTransformDocument(idxCtx *indexContext) error {
 	return nil
 }
 
-// stepSaveChunks Step 7: Save chunks to database
+// stepSaveChunks Step 6: Save chunks to database
 func (s *DocumentIndexer) stepSaveChunks(idxCtx *indexContext) error {
 	if len(idxCtx.chunks) == 0 {
 		return nil
@@ -340,10 +282,10 @@ func (s *DocumentIndexer) stepSaveChunks(idxCtx *indexContext) error {
 	return nil
 }
 
-// stepVectorizeAndStore Step 8: Vectorize and store
+// stepVectorizeAndStore Step 7: Vectorize and store
 func (s *DocumentIndexer) stepVectorizeAndStore(idxCtx *indexContext) error {
 	// Create vector embedder
-	embedder, err := NewVectorStoreEmbedder(idxCtx.ctx, s.config, s.vectorStore)
+	embedder, err := NewVectorStoreEmbedder(idxCtx.ctx, s.Config, s.VectorStore)
 	if err != nil {
 		g.Log().Errorf(idxCtx.ctx, "Failed to create vector embedder, documentId=%s, err=%v", idxCtx.documentId, err)
 		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusIndexing))
@@ -370,7 +312,7 @@ func (s *DocumentIndexer) stepVectorizeAndStore(idxCtx *indexContext) error {
 	return nil
 }
 
-// stepUpdateStatus Step 9: Update document status
+// stepUpdateStatus Step 8: Update document status
 func (s *DocumentIndexer) stepUpdateStatus(idxCtx *indexContext) error {
 	err := knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusActive))
 	if err != nil {
@@ -378,14 +320,6 @@ func (s *DocumentIndexer) stepUpdateStatus(idxCtx *indexContext) error {
 		return err
 	}
 	return nil
-}
-
-// cleanup Clean up temporary files
-func (s *DocumentIndexer) cleanup(idxCtx *indexContext) {
-	if idxCtx.needCleanup && idxCtx.localFilePath != "" {
-		os.Remove(idxCtx.localFilePath)
-		g.Log().Infof(idxCtx.ctx, "Deleted temporary file, path=%s", idxCtx.localFilePath)
-	}
 }
 
 // fileExists Check if file exists

@@ -1,4 +1,4 @@
-package core
+package common
 
 import (
 	"context"
@@ -42,7 +42,8 @@ func formatMessages(template prompt.ChatTemplate, data map[string]any) ([]*schem
 	return messages, nil
 }
 
-func getOptimizedQueryMessages(used, question, knowledgeBase string) ([]*schema.Message, error) {
+// GetOptimizedQueryMessages 生成优化查询的消息
+func GetOptimizedQueryMessages(used, question, knowledgeBase string) ([]*schema.Message, error) {
 	template := createTemplate()
 	data := map[string]any{
 		"time_now":      time.Now().Format(time.RFC3339),

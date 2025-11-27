@@ -1,10 +1,7 @@
 待办事项
+添加模型信息表，chat接口添加对话参数
+所有调用模型的代码都
 
-文件切分向量化流程！！！！
-索引接口逻辑
-1.检查数据库删除所有相关数据库信息
-2.对文档进行切分
-3./Users/wing/code/go_code/kbgo/internal/logic/rag/retriever.go解决TODO
 
 1. text2sql实现，python独立服务
 2. 文档切分选择chunksize和overlapsize报错（可能是调用api的问题）解决
