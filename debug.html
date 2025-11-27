@@ -12,121 +12,123 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
         }
 
         .container {
-            max-width: 1400px;
+            max-width: 1200px;
             margin: 0 auto;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-            overflow: hidden;
+            padding: 20px;
         }
 
         .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 30px;
-            text-align: center;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
 
         .header h1 {
-            font-size: 32px;
+            font-size: 2rem;
             margin-bottom: 10px;
         }
 
-        .header p {
-            opacity: 0.9;
-            font-size: 14px;
-        }
-
         .config-section {
-            padding: 20px 30px;
-            background: #f8f9fa;
-            border-bottom: 1px solid #e9ecef;
-        }
-
-        .config-section h3 {
-            margin-bottom: 15px;
-            color: #333;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
         }
 
         .config-row {
             display: flex;
-            gap: 15px;
             align-items: center;
+            gap: 15px;
         }
 
         .config-row label {
             font-weight: 600;
-            min-width: 80px;
         }
 
         .config-row input {
             flex: 1;
             padding: 8px 12px;
             border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 14px;
+            border-radius: 4px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-weight: normal;
+            cursor: pointer;
         }
 
         .main-content {
             display: flex;
-            height: calc(100vh - 250px);
+            gap: 20px;
         }
 
         .sidebar {
-            width: 280px;
-            background: #f8f9fa;
-            border-right: 1px solid #e9ecef;
-            overflow-y: auto;
+            flex: 0 0 250px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+            height: fit-content;
         }
 
         .menu-section {
-            padding: 15px 0;
-            border-bottom: 1px solid #e9ecef;
+            margin-bottom: 25px;
         }
 
         .menu-section-title {
-            padding: 10px 20px;
-            font-weight: 700;
-            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #495057;
+            font-size: 0.9rem;
             text-transform: uppercase;
-            color: #6c757d;
             letter-spacing: 0.5px;
         }
 
         .menu-item {
-            padding: 12px 20px;
+            padding: 10px 12px;
+            margin: 5px 0;
+            border-radius: 6px;
             cursor: pointer;
             transition: all 0.2s;
-            border-left: 3px solid transparent;
-            color: #495057;
-            font-size: 14px;
+            font-size: 0.95rem;
         }
 
         .menu-item:hover {
-            background: #e9ecef;
+            background-color: #f8f9fa;
         }
 
         .menu-item.active {
-            background: white;
-            border-left-color: #667eea;
-            color: #667eea;
-            font-weight: 600;
-        }
-
-        .content-area {
-            flex: 1;
-            overflow-y: auto;
-            padding: 30px;
+            background-color: #667eea;
+            color: white;
         }
 
         .api-section {
+            flex: 1;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 25px;
             display: none;
         }
 
@@ -135,30 +137,42 @@
         }
 
         .api-title {
-            font-size: 24px;
-            margin-bottom: 10px;
-            color: #333;
-        }
-
-        .api-description {
-            color: #6c757d;
-            margin-bottom: 25px;
-            line-height: 1.6;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f2f5;
         }
 
         .api-method {
             display: inline-block;
-            padding: 4px 12px;
+            padding: 4px 8px;
             border-radius: 4px;
-            font-weight: 700;
-            font-size: 12px;
-            margin-right: 10px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: white;
         }
 
-        .method-get { background: #28a745; color: white; }
-        .method-post { background: #007bff; color: white; }
-        .method-put { background: #ffc107; color: #333; }
-        .method-delete { background: #dc3545; color: white; }
+        .method-post {
+            background-color: #28a745;
+        }
+
+        .method-get {
+            background-color: #17a2b8;
+        }
+
+        .method-put {
+            background-color: #ffc107;
+            color: #212529;
+        }
+
+        .method-delete {
+            background-color: #dc3545;
+        }
+
+        .api-description {
+            color: #6c757d;
+            margin-bottom: 20px;
+            font-size: 0.95rem;
+        }
 
         .form-group {
             margin-bottom: 20px;
@@ -166,17 +180,16 @@
 
         .form-label {
             display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #333;
-            font-size: 14px;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #495057;
         }
 
         .form-input, .form-textarea, .form-select {
             width: 100%;
             padding: 10px 12px;
             border: 1px solid #ddd;
-            border-radius: 6px;
+            border-radius: 4px;
             font-size: 14px;
             transition: border-color 0.2s;
         }
@@ -184,110 +197,12 @@
         .form-input:focus, .form-textarea:focus, .form-select:focus {
             outline: none;
             border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
         }
 
         .form-textarea {
             min-height: 100px;
-            font-family: 'Monaco', 'Menlo', monospace;
-        }
-
-        .form-file {
-            padding: 10px;
-            border: 2px dashed #ddd;
-            border-radius: 6px;
-            cursor: pointer;
-        }
-
-        .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            margin-right: 10px;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-        }
-
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
-        }
-
-        .response-section {
-            margin-top: 30px;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            display: none;
-        }
-
-        .response-section.show {
-            display: block;
-        }
-
-        .response-title {
-            font-weight: 700;
-            margin-bottom: 15px;
-            color: #333;
-        }
-
-        .response-status {
-            display: inline-block;
-            padding: 6px 12px;
-            border-radius: 4px;
-            font-weight: 700;
-            margin-bottom: 15px;
-        }
-
-        .status-success {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .status-error {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        .response-body {
-            background: #fff;
-            padding: 15px;
-            border-radius: 6px;
-            border: 1px solid #dee2e6;
-            font-family: 'Monaco', 'Menlo', monospace;
-            font-size: 13px;
-            white-space: pre-wrap;
-            word-break: break-all;
-            max-height: 500px;
-            overflow-y: auto;
-        }
-
-        .loading {
-            display: none;
-            margin-top: 10px;
-            color: #667eea;
-            font-style: italic;
-        }
-
-        .loading.show {
-            display: block;
-        }
-
-        .helper-text {
-            font-size: 12px;
-            color: #6c757d;
-            margin-top: 5px;
+            resize: vertical;
         }
 
         .inline-group {
@@ -299,23 +214,110 @@
             flex: 1;
         }
 
-        .stream-container {
-            background: #fff;
+        .helper-text {
+            font-size: 0.85rem;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+            margin-right: 10px;
+        }
+
+        .btn-primary {
+            background-color: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #5a6fd8;
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background-color: #5a6268;
+        }
+
+        .loading {
+            display: none;
+            color: #667eea;
+            font-weight: 500;
+            margin: 15px 0;
+        }
+
+        .response-section {
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+
+        .response-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #495057;
+        }
+
+        .response-status {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+
+        .response-status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .response-status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .response-body {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
             padding: 15px;
-            border-radius: 6px;
-            border: 1px solid #dee2e6;
-            min-height: 200px;
-            max-height: 500px;
-            overflow-y: auto;
             font-family: 'Monaco', 'Menlo', monospace;
             font-size: 13px;
             white-space: pre-wrap;
             word-break: break-word;
+            max-height: 300px;
+            overflow-y: auto;
         }
 
         .required {
             color: #dc3545;
             margin-left: 2px;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                flex: 0 0 auto;
+            }
+            
+            .inline-group {
+                flex-direction: column;
+                gap: 10px;
+            }
         }
     </style>
 </head>
@@ -351,37 +353,34 @@
                 <div class="menu-section">
                     <div class="menu-section-title">文档管理</div>
                     <div class="menu-item" data-section="doc-list">文档列表</div>
-                    <div class="menu-item" data-section="doc-reindex">重新索引文档</div>
                     <div class="menu-item" data-section="doc-delete">删除文档</div>
                 </div>
 
-                <!-- Chunks管理 -->
+                <!-- Chunk管理 -->
                 <div class="menu-section">
-                    <div class="menu-section-title">Chunks管理</div>
-                    <div class="menu-item" data-section="chunk-list">Chunks列表</div>
+                    <div class="menu-section-title">Chunk管理</div>
+                    <div class="menu-item" data-section="chunk-list">Chunk列表</div>
                     <div class="menu-item" data-section="chunk-delete">删除Chunk</div>
-                    <div class="menu-item" data-section="chunk-update-status">更新Chunk状态</div>
-                    <div class="menu-item" data-section="chunk-update-content">更新Chunk内容</div>
+                    <div class="menu-item" data-section="chunk-update-content">更新Chunk状态</div>
                 </div>
 
-                <!-- 索引 -->
+                <!-- 文档索引 -->
                 <div class="menu-section">
-                    <div class="menu-section-title">索引管理</div>
-                    <div class="menu-item" data-section="indexer-upload">文档索引(上传)</div>
-                    <div class="menu-item" data-section="indexer-url">文档索引(URL)</div>
+                    <div class="menu-section-title">文档索引</div>
+                    <div class="menu-item" data-section="indexer-upload">文档上传</div>
+                    <div class="menu-item" data-section="indexer-index">文档索引</div>
                 </div>
 
-                <!-- 检索 -->
+                <!-- 检索接口 -->
                 <div class="menu-section">
-                    <div class="menu-section-title">检索</div>
-                    <div class="menu-item" data-section="retriever-section">标准检索</div>
-
+                    <div class="menu-section-title">检索接口</div>
+                    <div class="menu-item" data-section="retriever-standard">标准检索</div>
                 </div>
 
-                <!-- 对话 -->
+                <!-- 对话接口 -->
                 <div class="menu-section">
-                    <div class="menu-section-title">对话</div>
-                    <div class="menu-item" data-section="chat">对话</div>
+                    <div class="menu-section-title">对话接口</div>
+                    <div class="menu-item" data-section="chat">普通对话</div>
                 </div>
 
                 <!-- MCP管理 -->
@@ -400,1165 +399,1039 @@
                 </div>
             </div>
 
-            <div class="content-area">
-                <!-- 创建知识库 -->
-                <div class="api-section active" id="kb-create">
-                    <h2 class="api-title">
-                        <span class="api-method method-post">POST</span>
-                        创建知识库
-                    </h2>
-                    <p class="api-description">创建一个新的知识库，系统会自动在Milvus中创建对应的集合</p>
+            <!-- 创建知识库 -->
+            <div class="api-section active" id="kb-create">
+                <h2 class="api-title">
+                    <span class="api-method method-post">POST</span>
+                    创建知识库
+                </h2>
+                <p class="api-description">创建一个新的知识库，系统会自动在Milvus中创建对应的集合</p>
 
+                <div class="form-group">
+                    <label class="form-label">知识库名称 <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="kb_create_name" placeholder="例如: 技术文档库">
+                    <div class="helper-text">长度3-50字符</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">描述 <span class="required">*</span></label>
+                    <textarea class="form-textarea" id="kb_create_desc" placeholder="例如: 存储所有技术相关文档"></textarea>
+                    <div class="helper-text">长度3-200字符</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">分类</label>
+                    <input type="text" class="form-input" id="kb_create_category" placeholder="例如: 技术">
+                    <div class="helper-text">可选，长度3-50字符</div>
+                </div>
+
+                <button class="btn btn-primary" onclick="createKB()">创建知识库</button>
+                <button class="btn btn-secondary" onclick="clearForm('kb-create')">清空</button>
+
+                <div class="loading" id="kb_create_loading">请求中...</div>
+
+                <div class="response-section" id="kb_create_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="kb_create_status"></div>
+                    <div class="response-body" id="kb_create_body"></div>
+                </div>
+            </div>
+
+            <!-- 知识库列表 -->
+            <div class="api-section" id="kb-list">
+                <h2 class="api-title">
+                    <span class="api-method method-get">GET</span>
+                    知识库列表
+                </h2>
+                <p class="api-description">获取知识库列表，支持按名称、状态、分类过滤</p>
+
+                <div class="form-group">
+                    <label class="form-label">知识库名称</label>
+                    <input type="text" class="form-input" id="kb_list_name" placeholder="可选，模糊匹配">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">状态</label>
+                    <select class="form-select" id="kb_filter_status">
+                        <option value="">全部</option>
+                        <option value="1">启用</option>
+                        <option value="2">禁用</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">分类</label>
+                    <input type="text" class="form-input" id="kb_list_category" placeholder="可选">
+                </div>
+
+                <button class="btn btn-primary" onclick="getKBList()">查询</button>
+                <button class="btn btn-secondary" onclick="clearForm('kb-list')">清空</button>
+
+                <div class="loading" id="kb_list_loading">请求中...</div>
+
+                <div class="response-section" id="kb_list_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="kb_list_status"></div>
+                    <div class="response-body" id="kb_list_body"></div>
+                </div>
+            </div>
+
+            <!-- 获取知识库详情 -->
+            <div class="api-section" id="kb-get">
+                <h2 class="api-title">
+                    <span class="api-method method-get">GET</span>
+                    获取知识库详情
+                </h2>
+                <p class="api-description">根据ID获取知识库详细信息</p>
+
+                <div class="form-group">
+                    <label class="form-label">知识库ID <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="kb_get_id" placeholder="输入知识库ID">
+                </div>
+
+                <button class="btn btn-primary" onclick="getKB()">查询</button>
+                <button class="btn btn-secondary" onclick="clearForm('kb-get')">清空</button>
+
+                <div class="loading" id="kb_get_loading">请求中...</div>
+
+                <div class="response-section" id="kb_get_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="kb_get_status"></div>
+                    <div class="response-body" id="kb_get_body"></div>
+                </div>
+            </div>
+
+            <!-- 更新知识库 -->
+            <div class="api-section" id="kb-update">
+                <h2 class="api-title">
+                    <span class="api-method method-put">PUT</span>
+                    更新知识库
+                </h2>
+                <p class="api-description">更新知识库信息，所有字段都是可选的</p>
+
+                <div class="form-group">
+                    <label class="form-label">知识库ID <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="kb_update_id" placeholder="输入知识库ID">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">知识库名称</label>
+                    <input type="text" class="form-input" id="kb_update_name" placeholder="新的名称">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">描述</label>
+                    <textarea class="form-textarea" id="kb_update_desc" placeholder="新的描述"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">分类</label>
+                    <input type="text" class="form-input" id="kb_update_category" placeholder="新的分类">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">状态</label>
+                    <select class="form-select" id="kb_update_status">
+                        <option value="">不修改</option>
+                        <option value="1">启用</option>
+                        <option value="2">禁用</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-primary" onclick="updateKB()">更新</button>
+                <button class="btn btn-secondary" onclick="clearForm('kb-update')">清空</button>
+
+                <div class="loading" id="kb_update_loading">请求中...</div>
+
+                <div class="response-section" id="kb_update_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="kb_update_status_text"></div>
+                    <div class="response-body" id="kb_update_body"></div>
+                </div>
+            </div>
+
+            <!-- 修改知识库状态 -->
+            <div class="api-section" id="kb-update-status">
+                <h2 class="api-title">
+                    <span class="api-method method-put" style="background: #17a2b8; color: white;">PATCH</span>
+                    修改知识库状态
+                </h2>
+                <p class="api-description">专门用于修改知识库的启用/禁用状态</p>
+
+                <div class="form-group">
+                    <label class="form-label">知识库ID <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="kb_update_status_id" placeholder="输入知识库ID">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">状态 <span class="required">*</span></label>
+                    <select class="form-select" id="kb_update_status_value">
+                        <option value="">请选择</option>
+                        <option value="1">启用</option>
+                        <option value="2">禁用</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-primary" onclick="updateKBStatus()">修改状态</button>
+                <button class="btn btn-secondary" onclick="clearForm('kb-update-status')">清空</button>
+
+                <div class="loading" id="kb_update_status_loading">请求中...</div>
+
+                <div class="response-section" id="kb_update_status_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="kb_update_status_status"></div>
+                    <div class="response-body" id="kb_update_status_body"></div>
+                </div>
+            </div>
+
+            <!-- 删除知识库 -->
+            <div class="api-section" id="kb-delete">
+                <h2 class="api-title">
+                    <span class="api-method method-delete">DELETE</span>
+                    删除知识库
+                </h2>
+                <p class="api-description">删除知识库及其在Milvus中的集合，此操作不可恢复</p>
+
+                <div class="form-group">
+                    <label class="form-label">知识库ID <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="kb_delete_id" placeholder="输入知识库ID">
+                </div>
+
+                <button class="btn btn-primary" onclick="deleteKB()">删除</button>
+                <button class="btn btn-secondary" onclick="clearForm('kb-delete')">清空</button>
+
+                <div class="loading" id="kb_delete_loading">请求中...</div>
+
+                <div class="response-section" id="kb_delete_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="kb_delete_status"></div>
+                    <div class="response-body" id="kb_delete_body"></div>
+                </div>
+            </div>
+
+            <!-- 文档列表 -->
+            <div class="api-section" id="doc-list">
+                <h2 class="api-title">
+                    <span class="api-method method-get">GET</span>
+                    文档列表
+                </h2>
+                <p class="api-description">获取指定知识库下的文档列表，支持分页</p>
+
+                <div class="form-group">
+                    <label class="form-label">知识库ID <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="doc_list_kb_id" placeholder="输入知识库ID">
+                </div>
+
+                <div class="inline-group">
                     <div class="form-group">
-                        <label class="form-label">知识库名称 <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="kb_create_name" placeholder="例如: 技术文档库">
-                        <div class="helper-text">长度3-50字符</div>
+                        <label class="form-label">页码</label>
+                        <input type="number" class="form-input" id="doc_list_page" value="1" min="1">
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">描述 <span class="required">*</span></label>
-                        <textarea class="form-textarea" id="kb_create_desc" placeholder="例如: 存储所有技术相关文档"></textarea>
-                        <div class="helper-text">长度3-200字符</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">分类</label>
-                        <input type="text" class="form-input" id="kb_create_category" placeholder="例如: 技术">
-                        <div class="helper-text">可选，长度3-50字符</div>
-                    </div>
-
-                    <button class="btn btn-primary" onclick="createKB()">创建知识库</button>
-                    <button class="btn btn-secondary" onclick="clearForm('kb-create')">清空</button>
-
-                    <div class="loading" id="kb_create_loading">请求中...</div>
-
-                    <div class="response-section" id="kb_create_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="kb_create_status"></div>
-                        <div class="response-body" id="kb_create_body"></div>
+                        <label class="form-label">每页数量</label>
+                        <input type="number" class="form-input" id="doc_list_size" value="10" min="1" max="100">
                     </div>
                 </div>
 
-                <!-- 知识库列表 -->
-                <div class="api-section" id="kb-list">
-                    <h2 class="api-title">
-                        <span class="api-method method-get">GET</span>
-                        知识库列表
-                    </h2>
-                    <p class="api-description">获取知识库列表，支持按名称、状态、分类过滤</p>
+                <button class="btn btn-primary" onclick="getDocList()">查询</button>
+                <button class="btn btn-secondary" onclick="clearForm('doc-list')">清空</button>
+
+                <div class="loading" id="doc_list_loading">请求中...</div>
+
+                <div class="response-section" id="doc_list_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="doc_list_status"></div>
+                    <div class="response-body" id="doc_list_body"></div>
+                </div>
+            </div>
+
+
+
+            <!-- 删除文档 -->
+            <div class="api-section" id="doc-delete">
+                <h2 class="api-title">
+                    <span class="api-method method-delete">DELETE</span>
+                    删除文档
+                </h2>
+                <p class="api-description">删除文档及其所有chunks，同时删除Milvus中的向量数据</p>
+
+                <div class="form-group">
+                    <label class="form-label">文档ID <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="doc_delete_id" placeholder="输入文档ID">
+                </div>
+
+                <button class="btn btn-primary" onclick="deleteDoc()">删除</button>
+                <button class="btn btn-secondary" onclick="clearForm('doc-delete')">清空</button>
+
+                <div class="loading" id="doc_delete_loading">请求中...</div>
+
+                <div class="response-section" id="doc_delete_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="doc_delete_status"></div>
+                    <div class="response-body" id="doc_delete_body"></div>
+                </div>
+            </div>
+
+            <!-- Chunk列表 -->
+            <div class="api-section" id="chunk-list">
+                <h2 class="api-title">
+                    <span class="api-method method-get">GET</span>
+                    Chunk列表
+                </h2>
+                <p class="api-description">获取指定文档下的chunk列表，支持分页</p>
+
+                <div class="form-group">
+                    <label class="form-label">文档ID <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="chunk_list_doc_id" placeholder="输入文档ID">
+                </div>
+
+                <div class="inline-group">
+                    <div class="form-group">
+                        <label class="form-label">页码</label>
+                        <input type="number" class="form-input" id="chunk_list_page" value="1" min="1">
+                    </div>
 
                     <div class="form-group">
-                        <label class="form-label">知识库名称</label>
-                        <input type="text" class="form-input" id="kb_list_name" placeholder="模糊查询，可选">
-                    </div>
-
-                    <div class="inline-group">
-                        <div class="form-group">
-                            <label class="form-label">状态</label>
-                            <select class="form-select" id="kb_list_status">
-                                <option value="">全部</option>
-                                <option value="1">启用</option>
-                                <option value="2">禁用</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">分类</label>
-                            <input type="text" class="form-input" id="kb_list_category" placeholder="可选">
-                        </div>
-                    </div>
-
-                    <button class="btn btn-primary" onclick="getKBList()">查询</button>
-                    <button class="btn btn-secondary" onclick="clearForm('kb-list')">清空</button>
-
-                    <div class="loading" id="kb_list_loading">请求中...</div>
-
-                    <div class="response-section" id="kb_list_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="kb_list_status_text"></div>
-                        <div class="response-body" id="kb_list_body"></div>
+                        <label class="form-label">每页数量</label>
+                        <input type="number" class="form-input" id="chunk_list_size" value="10" min="1" max="100">
                     </div>
                 </div>
 
-                <!-- 获取知识库详情 -->
-                <div class="api-section" id="kb-get">
-                    <h2 class="api-title">
-                        <span class="api-method method-get">GET</span>
-                        获取知识库详情
-                    </h2>
-                    <p class="api-description">根据ID获取单个知识库的详细信息</p>
+                <button class="btn btn-primary" onclick="getChunkList()">查询</button>
+                <button class="btn btn-secondary" onclick="clearForm('chunk-list')">清空</button>
 
+                <div class="loading" id="chunk_list_loading">请求中...</div>
+
+                <div class="response-section" id="chunk_list_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="chunk_list_status"></div>
+                    <div class="response-body" id="chunk_list_body"></div>
+                </div>
+            </div>
+
+            <!-- 删除Chunk -->
+            <div class="api-section" id="chunk-delete">
+                <h2 class="api-title">
+                    <span class="api-method method-delete">DELETE</span>
+                    删除Chunk
+                </h2>
+                <p class="api-description">删除指定chunk，同时删除Milvus中的向量数据</p>
+
+                <div class="form-group">
+                    <label class="form-label">Chunk ID <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="chunk_delete_id" placeholder="输入Chunk ID">
+                </div>
+
+                <button class="btn btn-primary" onclick="deleteChunk()">删除</button>
+                <button class="btn btn-secondary" onclick="clearForm('chunk-delete')">清空</button>
+
+                <div class="loading" id="chunk_delete_loading">请求中...</div>
+
+                <div class="response-section" id="chunk_delete_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="chunk_delete_status"></div>
+                    <div class="response-body" id="chunk_delete_body"></div>
+                </div>
+            </div>
+
+            <!-- 更新Chunk状态 -->
+            <div class="api-section" id="chunk-update-content">
+                <h2 class="api-title">
+                    <span class="api-method method-put">PUT</span>
+                    更新Chunk状态
+                </h2>
+                <p class="api-description">更新指定chunk的状态</p>
+
+                <div class="form-group">
+                    <label class="form-label">Chunk ID列表 <span class="required">*</span></label>
+                    <textarea class="form-textarea" id="chunk_content_ids" placeholder="多个Chunk ID用逗号分隔，例如: id1,id2,id3"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">状态 <span class="required">*</span></label>
+                    <select class="form-select" id="chunk_update_status">
+                        <option value="1">启用 (Active)</option>
+                        <option value="0">禁用 (Inactive)</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-primary" onclick="updateChunkStatus()">更新</button>
+                <button class="btn btn-secondary" onclick="clearForm('chunk-update-content')">清空</button>
+
+                <div class="loading" id="chunk_content_loading">请求中...</div>
+
+                <div class="response-section" id="chunk_content_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="chunk_content_status"></div>
+                    <div class="response-body" id="chunk_content_body"></div>
+                </div>
+            </div>
+
+            <!-- 文档上传 -->
+            <div class="api-section" id="indexer-upload">
+                <h2 class="api-title">
+                    <span class="api-method method-post">POST</span>
+                    文档上传
+                </h2>
+                <p class="api-description">上传本地文件或通过URL下载文件并保存到知识库</p>
+
+                <div class="form-group">
+                    <label class="form-label">知识库ID <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="upload_kb_id" placeholder="输入知识库ID">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">上传文件</label>
+                    <input type="file" class="form-input" id="upload_file">
+                    <div class="helper-text">选择本地文件进行上传</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">或输入文件URL</label>
+                    <input type="text" class="form-input" id="upload_url" placeholder="例如: https://example.com/doc.pdf">
+                    <div class="helper-text">输入文件的网络地址</div>
+                </div>
+
+                <button class="btn btn-primary" onclick="uploadFile()">上传文件</button>
+                <button class="btn btn-secondary" onclick="clearForm('indexer-upload')">清空</button>
+
+                <div class="loading" id="upload_loading">请求中...</div>
+
+                <div class="response-section" id="upload_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="upload_status"></div>
+                    <div class="response-body" id="upload_body"></div>
+                </div>
+            </div>
+
+            <!-- 文档索引 -->
+            <div class="api-section" id="indexer-index">
+                <h2 class="api-title">
+                    <span class="api-method method-post">POST</span>
+                    文档索引
+                </h2>
+                <p class="api-description">对已上传的文档进行切分和向量化处理</p>
+
+                <div class="form-group">
+                    <label class="form-label">文档ID列表 <span class="required">*</span></label>
+                    <textarea class="form-textarea" id="index_doc_ids" placeholder="多个文档ID用逗号分隔，例如: id1,id2,id3"></textarea>
+                    <div class="helper-text">输入要索引的文档ID列表</div>
+                </div>
+
+                <div class="inline-group">
                     <div class="form-group">
-                        <label class="form-label">知识库ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="kb_get_id" placeholder="输入知识库ID">
+                        <label class="form-label">Chunk Size</label>
+                        <input type="number" class="form-input" id="index_chunk_size" value="1000" min="1">
+                        <div class="helper-text">文档分块大小，默认1000</div>
                     </div>
 
-                    <button class="btn btn-primary" onclick="getKB()">查询</button>
-                    <button class="btn btn-secondary" onclick="clearForm('kb-get')">清空</button>
-
-                    <div class="loading" id="kb_get_loading">请求中...</div>
-
-                    <div class="response-section" id="kb_get_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="kb_get_status"></div>
-                        <div class="response-body" id="kb_get_body"></div>
+                    <div class="form-group">
+                        <label class="form-label">Overlap Size</label>
+                        <input type="number" class="form-input" id="index_overlap_size" value="100" min="0">
+                        <div class="helper-text">分块重叠大小，默认100</div>
                     </div>
                 </div>
 
-                <!-- 更新知识库 -->
-                <div class="api-section" id="kb-update">
-                    <h2 class="api-title">
-                        <span class="api-method method-put">PUT</span>
-                        更新知识库
-                    </h2>
-                    <p class="api-description">更新知识库信息，所有字段都是可选的</p>
+                <button class="btn btn-primary" onclick="indexDocuments()">索引文档</button>
+                <button class="btn btn-secondary" onclick="clearForm('indexer-index')">清空</button>
 
-                    <div class="form-group">
-                        <label class="form-label">知识库ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="kb_update_id" placeholder="输入知识库ID">
-                    </div>
+                <div class="loading" id="index_loading">请求中...</div>
 
-                    <div class="form-group">
-                        <label class="form-label">知识库名称</label>
-                        <input type="text" class="form-input" id="kb_update_name" placeholder="新的名称">
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">描述</label>
-                        <textarea class="form-textarea" id="kb_update_desc" placeholder="新的描述"></textarea>
-                    </div>
-
-                    <div class="inline-group">
-                        <div class="form-group">
-                            <label class="form-label">分类</label>
-                            <input type="text" class="form-input" id="kb_update_category" placeholder="新的分类">
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">状态</label>
-                            <select class="form-select" id="kb_update_status">
-                                <option value="">不修改</option>
-                                <option value="1">启用</option>
-                                <option value="2">禁用</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <button class="btn btn-primary" onclick="updateKB()">更新</button>
-                    <button class="btn btn-secondary" onclick="clearForm('kb-update')">清空</button>
-
-                    <div class="loading" id="kb_update_loading">请求中...</div>
-
-                    <div class="response-section" id="kb_update_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="kb_update_status_text"></div>
-                        <div class="response-body" id="kb_update_body"></div>
-                    </div>
+                <div class="response-section" id="index_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="index_status"></div>
+                    <div class="response-body" id="index_body"></div>
                 </div>
+            </div>
 
-                <!-- 删除知识库 -->
-                <div class="api-section" id="kb-delete">
-                    <h2 class="api-title">
-                        <span class="api-method method-delete">DELETE</span>
-                        删除知识库
-                    </h2>
-                    <p class="api-description">删除知识库及其在Milvus中的集合，此操作不可恢复</p>
-
-                    <div class="form-group">
-                        <label class="form-label">知识库ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="kb_delete_id" placeholder="输入知识库ID">
-                    </div>
-
-                    <button class="btn btn-primary" onclick="deleteKB()">删除</button>
-                    <button class="btn btn-secondary" onclick="clearForm('kb-delete')">清空</button>
-
-                    <div class="loading" id="kb_delete_loading">请求中...</div>
-
-                    <div class="response-section" id="kb_delete_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="kb_delete_status"></div>
-                        <div class="response-body" id="kb_delete_body"></div>
-                    </div>
+            <!-- 标准检索 -->
+            <div class="api-section" id="retriever-standard">
+                <h2 class="api-title">
+                    <span class="api-method method-post">POST</span>
+                    标准检索
+                </h2>
+                <p class="api-description">标准检索接口，支持多种检索模式和查询重写</p>
+                
+                <div class="form-group">
+                    <label class="form-label">知识库ID *</label>
+                    <input type="text" class="form-input" id="retriever_kb_id" placeholder="请输入知识库ID">
+                    <div class="helper-text">必填，要检索的知识库ID</div>
                 </div>
-
-                <!-- 修改知识库状态 -->
-                <div class="api-section" id="kb-update-status">
-                    <h2 class="api-title">
-                        <span class="api-method method-put" style="background: #17a2b8; color: white;">PATCH</span>
-                        修改知识库状态
-                    </h2>
-                    <p class="api-description">专门用于修改知识库的启用/禁用状态</p>
-
-                    <div class="form-group">
-                        <label class="form-label">知识库ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="kb_update_status_id" placeholder="输入知识库ID">
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">状态 <span class="required">*</span></label>
-                        <select class="form-select" id="kb_update_status_value">
-                            <option value="1">启用</option>
-                            <option value="2">禁用</option>
-                        </select>
-                        <div class="helper-text">1=启用（可用），2=禁用（不可用）</div>
-                    </div>
-
-                    <button class="btn btn-primary" onclick="updateKBStatus()">修改状态</button>
-                    <button class="btn btn-secondary" onclick="clearForm('kb-update-status')">清空</button>
-
-                    <div class="loading" id="kb_update_status_loading">请求中...</div>
-
-                    <div class="response-section" id="kb_update_status_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="kb_update_status_status"></div>
-                        <div class="response-body" id="kb_update_status_body"></div>
-                    </div>
+                
+                <div class="form-group">
+                    <label class="form-label">检索问题 *</label>
+                    <input type="text" class="form-input" id="retriever_question" placeholder="请输入要检索的问题">
+                    <div class="helper-text">必填，要检索的问题内容</div>
                 </div>
-
-                <!-- 文档列表 -->
-                <div class="api-section" id="doc-list">
-                    <h2 class="api-title">
-                        <span class="api-method method-get">GET</span>
-                        文档列表
-                    </h2>
-                    <p class="api-description">获取指定知识库下的文档列表，支持分页</p>
-
+                
+                <div class="inline-group">
                     <div class="form-group">
-                        <label class="form-label">知识库ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="doc_list_kb_id" placeholder="输入知识库ID">
-                    </div>
-
-                    <div class="inline-group">
-                        <div class="form-group">
-                            <label class="form-label">页码 <span class="required">*</span></label>
-                            <input type="number" class="form-input" id="doc_list_page" value="1" min="1">
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">每页数量 <span class="required">*</span></label>
-                            <input type="number" class="form-input" id="doc_list_size" value="10" min="1" max="100">
-                        </div>
-                    </div>
-
-                    <button class="btn btn-primary" onclick="getDocList()">查询</button>
-                    <button class="btn btn-secondary" onclick="clearForm('doc-list')">清空</button>
-
-                    <div class="loading" id="doc_list_loading">请求中...</div>
-
-                    <div class="response-section" id="doc_list_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="doc_list_status"></div>
-                        <div class="response-body" id="doc_list_body"></div>
-                    </div>
-                </div>
-
-                <!-- 删除文档 -->
-                <div class="api-section" id="doc-delete">
-                    <h2 class="api-title">
-                        <span class="api-method method-delete">DELETE</span>
-                        删除文档
-                    </h2>
-                    <p class="api-description">删除文档及其所有chunks，同时删除Milvus中的向量数据</p>
-
-                    <div class="form-group">
-                        <label class="form-label">文档ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="doc_delete_id" placeholder="输入文档ID">
-                    </div>
-
-                    <button class="btn btn-primary" onclick="deleteDoc()">删除</button>
-                    <button class="btn btn-secondary" onclick="clearForm('doc-delete')">清空</button>
-
-                    <div class="loading" id="doc_delete_loading">请求中...</div>
-
-                    <div class="response-section" id="doc_delete_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="doc_delete_status"></div>
-                        <div class="response-body" id="doc_delete_body"></div>
-                    </div>
-                </div>
-
-                <!-- 重新索引文档 -->
-                <div class="api-section" id="doc-reindex">
-                    <h2 class="api-title">
-                        <span class="api-method method-post">POST</span>
-                        重新索引文档
-                    </h2>
-                    <p class="api-description">对索引失败的文档进行重新索引（适用于文件已上传但向量化失败的情况）</p>
-
-                    <div class="form-group">
-                        <label class="form-label">文档ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="doc_reindex_id" placeholder="输入文档ID">
-                        <div class="helper-text">只能重新索引status不为2（Active）的文档</div>
-                    </div>
-
-                    <div class="inline-group">
-                        <div class="form-group">
-                            <label class="form-label">Chunk Size</label>
-                            <input type="number" class="form-input" id="doc_reindex_chunk_size" value="1000" min="1">
-                            <div class="helper-text">文档分块大小，默认1000</div>
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">Overlap Size</label>
-                            <input type="number" class="form-input" id="doc_reindex_overlap_size" value="100" min="0">
-                            <div class="helper-text">分块重叠大小，默认100</div>
-                        </div>
-                    </div>
-
-                    <button class="btn btn-primary" onclick="reindexDoc()">重新索引</button>
-                    <button class="btn btn-secondary" onclick="clearForm('doc-reindex')">清空</button>
-
-                    <div class="loading" id="doc_reindex_loading">请求中...</div>
-
-                    <div class="response-section" id="doc_reindex_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="doc_reindex_status"></div>
-                        <div class="response-body" id="doc_reindex_body"></div>
-                    </div>
-                </div>
-
-                <!-- Chunks列表 -->
-                <div class="api-section" id="chunk-list">
-                    <h2 class="api-title">
-                        <span class="api-method method-get">GET</span>
-                        Chunks列表
-                    </h2>
-                    <p class="api-description">获取指定文档的chunks列表，支持分页</p>
-
-                    <div class="form-group">
-                        <label class="form-label">文档ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="chunk_list_doc_id" placeholder="输入文档ID">
-                    </div>
-
-                    <div class="inline-group">
-                        <div class="form-group">
-                            <label class="form-label">页码 <span class="required">*</span></label>
-                            <input type="number" class="form-input" id="chunk_list_page" value="1" min="1">
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">每页数量 <span class="required">*</span></label>
-                            <input type="number" class="form-input" id="chunk_list_size" value="10" min="1" max="100">
-                        </div>
-                    </div>
-
-                    <button class="btn btn-primary" onclick="getChunkList()">查询</button>
-                    <button class="btn btn-secondary" onclick="clearForm('chunk-list')">清空</button>
-
-                    <div class="loading" id="chunk_list_loading">请求中...</div>
-
-                    <div class="response-section" id="chunk_list_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="chunk_list_status"></div>
-                        <div class="response-body" id="chunk_list_body"></div>
-                    </div>
-                </div>
-
-                <!-- 删除Chunk -->
-                <div class="api-section" id="chunk-delete">
-                    <h2 class="api-title">
-                        <span class="api-method method-delete">DELETE</span>
-                        删除Chunk
-                    </h2>
-                    <p class="api-description">删除指定chunk，同时删除Milvus中的向量数据</p>
-
-                    <div class="form-group">
-                        <label class="form-label">Chunk ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="chunk_delete_id" placeholder="输入Chunk ID">
-                    </div>
-
-                    <button class="btn btn-primary" onclick="deleteChunk()">删除</button>
-                    <button class="btn btn-secondary" onclick="clearForm('chunk-delete')">清空</button>
-
-                    <div class="loading" id="chunk_delete_loading">请求中...</div>
-
-                    <div class="response-section" id="chunk_delete_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="chunk_delete_status"></div>
-                        <div class="response-body" id="chunk_delete_body"></div>
-                    </div>
-                </div>
-
-                <!-- 更新Chunk状态 -->
-                <div class="api-section" id="chunk-update-status">
-                    <h2 class="api-title">
-                        <span class="api-method method-put">PUT</span>
-                        更新Chunk状态
-                    </h2>
-                    <p class="api-description">批量更新chunks的启用/禁用状态</p>
-
-                    <div class="form-group">
-                        <label class="form-label">Chunk IDs <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="chunk_status_ids" placeholder="多个ID用逗号分隔，例如: 1,2,3">
-                        <div class="helper-text">多个ID用逗号分隔</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">状态 <span class="required">*</span></label>
-                        <select class="form-select" id="chunk_status_value">
-                            <option value="1">启用</option>
-                            <option value="0">禁用</option>
-                        </select>
-                    </div>
-
-                    <button class="btn btn-primary" onclick="updateChunkStatus()">更新</button>
-                    <button class="btn btn-secondary" onclick="clearForm('chunk-update-status')">清空</button>
-
-                    <div class="loading" id="chunk_status_loading">请求中...</div>
-
-                    <div class="response-section" id="chunk_status_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="chunk_status_status"></div>
-                        <div class="response-body" id="chunk_status_body"></div>
-                    </div>
-                </div>
-
-                <!-- 更新Chunk内容 -->
-                <div class="api-section" id="chunk-update-content">
-                    <h2 class="api-title">
-                        <span class="api-method method-put">PUT</span>
-                        更新Chunk内容
-                    </h2>
-                    <p class="api-description">更新chunk内容，会异步重新索引到Milvus</p>
-
-                    <div class="form-group">
-                        <label class="form-label">Chunk ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="chunk_content_id" placeholder="输入Chunk ID">
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">新内容 <span class="required">*</span></label>
-                        <textarea class="form-textarea" id="chunk_content_value" placeholder="输入新的chunk内容"></textarea>
-                    </div>
-
-                    <button class="btn btn-primary" onclick="updateChunkContent()">更新</button>
-                    <button class="btn btn-secondary" onclick="clearForm('chunk-update-content')">清空</button>
-
-                    <div class="loading" id="chunk_content_loading">请求中...</div>
-
-                    <div class="response-section" id="chunk_content_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="chunk_content_status"></div>
-                        <div class="response-body" id="chunk_content_body"></div>
-                    </div>
-                </div>
-
-                <!-- 文档索引(上传) -->
-                <div class="api-section" id="indexer-upload">
-                    <h2 class="api-title">
-                        <span class="api-method method-post">POST</span>
-                        文档索引(上传文件)
-                    </h2>
-                    <p class="api-description">上传本地文件并进行向量化索引</p>
-
-                    <div class="form-group">
-                        <label class="form-label">知识库ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="indexer_upload_kb_id" placeholder="输入知识库ID">
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">文件 <span class="required">*</span></label>
-                        <input type="file" class="form-file" id="indexer_upload_file">
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">是否QA切分</label>
-                        <select class="form-select" id="indexer_upload_is_qa">
-                            <option value="0">否</option>
-                            <option value="1">是</option>
-                        </select>
-                        <div class="helper-text">QA切分适用于问答对格式的文档</div>
-                    </div>
-
-                    <div class="inline-group">
-                        <div class="form-group">
-                            <label class="form-label">Chunk Size</label>
-                            <input type="number" class="form-input" id="indexer_upload_chunk_size" value="1000" min="1">
-                            <div class="helper-text">文档分块大小，默认1000</div>
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">Overlap Size</label>
-                            <input type="number" class="form-input" id="indexer_upload_overlap_size" value="100" min="0">
-                            <div class="helper-text">分块重叠大小，默认100</div>
-                        </div>
-                    </div>
-
-                    <button class="btn btn-primary" onclick="uploadIndexer()">上传并索引</button>
-                    <button class="btn btn-secondary" onclick="clearForm('indexer-upload')">清空</button>
-
-                    <div class="loading" id="indexer_upload_loading">请求中...</div>
-
-                    <div class="response-section" id="indexer_upload_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="indexer_upload_status"></div>
-                        <div class="response-body" id="indexer_upload_body"></div>
-                    </div>
-                </div>
-
-                <!-- 文档索引(URL) -->
-                <div class="api-section" id="indexer-url">
-                    <h2 class="api-title">
-                        <span class="api-method method-post">POST</span>
-                        文档索引(URL)
-                    </h2>
-                    <p class="api-description">通过URL下载文件并进行向量化索引</p>
-
-                    <div class="form-group">
-                        <label class="form-label">知识库ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="indexer_url_kb_id" placeholder="输入知识库ID">
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">文件URL <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="indexer_url_url" placeholder="例如: https://example.com/doc.pdf">
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">是否QA切分</label>
-                        <select class="form-select" id="indexer_url_is_qa">
-                            <option value="0">否</option>
-                            <option value="1">是</option>
-                        </select>
-                    </div>
-
-                    <div class="inline-group">
-                        <div class="form-group">
-                            <label class="form-label">Chunk Size</label>
-                            <input type="number" class="form-input" id="indexer_url_chunk_size" value="1000" min="1">
-                            <div class="helper-text">文档分块大小，默认1000</div>
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">Overlap Size</label>
-                            <input type="number" class="form-input" id="indexer_url_overlap_size" value="100" min="0">
-                            <div class="helper-text">分块重叠大小，默认100</div>
-                        </div>
-                    </div>
-
-                    <button class="btn btn-primary" onclick="urlIndexer()">索引URL文档</button>
-                    <button class="btn btn-secondary" onclick="clearForm('indexer-url')">清空</button>
-
-                    <div class="loading" id="indexer_url_loading">请求中...</div>
-
-                    <div class="response-section" id="indexer_url_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="indexer_url_status"></div>
-                        <div class="response-body" id="indexer_url_body"></div>
-                    </div>
-                </div>
-
-                <!-- 检索部分 -->
-                <div class="api-section" id="retriever-section">
-                    <h2 class="section-title">检索接口</h2>
-                    
-                    <div class="tab-container">
-                        <div class="menu-item active" data-section="retriever-standard">标准检索</div>
+                        <label class="form-label">返回数量</label>
+                        <input type="number" class="form-input" id="retriever_top_k" value="5" min="1" max="100">
+                        <div class="helper-text">默认5，返回最相关的前N个结果</div>
                     </div>
                     
-                    <!-- 标准检索 -->
-                    <div class="api-form active" id="retriever-standard-form">
-                        <h3>标准检索</h3>
-                        <p class="api-description">标准检索接口，支持多种检索模式和查询重写</p>
-                        
-                        <div class="form-group">
-                            <label class="form-label">知识库ID *</label>
-                            <input type="text" class="form-input" id="retriever_kb_id" placeholder="请输入知识库ID">
-                            <div class="helper-text">必填，要检索的知识库ID</div>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">检索问题 *</label>
-                            <input type="text" class="form-input" id="retriever_question" placeholder="请输入要检索的问题">
-                            <div class="helper-text">必填，要检索的问题内容</div>
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">返回数量</label>
-                                <input type="number" class="form-input" id="retriever_top_k" value="5" min="1" max="100">
-                                <div class="helper-text">默认5，返回最相关的前N个结果</div>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label class="form-label">相似度阈值</label>
-                                <input type="number" class="form-input" id="retriever_score" value="0.2" min="0" max="1" step="0.01">
-                                <div class="helper-text">0-1范围(归一化后)，0=完全不相关，1=完全相同，推荐0.2-0.5</div>
-                            </div>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">启用查询重写</label>
-                            <select class="form-select" id="retriever_enable_rewrite">
-                                <option value="false">否 (默认)</option>
-                                <option value="true">是</option>
-                            </select>
-                            <div class="helper-text">启用后将使用LLM对查询进行重写优化，可提高召回率但速度较慢</div>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">重写尝试次数</label>
-                            <input type="number" class="form-input" id="retriever_rewrite_attempts" value="3" min="1" max="10">
-                            <div class="helper-text">仅在启用查询重写时生效，默认3次</div>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label class="form-label">检索模式</label>
-                            <select class="form-select" id="retriever_retrieve_mode">
-                                <option value="rerank">Rerank (默认)</option>
-                                <option value="milvus">Milvus Only</option>
-                                <option value="rrf">RRF混合</option>
-                            </select>
-                            <div class="helper-text">
-                                <strong>Rerank</strong>: Milvus检索+重排序(推荐) 
-                                <strong>Milvus Only</strong>: 仅向量检索 
-                                <strong>RRF</strong>: Reciprocal Rank Fusion混合检索
-                            </div>
-                        </div>
-                        
-                        <button class="btn btn-primary" onclick="retrieve()">
-                            <i class="icon-send"></i>执行检索
-                        </button>
-                        
-                        <div class="loading" id="retriever_loading">请求中...</div>
+                    <div class="form-group">
+                        <label class="form-label">相似度阈值</label>
+                        <input type="number" class="form-input" id="retriever_score" value="0.2" min="0" max="1" step="0.01">
+                        <div class="helper-text">0-1范围(归一化后)，0=完全不相关，1=完全相同，推荐0.2-0.5</div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">启用查询重写</label>
+                    <select class="form-select" id="retriever_enable_rewrite">
+                        <option value="false">否 (默认)</option>
+                        <option value="true">是</option>
+                        </select>
+                    <div class="helper-text">启用后将使用LLM对查询进行重写优化，可提高召回率但速度较慢</div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">重写尝试次数</label>
+                    <input type="number" class="form-input" id="retriever_rewrite_attempts" value="3" min="1" max="10">
+                    <div class="helper-text">仅在启用查询重写时生效，默认3次</div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">检索模式</label>
+                    <select class="form-select" id="retriever_retrieve_mode">
+                        <option value="rerank">Rerank (默认)</option>
+                        <option value="milvus">Milvus Only</option>
+                        <option value="rrf">RRF混合</option>
+                    </select>
+                    <div class="helper-text">
+                        <strong>Rerank</strong>: Milvus检索+重排序(推荐) 
+                        <strong>Milvus Only</strong>: 仅向量检索 
+                        <strong>RRF</strong>: Reciprocal Rank Fusion混合检索
+                    </div>
+                </div>
+                
+                <button class="btn btn-primary" onclick="retrieve()">
+                    <i class="icon-send"></i>执行检索
+                </button>
+                
+                <div class="loading" id="retriever_loading">请求中...</div>
+                
+                <div class="response-section" id="retriever_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="retriever_status"></div>
+                    <div class="response-body" id="retriever_body"></div>
+                </div>
+            </div>
 
-                        <div class="response-section" id="retriever_response">
-                            <div class="response-title">响应结果</div>
-                            <div class="response-status" id="retriever_status"></div>
-                            <div class="response-body" id="retriever_body"></div>
-                        </div>
+            <!-- 普通对话 -->
+            <div class="api-section" id="chat">
+                <h2 class="api-title">
+                    <span class="api-method method-post">POST</span>
+                    普通对话
+                </h2>
+                <p class="api-description">基于知识库的问答对话（RAG）</p>
+
+                <div class="form-group">
+                    <label class="form-label">会话ID <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="chat_conv_id" placeholder="输入会话ID，例如: session_123">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">知识库ID</label>
+                    <input type="text" class="form-input" id="chat_kb_id" placeholder="输入知识库ID（可选）">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">启用知识库检索</label>
+                    <div>
+                        <label>
+                            <input type="checkbox" id="chat_enable_retriever" checked>
+                            启用知识库检索
+                        </label>
+                    </div>
+                    <div class="helper-text">即使提供了知识库ID，也需要启用此选项才会进行检索</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">问题 <span class="required">*</span></label>
+                    <textarea class="form-textarea" id="chat_question" placeholder="输入您的问题"></textarea>
+                </div>
+
+                <div class="inline-group">
+                    <div class="form-group">
+                        <label class="form-label">TopK</label>
+                        <input type="number" class="form-input" id="chat_top_k" value="5" min="1" max="100">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Score阈值</label>
+                        <input type="number" class="form-input" id="chat_score" value="0.2" min="0" max="1" step="0.01">
                     </div>
                 </div>
 
+                <div class="form-group">
+                    <label class="form-label">启用MCP</label>
+                    <div>
+                        <label>
+                            <input type="checkbox" id="chat_use_mcp">
+                            启用MCP工具调用
+                        </label>
+                    </div>
+                    <div class="helper-text">调用已注册的MCP服务工具</div>
+                </div>
 
+                <div class="form-group">
+                    <label class="form-label">按服务指定MCP工具</label>
+                    <textarea class="form-textarea" id="chat_mcp_service_tools" placeholder='{"service_name": ["tool1", "tool2"]}'></textarea>
+                    <div class="helper-text">JSON格式，可按服务指定工具，留空表示调用所有工具</div>
+                </div>
 
-                <!-- 在相应位置添加MCP和知识库控制选项 -->
-                <div class="api-section" id="chat">
-                    <h2 class="api-title">
-                        <span class="api-method method-post">POST</span>
-                        普通对话
-                    </h2>
-                    <p class="api-description">基于知识库的问答对话（RAG）</p>
+                <button class="btn btn-primary" onclick="chat()">发送消息</button>
+                <button class="btn btn-secondary" onclick="clearForm('chat')">清空</button>
+
+                <div class="loading" id="chat_loading">请求中...</div>
+
+                <div class="response-section" id="chat_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="chat_status"></div>
+                    <div class="response-body" id="chat_body"></div>
+                </div>
+            </div>
+
+            <!-- 注册MCP服务 -->
+            <div class="api-section" id="mcp-registry-create">
+                <h2 class="api-title">
+                    <span class="api-method method-post">POST</span>
+                    注册MCP服务
+                </h2>
+                <p class="api-description">注册一个外部 MCP 服务到系统中</p>
+
+                <div class="form-group">
+                    <label class="form-label">服务名称 <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="mcp_reg_name" placeholder="例如: my-search-service">
+                    <div class="helper-text">唯一标识，长度1-100字符</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">服务描述</label>
+                    <textarea class="form-textarea" id="mcp_reg_desc" placeholder="例如: 搜索服务"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">SSE 端点 URL <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="mcp_reg_endpoint" placeholder="http://localhost:3000/sse">
+                    <div class="helper-text">MCP 服务的 SSE 端点地址</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">API Key</label>
+                    <input type="text" class="form-input" id="mcp_reg_apikey" placeholder="可选，用于认证">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">自定义请求头 (JSON)</label>
+                    <textarea class="form-textarea" id="mcp_reg_headers" placeholder='{"X-Custom-Header": "value"}'></textarea>
+                    <div class="helper-text">可选，JSON 格式的自定义请求头</div>
+                </div>
+
+                <button class="btn btn-primary" onclick="registerMCP()">注册</button>
+                <button class="btn btn-secondary" onclick="clearForm('mcp-registry-create')">清空</button>
+
+                <div class="loading" id="mcp_reg_loading">请求中...</div>
+
+                <div class="response-section" id="mcp_reg_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="mcp_reg_status"></div>
+                    <div class="response-body" id="mcp_reg_body"></div>
+                </div>
+            </div>
+
+            <!-- MCP服务列表 -->
+            <div class="api-section" id="mcp-registry-list">
+                <h2 class="api-title">
+                    <span class="api-method method-get">GET</span>
+                    MCP服务列表
+                </h2>
+                <p class="api-description">获取已注册的MCP服务列表</p>
+
+                <div class="form-group">
+                    <label class="form-label">状态</label>
+                    <select class="form-select" id="mcp_filter_status">
+                        <option value="">全部</option>
+                        <option value="1">启用</option>
+                        <option value="0">禁用</option>
+                    </select>
+                </div>
+
+                <div class="inline-group">
+                    <div class="form-group">
+                        <label class="form-label">页码</label>
+                        <input type="number" class="form-input" id="mcp_list_page" value="1" min="1">
+                    </div>
 
                     <div class="form-group">
-                        <label class="form-label">会话ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="chat_conv_id" placeholder="输入会话ID，例如: session_123">
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">知识库ID</label>
-                        <input type="text" class="form-input" id="chat_kb_id" placeholder="输入知识库ID（可选）">
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">启用知识库检索</label>
-                        <div class="checkbox-group">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="chat_enable_retriever" checked>
-                                启用知识库检索
-                            </label>
-                        </div>
-                        <div class="helper-text">即使提供了知识库ID，也需要启用此选项才会进行检索</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">问题 <span class="required">*</span></label>
-                        <textarea class="form-textarea" id="chat_question" placeholder="输入您的问题"></textarea>
-                    </div>
-
-                    <div class="inline-group">
-                        <div class="form-group">
-                            <label class="form-label">TopK</label>
-                            <input type="number" class="form-input" id="chat_top_k" value="5" min="1" max="100">
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">Score阈值</label>
-                            <input type="number" class="form-input" id="chat_score" value="0.2" min="0" max="1" step="0.01">
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">启用MCP</label>
-                        <div class="checkbox-group">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="chat_use_mcp">
-                                启用MCP工具调用
-                            </label>
-                        </div>
-                        <div class="helper-text">调用已注册的MCP服务工具</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">按服务指定MCP工具</label>
-                        <textarea class="form-textarea" id="chat_mcp_service_tools" placeholder='{"service_name": ["tool1", "tool2"]}'></textarea>
-                        <div class="helper-text">JSON格式，可按服务指定工具，留空表示调用所有工具</div>
-                    </div>
-
-                    <button class="btn btn-primary" onclick="chat()">发送消息</button>
-                    <button class="btn btn-secondary" onclick="clearForm('chat')">清空</button>
-
-                    <div class="loading" id="chat_loading">请求中...</div>
-
-                    <div class="response-section" id="chat_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="chat_status"></div>
-                        <div class="response-body" id="chat_body"></div>
+                        <label class="form-label">每页数量</label>
+                        <input type="number" class="form-input" id="mcp_list_size" value="10" min="1" max="100">
                     </div>
                 </div>
 
+                <button class="btn btn-primary" onclick="getMCPRegistryList()">查询</button>
+                <button class="btn btn-secondary" onclick="clearForm('mcp-registry-list')">清空</button>
 
+                <div class="loading" id="mcp_list_loading">请求中...</div>
 
-                <!-- MCP: 注册MCP服务 -->
-                <div class="api-section" id="mcp-registry-create">
-                    <h2 class="api-title">
-                        <span class="api-method method-post">POST</span>
-                        注册MCP服务
-                    </h2>
-                    <p class="api-description">注册一个外部 MCP 服务到系统中</p>
+                <div class="response-section" id="mcp_list_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="mcp_list_status"></div>
+                    <div class="response-body" id="mcp_list_body"></div>
+                </div>
+            </div>
 
+            <!-- 获取MCP服务 -->
+            <div class="api-section" id="mcp-registry-get">
+                <h2 class="api-title">
+                    <span class="api-method method-get">GET</span>
+                    获取MCP服务
+                </h2>
+                <p class="api-description">根据ID获取MCP服务详情</p>
+
+                <div class="form-group">
+                    <label class="form-label">服务ID <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="mcp_get_id" placeholder="输入MCP服务ID">
+                </div>
+
+                <button class="btn btn-primary" onclick="getMCPRegistry()">查询</button>
+                <button class="btn btn-secondary" onclick="clearForm('mcp-registry-get')">清空</button>
+
+                <div class="loading" id="mcp_get_loading">请求中...</div>
+
+                <div class="response-section" id="mcp_get_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="mcp_get_status"></div>
+                    <div class="response-body" id="mcp_get_body"></div>
+                </div>
+            </div>
+
+            <!-- 更新MCP服务 -->
+            <div class="api-section" id="mcp-registry-update">
+                <h2 class="api-title">
+                    <span class="api-method method-put">PUT</span>
+                    更新 MCP 服务
+                </h2>
+                <p class="api-description">更新 MCP 服务信息，所有字段都是可选的</p>
+
+                <div class="form-group">
+                    <label class="form-label">服务 ID <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="mcp_update_id" placeholder="输入 MCP 服务 ID">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">服务名称</label>
+                    <input type="text" class="form-input" id="mcp_update_name" placeholder="新的服务名称">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">服务描述</label>
+                    <textarea class="form-textarea" id="mcp_update_desc" placeholder="新的服务描述"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">SSE 端点 URL</label>
+                    <input type="text" class="form-input" id="mcp_update_endpoint" placeholder="新的端点URL">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">API Key</label>
+                    <input type="text" class="form-input" id="mcp_update_apikey" placeholder="新的API Key">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">自定义请求头 (JSON)</label>
+                    <textarea class="form-textarea" id="mcp_update_headers" placeholder='{"X-Custom-Header": "value"}'></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">状态</label>
+                    <select class="form-select" id="mcp_update_status">
+                        <option value="">不修改</option>
+                        <option value="1">启用</option>
+                        <option value="0">禁用</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-primary" onclick="updateMCPRegistry()">更新</button>
+                <button class="btn btn-secondary" onclick="clearForm('mcp-registry-update')">清空</button>
+
+                <div class="loading" id="mcp_update_loading">请求中...</div>
+
+                <div class="response-section" id="mcp_update_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="mcp_update_status_text"></div>
+                    <div class="response-body" id="mcp_update_body"></div>
+                </div>
+            </div>
+
+            <!-- 删除MCP服务 -->
+            <div class="api-section" id="mcp-registry-delete">
+                <h2 class="api-title">
+                    <span class="api-method method-delete">DELETE</span>
+                    删除 MCP 服务
+                </h2>
+                <p class="api-description">删除指定的 MCP 服务</p>
+
+                <div class="form-group">
+                    <label class="form-label">服务 ID <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="mcp_delete_id" placeholder="输入 MCP 服务 ID">
+                </div>
+
+                <button class="btn btn-primary" onclick="deleteMCPRegistry()">删除</button>
+                <button class="btn btn-secondary" onclick="clearForm('mcp-registry-delete')">清空</button>
+
+                <div class="loading" id="mcp_delete_loading">请求中...</div>
+
+                <div class="response-section" id="mcp_delete_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="mcp_delete_status"></div>
+                    <div class="response-body" id="mcp_delete_body"></div>
+                </div>
+            </div>
+
+            <!-- 测试MCP连接 -->
+            <div class="api-section" id="mcp-registry-test">
+                <h2 class="api-title">
+                    <span class="api-method method-post">POST</span>
+                    测试 MCP 连接
+                </h2>
+                <p class="api-description">测试指定 MCP 服务的连接状态</p>
+
+                <div class="form-group">
+                    <label class="form-label">服务 ID <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="mcp_test_id" placeholder="输入 MCP 服务 ID">
+                </div>
+
+                <button class="btn btn-primary" onclick="testMCPRegistry()">测试</button>
+                <button class="btn btn-secondary" onclick="clearForm('mcp-registry-test')">清空</button>
+
+                <div class="loading" id="mcp_test_loading">请求中...</div>
+
+                <div class="response-section" id="mcp_test_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="mcp_test_status"></div>
+                    <div class="response-body" id="mcp_test_body"></div>
+                </div>
+            </div>
+
+            <!-- 列出MCP工具 -->
+            <div class="api-section" id="mcp-list-tools">
+                <h2 class="api-title">
+                    <span class="api-method method-get">GET</span>
+                    列出 MCP 工具
+                </h2>
+                <p class="api-description">列出指定 MCP 服务可用的工具</p>
+
+                <div class="form-group">
+                    <label class="form-label">服务 ID <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="mcp_tools_id" placeholder="输入 MCP 服务 ID">
+                </div>
+
+                <button class="btn btn-primary" onclick="listMCPTools()">查询</button>
+                <button class="btn btn-secondary" onclick="clearForm('mcp-list-tools')">清空</button>
+
+                <div class="loading" id="mcp_tools_loading">请求中...</div>
+
+                <div class="response-section" id="mcp_tools_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="mcp_tools_status"></div>
+                    <div class="response-body" id="mcp_tools_body"></div>
+                </div>
+            </div>
+
+            <!-- 调用MCP工具 -->
+            <div class="api-section" id="mcp-call-tool">
+                <h2 class="api-title">
+                    <span class="api-method method-post">POST</span>
+                    调用 MCP 工具
+                </h2>
+                <p class="api-description">调用指定的 MCP 工具</p>
+
+                <div class="form-group">
+                    <label class="form-label">服务 ID <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="mcp_call_registry_id" placeholder="输入 MCP 服务 ID 或服务名称">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">工具名称 <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="mcp_call_tool_name" placeholder="输入工具名称">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">参数 (JSON)</label>
+                    <textarea class="form-textarea" id="mcp_call_args" placeholder='{"param1": "value1", "param2": "value2"}'></textarea>
+                    <div class="helper-text">工具调用参数，JSON格式</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">对话ID</label>
+                    <input type="text" class="form-input" id="mcp_call_conv_id" placeholder="可选，用于日志记录">
+                </div>
+
+                <button class="btn btn-primary" onclick="callMCPTool()">调用</button>
+                <button class="btn btn-secondary" onclick="clearForm('mcp-call-tool')">清空</button>
+
+                <div class="loading" id="mcp_call_loading">请求中...</div>
+
+                <div class="response-section" id="mcp_call_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="mcp_call_status"></div>
+                    <div class="response-body" id="mcp_call_body"></div>
+                </div>
+            </div>
+
+            <!-- MCP调用日志 -->
+            <div class="api-section" id="mcp-logs">
+                <h2 class="api-title">
+                    <span class="api-method method-get">GET</span>
+                    MCP 调用日志
+                </h2>
+                <p class="api-description">获取 MCP 工具调用日志</p>
+
+                <div class="form-group">
+                    <label class="form-label">对话ID</label>
+                    <input type="text" class="form-input" id="mcp_logs_conv_id" placeholder="可选，按对话ID过滤">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">服务ID</label>
+                    <input type="text" class="form-input" id="mcp_logs_registry_id" placeholder="可选，按服务ID过滤">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">工具名称</label>
+                    <input type="text" class="form-input" id="mcp_logs_tool_name" placeholder="可选，按工具名称过滤">
+                </div>
+
+                <div class="inline-group">
                     <div class="form-group">
-                        <label class="form-label">服务名称 <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="mcp_reg_name" placeholder="例如: my-search-service">
-                        <div class="helper-text">唯一标识，长度1-100字符</div>
+                        <label class="form-label">页码</label>
+                        <input type="number" class="form-input" id="mcp_logs_page" value="1" min="1">
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">服务描述</label>
-                        <textarea class="form-textarea" id="mcp_reg_desc" placeholder="例如: 搜索服务"></textarea>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">SSE 端点 URL <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="mcp_reg_endpoint" placeholder="http://localhost:3000/sse">
-                        <div class="helper-text">MCP 服务的 SSE 端点地址</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">API Key</label>
-                        <input type="text" class="form-input" id="mcp_reg_apikey" placeholder="可选，用于认证">
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">自定义请求头 (JSON)</label>
-                        <textarea class="form-textarea" id="mcp_reg_headers" placeholder='{"X-Custom-Header": "value"}'></textarea>
-                        <div class="helper-text">可选，JSON 格式的自定义请求头</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">超时时间（秒）</label>
-                        <input type="number" class="form-input" id="mcp_reg_timeout" value="30" min="1" max="300">
-                    </div>
-
-                    <button class="btn btn-primary" onclick="createMCPRegistry()">注册服务</button>
-                    <button class="btn btn-secondary" onclick="clearForm('mcp-registry-create')">清空</button>
-
-                    <div class="loading" id="mcp_reg_loading">请求中...</div>
-
-                    <div class="response-section" id="mcp_reg_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="mcp_reg_status"></div>
-                        <div class="response-body" id="mcp_reg_body"></div>
+                        <label class="form-label">每页数量</label>
+                        <input type="number" class="form-input" id="mcp_logs_size" value="10" min="1" max="100">
                     </div>
                 </div>
 
-                <!-- MCP: 服务列表 -->
-                <div class="api-section" id="mcp-registry-list">
-                    <h2 class="api-title">
-                        <span class="api-method method-get">GET</span>
-                        MCP 服务列表
-                    </h2>
-                    <p class="api-description">获取已注册的 MCP 服务列表</p>
+                <button class="btn btn-primary" onclick="getMCPLogs()">查询日志</button>
+                <button class="btn btn-secondary" onclick="clearForm('mcp-logs')">清空</button>
 
-                    <div class="inline-group">
-                        <div class="form-group">
-                            <label class="form-label">状态</label>
-                            <select class="form-select" id="mcp_list_status">
-                                <option value="">全部</option>
-                                <option value="1">启用</option>
-                                <option value="0">禁用</option>
-                            </select>
-                        </div>
+                <div class="loading" id="mcp_logs_loading">请求中...</div>
 
-                        <div class="form-group">
-                            <label class="form-label">页码</label>
-                            <input type="number" class="form-input" id="mcp_list_page" value="1" min="1">
-                        </div>
+                <div class="response-section" id="mcp_logs_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="mcp_logs_status_text"></div>
+                    <div class="response-body" id="mcp_logs_body"></div>
+                </div>
+            </div>
 
-                        <div class="form-group">
-                            <label class="form-label">每页数量</label>
-                            <input type="number" class="form-input" id="mcp_list_size" value="10" min="1" max="100">
-                        </div>
-                    </div>
+            <!-- MCP统计信息 -->
+            <div class="api-section" id="mcp-stats">
+                <h2 class="api-title">
+                    <span class="api-method method-get">GET</span>
+                    MCP 统计信息
+                </h2>
+                <p class="api-description">获取指定 MCP 服务的调用统计信息</p>
 
-                    <button class="btn btn-primary" onclick="getMCPList()">查询</button>
-                    <button class="btn btn-secondary" onclick="clearForm('mcp-registry-list')">清空</button>
-
-                    <div class="loading" id="mcp_list_loading">请求中...</div>
-
-                    <div class="response-section" id="mcp_list_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="mcp_list_status_text"></div>
-                        <div class="response-body" id="mcp_list_body"></div>
-                    </div>
+                <div class="form-group">
+                    <label class="form-label">服务 ID <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="mcp_stats_id" placeholder="输入 MCP 服务 ID">
                 </div>
 
-                <!-- MCP: 获取单个服务 -->
-                <div class="api-section" id="mcp-registry-get">
-                    <h2 class="api-title">
-                        <span class="api-method method-get">GET</span>
-                        获取 MCP 服务详情
-                    </h2>
-                    <p class="api-description">根据 ID 获取单个 MCP 服务的详细信息</p>
+                <button class="btn btn-primary" onclick="getMCPStats()">查询</button>
+                <button class="btn btn-secondary" onclick="clearForm('mcp-stats')">清空</button>
 
-                    <div class="form-group">
-                        <label class="form-label">服务 ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="mcp_get_id" placeholder="输入 MCP 服务 ID">
-                    </div>
+                <div class="loading" id="mcp_stats_loading">请求中...</div>
 
-                    <button class="btn btn-primary" onclick="getMCPRegistry()">查询</button>
-                    <button class="btn btn-secondary" onclick="clearForm('mcp-registry-get')">清空</button>
-
-                    <div class="loading" id="mcp_get_loading">请求中...</div>
-
-                    <div class="response-section" id="mcp_get_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="mcp_get_status"></div>
-                        <div class="response-body" id="mcp_get_body"></div>
-                    </div>
-                </div>
-
-                <!-- MCP: 更新服务 -->
-                <div class="api-section" id="mcp-registry-update">
-                    <h2 class="api-title">
-                        <span class="api-method method-put">PUT</span>
-                        更新 MCP 服务
-                    </h2>
-                    <p class="api-description">更新 MCP 服务信息，所有字段都是可选的</p>
-
-                    <div class="form-group">
-                        <label class="form-label">服务 ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="mcp_update_id" placeholder="输入 MCP 服务 ID">
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">服务名称</label>
-                        <input type="text" class="form-input" id="mcp_update_name" placeholder="新的名称">
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">服务描述</label>
-                        <textarea class="form-textarea" id="mcp_update_desc" placeholder="新的描述"></textarea>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">SSE 端点 URL</label>
-                        <input type="text" class="form-input" id="mcp_update_endpoint" placeholder="新的端点地址">
-                    </div>
-
-                    <div class="inline-group">
-                        <div class="form-group">
-                            <label class="form-label">超时时间（秒）</label>
-                            <input type="number" class="form-input" id="mcp_update_timeout" min="1" max="300">
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">状态</label>
-                            <select class="form-select" id="mcp_update_status">
-                                <option value="">不修改</option>
-                                <option value="1">启用</option>
-                                <option value="0">禁用</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <button class="btn btn-primary" onclick="updateMCPRegistry()">更新</button>
-                    <button class="btn btn-secondary" onclick="clearForm('mcp-registry-update')">清空</button>
-
-                    <div class="loading" id="mcp_update_loading">请求中...</div>
-
-                    <div class="response-section" id="mcp_update_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="mcp_update_status_text"></div>
-                        <div class="response-body" id="mcp_update_body"></div>
-                    </div>
-                </div>
-
-                <!-- MCP: 删除服务 -->
-                <div class="api-section" id="mcp-registry-delete">
-                    <h2 class="api-title">
-                        <span class="api-method method-delete">DELETE</span>
-                        删除 MCP 服务
-                    </h2>
-                    <p class="api-description">删除已注册的 MCP 服务</p>
-
-                    <div class="form-group">
-                        <label class="form-label">服务 ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="mcp_delete_id" placeholder="输入 MCP 服务 ID">
-                    </div>
-
-                    <button class="btn btn-primary" onclick="deleteMCPRegistry()">删除</button>
-                    <button class="btn btn-secondary" onclick="clearForm('mcp-registry-delete')">清空</button>
-
-                    <div class="loading" id="mcp_delete_loading">请求中...</div>
-
-                    <div class="response-section" id="mcp_delete_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="mcp_delete_status"></div>
-                        <div class="response-body" id="mcp_delete_body"></div>
-                    </div>
-                </div>
-
-                <!-- MCP: 测试连接 -->
-                <div class="api-section" id="mcp-registry-test">
-                    <h2 class="api-title">
-                        <span class="api-method method-post">POST</span>
-                        测试 MCP 连接
-                    </h2>
-                    <p class="api-description">测试 MCP 服务的连通性</p>
-
-                    <div class="form-group">
-                        <label class="form-label">服务 ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="mcp_test_id" placeholder="输入 MCP 服务 ID">
-                    </div>
-
-                    <button class="btn btn-primary" onclick="testMCPConnection()">测试连接</button>
-                    <button class="btn btn-secondary" onclick="clearForm('mcp-registry-test')">清空</button>
-
-                    <div class="loading" id="mcp_test_loading">请求中...</div>
-
-                    <div class="response-section" id="mcp_test_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="mcp_test_status"></div>
-                        <div class="response-body" id="mcp_test_body"></div>
-                    </div>
-                </div>
-
-                <!-- MCP: 列出工具 -->
-                <div class="api-section" id="mcp-list-tools">
-                    <h2 class="api-title">
-                        <span class="api-method method-get">GET</span>
-                        列出 MCP 工具
-                    </h2>
-                    <p class="api-description">列出指定 MCP 服务的所有可用工具</p>
-
-                    <div class="form-group">
-                        <label class="form-label">服务 ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="mcp_tools_id" placeholder="输入 MCP 服务 ID">
-                    </div>
-
-                    <button class="btn btn-primary" onclick="listMCPTools()">获取工具列表</button>
-                    <button class="btn btn-secondary" onclick="clearForm('mcp-list-tools')">清空</button>
-
-                    <div class="loading" id="mcp_tools_loading">请求中...</div>
-
-                    <div class="response-section" id="mcp_tools_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="mcp_tools_status"></div>
-                        <div class="response-body" id="mcp_tools_body"></div>
-                    </div>
-                </div>
-
-                <!-- MCP: 调用工具 -->
-                <div class="api-section" id="mcp-call-tool">
-                    <h2 class="api-title">
-                        <span class="api-method method-post">POST</span>
-                        调用 MCP 工具
-                    </h2>
-                    <p class="api-description">调用指定 MCP 服务的工具</p>
-
-                    <div class="form-group">
-                        <label class="form-label">服务 ID/名称 <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="mcp_call_registry" placeholder="输入 MCP 服务 ID 或名称">
-                        <div class="helper-text">可以是服务 ID 或服务名称</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">工具名称 <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="mcp_call_tool" placeholder="输入工具名称">
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">工具参数 (JSON)</label>
-                        <textarea class="form-textarea" id="mcp_call_args" placeholder='{"key": "value"}'></textarea>
-                        <div class="helper-text">JSON 格式的工具参数</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">对话 ID</label>
-                        <input type="text" class="form-input" id="mcp_call_conv" placeholder="可选，用于日志关联">
-                    </div>
-
-                    <button class="btn btn-primary" onclick="callMCPTool()">调用工具</button>
-                    <button class="btn btn-secondary" onclick="clearForm('mcp-call-tool')">清空</button>
-
-                    <div class="loading" id="mcp_call_loading">请求中...</div>
-
-                    <div class="response-section" id="mcp_call_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="mcp_call_status"></div>
-                        <div class="response-body" id="mcp_call_body"></div>
-                    </div>
-                </div>
-
-                <!-- MCP: 调用日志 -->
-                <div class="api-section" id="mcp-logs">
-                    <h2 class="api-title">
-                        <span class="api-method method-get">GET</span>
-                        MCP 调用日志
-                    </h2>
-                    <p class="api-description">查询 MCP 工具的调用日志</p>
-
-                    <div class="form-group">
-                        <label class="form-label">对话 ID</label>
-                        <input type="text" class="form-input" id="mcp_logs_conv" placeholder="按对话 ID 过滤">
-                    </div>
-
-                    <div class="inline-group">
-                        <div class="form-group">
-                            <label class="form-label">服务 ID</label>
-                            <input type="text" class="form-input" id="mcp_logs_registry" placeholder="按服务 ID 过滤">
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">工具名称</label>
-                            <input type="text" class="form-input" id="mcp_logs_tool" placeholder="按工具名称过滤">
-                        </div>
-                    </div>
-
-                    <div class="inline-group">
-                        <div class="form-group">
-                            <label class="form-label">状态</label>
-                            <select class="form-select" id="mcp_logs_status">
-                                <option value="">全部</option>
-                                <option value="1">成功</option>
-                                <option value="0">失败</option>
-                                <option value="2">超时</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">页码</label>
-                            <input type="number" class="form-input" id="mcp_logs_page" value="1" min="1">
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">每页数量</label>
-                            <input type="number" class="form-input" id="mcp_logs_size" value="10" min="1" max="100">
-                        </div>
-                    </div>
-
-                    <button class="btn btn-primary" onclick="getMCPLogs()">查询日志</button>
-                    <button class="btn btn-secondary" onclick="clearForm('mcp-logs')">清空</button>
-
-                    <div class="loading" id="mcp_logs_loading">请求中...</div>
-
-                    <div class="response-section" id="mcp_logs_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="mcp_logs_status_text"></div>
-                        <div class="response-body" id="mcp_logs_body"></div>
-                    </div>
-                </div>
-
-                <!-- MCP: 统计信息 -->
-                <div class="api-section" id="mcp-stats">
-                    <h2 class="api-title">
-                        <span class="api-method method-get">GET</span>
-                        MCP 统计信息
-                    </h2>
-                    <p class="api-description">获取指定 MCP 服务的调用统计信息</p>
-
-                    <div class="form-group">
-                        <label class="form-label">服务 ID <span class="required">*</span></label>
-                        <input type="text" class="form-input" id="mcp_stats_id" placeholder="输入 MCP 服务 ID">
-                    </div>
-
-                    <button class="btn btn-primary" onclick="getMCPStats()">获取统计</button>
-                    <button class="btn btn-secondary" onclick="clearForm('mcp-stats')">清空</button>
-
-                    <div class="loading" id="mcp_stats_loading">请求中...</div>
-
-                    <div class="response-section" id="mcp_stats_response">
-                        <div class="response-title">响应结果</div>
-                        <div class="response-status" id="mcp_stats_status"></div>
-                        <div class="response-body" id="mcp_stats_body"></div>
-                    </div>
+                <div class="response-section" id="mcp_stats_response">
+                    <div class="response-title">响应结果</div>
+                    <div class="response-status" id="mcp_stats_status"></div>
+                    <div class="response-body" id="mcp_stats_body"></div>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        // 获取基础URL
+        // Helper functions
         function getBaseUrl() {
-            return document.getElementById('baseUrl').value.trim();
+            return document.getElementById('baseUrl').value || 'http://localhost:8000';
         }
 
-        // 显示加载状态
-        function showLoading(prefix) {
-            document.getElementById(prefix + '_loading').classList.add('show');
-            document.getElementById(prefix + '_response').classList.remove('show');
+        function showLoading(section) {
+            document.getElementById(section + '_loading').style.display = 'block';
         }
 
-        // 隐藏加载状态
-        function hideLoading(prefix) {
-            document.getElementById(prefix + '_loading').classList.remove('show');
+        function hideLoading(section) {
+            document.getElementById(section + '_loading').style.display = 'none';
         }
 
-        // 显示响应
-        function showResponse(prefix, success, data) {
-            hideLoading(prefix);
-            const responseSection = document.getElementById(prefix + '_response');
-            const statusEl = document.getElementById(prefix + '_status');
-            const bodyEl = document.getElementById(prefix + '_body');
-
-            responseSection.classList.add('show');
-            statusEl.className = 'response-status ' + (success ? 'status-success' : 'status-error');
-            statusEl.textContent = success ? '请求成功' : '请求失败';
+        function showResponse(section, success, data) {
+            hideLoading(section);
+            
+            const statusEl = document.getElementById(section + '_status');
+            const bodyEl = document.getElementById(section + '_body');
+            
+            statusEl.textContent = success ? '成功' : '失败';
+            statusEl.className = 'response-status ' + (success ? 'success' : 'error');
             bodyEl.textContent = JSON.stringify(data, null, 2);
         }
 
-        // 清空表单
         function clearForm(sectionId) {
             const section = document.getElementById(sectionId);
-            const inputs = section.querySelectorAll('input[type="text"], input[type="number"], textarea, select');
+            const inputs = section.querySelectorAll('input, textarea, select');
             inputs.forEach(input => {
-                if (input.type === 'number') {
-                    input.value = input.defaultValue || '';
-                } else if (input.tagName === 'SELECT') {
-                    input.selectedIndex = 0;
+                if (input.type === 'checkbox') {
+                    input.checked = false;
                 } else {
                     input.value = '';
                 }
             });
-
-            const fileInputs = section.querySelectorAll('input[type="file"]');
-            fileInputs.forEach(input => input.value = '');
+            
+            // Clear response sections
+            const responseSections = section.querySelectorAll('.response-section');
+            responseSections.forEach(section => {
+                const statusEl = section.querySelector('.response-status');
+                const bodyEl = section.querySelector('.response-body');
+                if (statusEl) statusEl.textContent = '';
+                if (bodyEl) bodyEl.textContent = '';
+            });
         }
 
-        // 菜单切换
+        // Menu navigation
         document.querySelectorAll('.menu-item').forEach(item => {
             item.addEventListener('click', function() {
-                // 移除所有active状态
+                // Remove active class from all menu items
                 document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
-                document.querySelectorAll('.api-section').forEach(s => s.classList.remove('active'));
-
-                // 添加active状态
+                
+                // Add active class to clicked item
                 this.classList.add('active');
+                
+                // Hide all api sections
+                document.querySelectorAll('.api-section').forEach(section => {
+                    section.classList.remove('active');
+                });
+                
+                // Show selected section
                 const sectionId = this.getAttribute('data-section');
                 document.getElementById(sectionId).classList.add('active');
             });
         });
 
-        // ==================== 知识库管理 ====================
-
-        // 创建知识库
+        // API Functions
         async function createKB() {
             const name = document.getElementById('kb_create_name').value.trim();
-            const description = document.getElementById('kb_create_desc').value.trim();
+            const desc = document.getElementById('kb_create_desc').value.trim();
             const category = document.getElementById('kb_create_category').value.trim();
 
-            if (!name || !description) {
+            if (!name || !desc) {
                 alert('请填写必填字段');
                 return;
             }
@@ -1569,7 +1442,7 @@
                 const response = await fetch(getBaseUrl() + '/api/v1/kb', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({name, description, category})
+                    body: JSON.stringify({name, description: desc, category: category || undefined})
                 });
 
                 const data = await response.json();
@@ -1579,22 +1452,28 @@
             }
         }
 
-        // 获取知识库列表
         async function getKBList() {
             const name = document.getElementById('kb_list_name').value.trim();
-            const status = document.getElementById('kb_list_status').value;
+            const status = document.getElementById('kb_filter_status').value;
             const category = document.getElementById('kb_list_category').value.trim();
+            const page = document.getElementById('kb_list_page') ? document.getElementById('kb_list_page').value || 1 : 1;
+            const size = document.getElementById('kb_list_size') ? document.getElementById('kb_list_size').value || 10 : 10;
 
+            let url = getBaseUrl() + '/api/v1/kb?';
             const params = new URLSearchParams();
+            
             if (name) params.append('name', name);
             if (status) params.append('status', status);
             if (category) params.append('category', category);
+            params.append('page', page);
+            params.append('size', size);
+
+            url += params.toString();
 
             showLoading('kb_list');
 
             try {
-                const url = getBaseUrl() + '/api/v1/kb' + (params.toString() ? '?' + params.toString() : '');
-                const response = await fetch(url);
+                const response = await fetch(url, {method: 'GET'});
                 const data = await response.json();
                 showResponse('kb_list', response.ok, data);
             } catch (error) {
@@ -1602,7 +1481,8 @@
             }
         }
 
-        // 获取知识库详情
+
+
         async function getKB() {
             const id = document.getElementById('kb_get_id').value.trim();
 
@@ -1614,7 +1494,7 @@
             showLoading('kb_get');
 
             try {
-                const response = await fetch(getBaseUrl() + '/api/v1/kb/' + id);
+                const response = await fetch(getBaseUrl() + '/api/v1/kb/' + id, {method: 'GET'});
                 const data = await response.json();
                 showResponse('kb_get', response.ok, data);
             } catch (error) {
@@ -1622,11 +1502,10 @@
             }
         }
 
-        // 更新知识库
         async function updateKB() {
             const id = document.getElementById('kb_update_id').value.trim();
             const name = document.getElementById('kb_update_name').value.trim();
-            const description = document.getElementById('kb_update_desc').value.trim();
+            const desc = document.getElementById('kb_update_desc').value.trim();
             const category = document.getElementById('kb_update_category').value.trim();
             const status = document.getElementById('kb_update_status').value;
 
@@ -1637,9 +1516,14 @@
 
             const body = {};
             if (name) body.name = name;
-            if (description) body.description = description;
+            if (desc) body.description = desc;
             if (category) body.category = category;
             if (status) body.status = parseInt(status);
+
+            if (Object.keys(body).length === 0) {
+                alert('请至少填写一个要更新的字段');
+                return;
+            }
 
             showLoading('kb_update');
 
@@ -1657,7 +1541,31 @@
             }
         }
 
-        // 删除知识库
+        async function updateKBStatus() {
+            const id = document.getElementById('kb_update_status_id').value.trim();
+            const status = document.getElementById('kb_update_status_value').value;
+
+            if (!id || !status) {
+                alert('请填写所有必填字段');
+                return;
+            }
+
+            showLoading('kb_update_status');
+
+            try {
+                const response = await fetch(getBaseUrl() + '/api/v1/kb/' + id + '/status', {
+                    method: 'PATCH',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({status: parseInt(status)})
+                });
+
+                const data = await response.json();
+                showResponse('kb_update_status', response.ok, data);
+            } catch (error) {
+                showResponse('kb_update_status', false, {error: error.message});
+            }
+        }
+
         async function deleteKB() {
             const id = document.getElementById('kb_delete_id').value.trim();
 
@@ -1684,37 +1592,6 @@
             }
         }
 
-        // 修改知识库状态
-        async function updateKBStatus() {
-            const id = document.getElementById('kb_update_status_id').value.trim();
-            const status = document.getElementById('kb_update_status_value').value;
-
-            if (!id) {
-                alert('请输入知识库ID');
-                return;
-            }
-
-            showLoading('kb_update_status');
-
-            try {
-                const response = await fetch(getBaseUrl() + '/api/v1/kb/' + id + '/status', {
-                    method: 'PATCH',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        status: parseInt(status)
-                    })
-                });
-
-                const data = await response.json();
-                showResponse('kb_update_status', response.ok, data);
-            } catch (error) {
-                showResponse('kb_update_status', false, {error: error.message});
-            }
-        }
-
-        // ==================== 文档管理 ====================
-
-        // 获取文档列表
         async function getDocList() {
             const kbId = document.getElementById('doc_list_kb_id').value.trim();
             const page = document.getElementById('doc_list_page').value;
@@ -1728,8 +1605,10 @@
             showLoading('doc_list');
 
             try {
-                const url = `${getBaseUrl()}/api/v1/documents?knowledge_id=${kbId}&page=${page}&size=${size}`;
-                const response = await fetch(url);
+                const response = await fetch(`${getBaseUrl()}/api/v1/documents?knowledge_id=${kbId}&page=${page}&size=${size}`, {
+                    method: 'GET'
+                });
+
                 const data = await response.json();
                 showResponse('doc_list', response.ok, data);
             } catch (error) {
@@ -1737,7 +1616,8 @@
             }
         }
 
-        // 删除文档
+
+
         async function deleteDoc() {
             const docId = document.getElementById('doc_delete_id').value.trim();
 
@@ -1764,40 +1644,6 @@
             }
         }
 
-        // 重新索引文档
-        async function reindexDoc() {
-            const docId = document.getElementById('doc_reindex_id').value.trim();
-            const chunkSize = document.getElementById('doc_reindex_chunk_size').value;
-            const overlapSize = document.getElementById('doc_reindex_overlap_size').value;
-
-            if (!docId) {
-                alert('请输入文档ID');
-                return;
-            }
-
-            showLoading('doc_reindex');
-
-            try {
-                const response = await fetch(getBaseUrl() + '/api/v1/documents/reindex', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        document_id: docId,
-                        chunk_size: parseInt(chunkSize),
-                        overlap_size: parseInt(overlapSize)
-                    })
-                });
-
-                const data = await response.json();
-                showResponse('doc_reindex', response.ok, data);
-            } catch (error) {
-                showResponse('doc_reindex', false, {error: error.message});
-            }
-        }
-
-        // ==================== Chunks管理 ====================
-
-        // 获取Chunks列表
         async function getChunkList() {
             const docId = document.getElementById('chunk_list_doc_id').value.trim();
             const page = document.getElementById('chunk_list_page').value;
@@ -1811,8 +1657,10 @@
             showLoading('chunk_list');
 
             try {
-                const url = `${getBaseUrl()}/api/v1/chunks?knowledge_doc_id=${docId}&page=${page}&size=${size}`;
-                const response = await fetch(url);
+                const response = await fetch(`${getBaseUrl()}/api/v1/chunks?knowledge_doc_id=${docId}&page=${page}&size=${size}`, {
+                    method: 'GET'
+                });
+
                 const data = await response.json();
                 showResponse('chunk_list', response.ok, data);
             } catch (error) {
@@ -1820,7 +1668,6 @@
             }
         }
 
-        // 删除Chunk
         async function deleteChunk() {
             const chunkId = document.getElementById('chunk_delete_id').value.trim();
 
@@ -1847,52 +1694,32 @@
             }
         }
 
-        // 更新Chunk状态
         async function updateChunkStatus() {
-            const ids = document.getElementById('chunk_status_ids').value.trim();
-            const status = document.getElementById('chunk_status_value').value;
+            const chunkIds = document.getElementById('chunk_content_ids').value.trim();
+            const status = document.getElementById('chunk_update_status').value;
 
-            if (!ids) {
-                alert('请输入Chunk IDs');
+            if (!chunkIds) {
+                alert('请输入Chunk ID列表');
                 return;
             }
 
-            const idsArray = ids.split(',').map(id => id.trim()).filter(id => id);
+            const ids = chunkIds.split(',').map(id => id.trim()).filter(id => id);
 
-            showLoading('chunk_status');
-
-            try {
-                const response = await fetch(getBaseUrl() + '/api/v1/chunks', {
-                    method: 'PUT',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        ids: idsArray,
-                        status: parseInt(status)
-                    })
-                });
-
-                const data = await response.json();
-                showResponse('chunk_status', response.ok, data);
-            } catch (error) {
-                showResponse('chunk_status', false, {error: error.message});
-            }
-        }
-
-        // 更新Chunk内容
-        async function updateChunkContent() {
-            const id = document.getElementById('chunk_content_id').value.trim();
-            const content = document.getElementById('chunk_content_value').value.trim();
-
-            if (!id || !content) {
-                alert('请填写必填字段');
+            if (ids.length === 0) {
+                alert('请输入有效的Chunk ID列表');
                 return;
             }
 
             showLoading('chunk_content');
 
             try {
-                const response = await fetch(getBaseUrl() + '/api/v1/chunks_content?id=' + id + '&content=' + encodeURIComponent(content), {
-                    method: 'PUT'
+                const response = await fetch(getBaseUrl() + '/api/v1/chunks', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        ids: ids,
+                        status: parseInt(status)
+                    })
                 });
 
                 const data = await response.json();
@@ -1902,97 +1729,90 @@
             }
         }
 
-        // ==================== 索引 ====================
-
-        // 上传文件索引
-        async function uploadIndexer() {
-            const kbId = document.getElementById('indexer_upload_kb_id').value.trim();
-            const fileInput = document.getElementById('indexer_upload_file');
-            const isQA = document.getElementById('indexer_upload_is_qa').value;
-            const chunkSize = document.getElementById('indexer_upload_chunk_size').value;
-            const overlapSize = document.getElementById('indexer_upload_overlap_size').value;
+        async function uploadFile() {
+            const kbId = document.getElementById('upload_kb_id').value.trim();
+            const fileInput = document.getElementById('upload_file');
+            const urlInput = document.getElementById('upload_url').value.trim();
 
             if (!kbId) {
                 alert('请输入知识库ID');
                 return;
             }
 
-            if (!fileInput.files || !fileInput.files[0]) {
-                alert('请选择文件');
+            if (!fileInput.files[0] && !urlInput) {
+                alert('请选择文件或输入URL');
                 return;
             }
 
-            showLoading('indexer_upload');
+            showLoading('upload');
 
             try {
                 const formData = new FormData();
-                formData.append('file', fileInput.files[0]);
                 formData.append('knowledge_id', kbId);
-                formData.append('is_qa', isQA);
-                formData.append('chunk_size', chunkSize);
-                formData.append('overlap_size', overlapSize);
+                
+                if (fileInput.files[0]) {
+                    formData.append('file', fileInput.files[0]);
+                }
+                
+                if (urlInput) {
+                    formData.append('url', urlInput);
+                }
 
-                const response = await fetch(getBaseUrl() + '/api/v1/indexer', {
+                const response = await fetch(getBaseUrl() + '/api/v1/upload', {
                     method: 'POST',
                     body: formData
                 });
 
                 const data = await response.json();
-                showResponse('indexer_upload', response.ok, data);
+                showResponse('upload', response.ok, data);
             } catch (error) {
-                showResponse('indexer_upload', false, {error: error.message});
+                showResponse('upload', false, {error: error.message});
             }
         }
 
-        // URL索引
-        async function urlIndexer() {
-            const kbId = document.getElementById('indexer_url_kb_id').value.trim();
-            const url = document.getElementById('indexer_url_url').value.trim();
-            const isQA = document.getElementById('indexer_url_is_qa').value;
-            const chunkSize = document.getElementById('indexer_url_chunk_size').value;
-            const overlapSize = document.getElementById('indexer_url_overlap_size').value;
+        async function indexDocuments() {
+            const docIds = document.getElementById('index_doc_ids').value.trim();
+            const chunkSize = document.getElementById('index_chunk_size').value;
+            const overlapSize = document.getElementById('index_overlap_size').value;
 
-            if (!kbId || !url) {
-                alert('请填写必填字段');
+            if (!docIds) {
+                alert('请输入文档ID列表');
                 return;
             }
 
-            showLoading('indexer_url');
+            const ids = docIds.split(',').map(id => id.trim()).filter(id => id);
+
+            showLoading('index');
 
             try {
-                const formData = new FormData();
-                formData.append('url', url);
-                formData.append('knowledge_id', kbId);
-                formData.append('is_qa', isQA);
-                formData.append('chunk_size', chunkSize);
-                formData.append('overlap_size', overlapSize);
-
-                const response = await fetch(getBaseUrl() + '/api/v1/indexer', {
+                const response = await fetch(getBaseUrl() + '/api/v1/index', {
                     method: 'POST',
-                    body: formData
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        document_ids: ids,
+                        chunk_size: parseInt(chunkSize),
+                        overlap_size: parseInt(overlapSize)
+                    })
                 });
 
                 const data = await response.json();
-                showResponse('indexer_url', response.ok, data);
+                showResponse('index', response.ok, data);
             } catch (error) {
-                showResponse('indexer_url', false, {error: error.message});
+                showResponse('index', false, {error: error.message});
             }
         }
 
-        // ==================== 检索 ====================
-
-        // 标准检索
         async function retrieve() {
             const kbId = document.getElementById('retriever_kb_id').value.trim();
             const question = document.getElementById('retriever_question').value.trim();
-            const topK = parseInt(document.getElementById('retriever_top_k').value);
-            const score = parseFloat(document.getElementById('retriever_score').value);
+            const topK = document.getElementById('retriever_top_k').value;
+            const score = document.getElementById('retriever_score').value;
             const enableRewrite = document.getElementById('retriever_enable_rewrite').value === 'true';
-            const rewriteAttempts = parseInt(document.getElementById('retriever_rewrite_attempts').value);
+            const rewriteAttempts = document.getElementById('retriever_rewrite_attempts').value;
             const retrieveMode = document.getElementById('retriever_retrieve_mode').value;
 
             if (!kbId || !question) {
-                alert('请填写必填字段');
+                alert('请填写知识库ID和检索问题');
                 return;
             }
 
@@ -2005,10 +1825,10 @@
                     body: JSON.stringify({
                         knowledge_id: kbId,
                         question: question,
-                        top_k: topK,
-                        score: score,
+                        top_k: parseInt(topK),
+                        score: parseFloat(score),
                         enable_rewrite: enableRewrite,
-                        rewrite_attempts: rewriteAttempts,
+                        rewrite_attempts: parseInt(rewriteAttempts),
                         retrieve_mode: retrieveMode
                     })
                 });
@@ -2020,38 +1840,31 @@
             }
         }
 
-
-
-        // ==================== 对话 ====================
-
-        // 更新聊天函数以支持新参数
         async function chat() {
             const convId = document.getElementById('chat_conv_id').value.trim();
-            const question = document.getElementById('chat_question').value.trim();
             const kbId = document.getElementById('chat_kb_id').value.trim();
             const enableRetriever = document.getElementById('chat_enable_retriever').checked;
-            const topK = parseInt(document.getElementById('chat_top_k').value);
-            const score = parseFloat(document.getElementById('chat_score').value);
+            const question = document.getElementById('chat_question').value.trim();
+            const topK = document.getElementById('chat_top_k').value;
+            const score = document.getElementById('chat_score').value;
             const useMcp = document.getElementById('chat_use_mcp').checked;
             const mcpServiceToolsStr = document.getElementById('chat_mcp_service_tools').value.trim();
 
             if (!convId || !question) {
-                alert('请填写必填字段');
+                alert('请填写会话ID和问题');
                 return;
             }
 
-            // 构建请求体
             const body = {
                 conv_id: convId,
-                question: question,
-                enable_retriever: enableRetriever
+                question: question
             };
 
             // 添加可选参数
             if (kbId) body.knowledge_id = kbId;
             if (enableRetriever) {
-                body.top_k = topK;
-                body.score = score;
+                body.top_k = parseInt(topK);
+                body.score = parseFloat(score);
             }
             if (useMcp) {
                 body.use_mcp = true;
@@ -2083,33 +1896,38 @@
             }
         }
 
-
-
-        // ==================== MCP 管理 ====================
-
-        // 注册 MCP 服务
-        async function createMCPRegistry() {
+        async function registerMCP() {
             const name = document.getElementById('mcp_reg_name').value.trim();
-            const description = document.getElementById('mcp_reg_desc').value.trim();
+            const desc = document.getElementById('mcp_reg_desc').value.trim();
             const endpoint = document.getElementById('mcp_reg_endpoint').value.trim();
             const apiKey = document.getElementById('mcp_reg_apikey').value.trim();
-            const headers = document.getElementById('mcp_reg_headers').value.trim();
-            const timeout = document.getElementById('mcp_reg_timeout').value;
+            const headersStr = document.getElementById('mcp_reg_headers').value.trim();
 
             if (!name || !endpoint) {
-                alert('请填写必填字段');
+                alert('请填写服务名称和端点URL');
                 return;
+            }
+
+            const body = {
+                name: name,
+                endpoint: endpoint
+            };
+
+            if (desc) body.description = desc;
+            if (apiKey) body.api_key = apiKey;
+            
+            if (headersStr) {
+                try {
+                    body.headers = headersStr;
+                } catch (e) {
+                    alert('请求头格式错误，请输入有效的 JSON');
+                    return;
+                }
             }
 
             showLoading('mcp_reg');
 
             try {
-                const body = { name, endpoint };
-                if (description) body.description = description;
-                if (apiKey) body.api_key = apiKey;
-                if (headers) body.headers = headers;
-                if (timeout) body.timeout = parseInt(timeout);
-
                 const response = await fetch(getBaseUrl() + '/api/v1/mcp/registry', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -2123,22 +1941,24 @@
             }
         }
 
-        // 获取 MCP 服务列表
-        async function getMCPList() {
-            const status = document.getElementById('mcp_list_status').value;
+        async function getMCPRegistryList() {
+            const status = document.getElementById('mcp_filter_status').value;
             const page = document.getElementById('mcp_list_page').value;
             const size = document.getElementById('mcp_list_size').value;
 
+            let url = getBaseUrl() + '/api/v1/mcp/registry?';
             const params = new URLSearchParams();
+            
             if (status) params.append('status', status);
             params.append('page', page);
             params.append('page_size', size);
 
+            url += params.toString();
+
             showLoading('mcp_list');
 
             try {
-                const url = getBaseUrl() + '/api/v1/mcp/registry?' + params.toString();
-                const response = await fetch(url);
+                const response = await fetch(url, {method: 'GET'});
                 const data = await response.json();
                 showResponse('mcp_list', response.ok, data);
             } catch (error) {
@@ -2146,19 +1966,18 @@
             }
         }
 
-        // 获取单个 MCP 服务
         async function getMCPRegistry() {
             const id = document.getElementById('mcp_get_id').value.trim();
 
             if (!id) {
-                alert('请输入服务 ID');
+                alert('请输入服务ID');
                 return;
             }
 
             showLoading('mcp_get');
 
             try {
-                const response = await fetch(getBaseUrl() + '/api/v1/mcp/registry/' + id);
+                const response = await fetch(getBaseUrl() + '/api/v1/mcp/registry/' + id, {method: 'GET'});
                 const data = await response.json();
                 showResponse('mcp_get', response.ok, data);
             } catch (error) {
@@ -2166,26 +1985,32 @@
             }
         }
 
-        // 更新 MCP 服务
         async function updateMCPRegistry() {
             const id = document.getElementById('mcp_update_id').value.trim();
             const name = document.getElementById('mcp_update_name').value.trim();
-            const description = document.getElementById('mcp_update_desc').value.trim();
+            const desc = document.getElementById('mcp_update_desc').value.trim();
             const endpoint = document.getElementById('mcp_update_endpoint').value.trim();
-            const timeout = document.getElementById('mcp_update_timeout').value;
+            const apiKey = document.getElementById('mcp_update_apikey').value.trim();
+            const headersStr = document.getElementById('mcp_update_headers').value.trim();
             const status = document.getElementById('mcp_update_status').value;
 
             if (!id) {
-                alert('请输入服务 ID');
+                alert('请输入服务ID');
                 return;
             }
 
             const body = {};
             if (name) body.name = name;
-            if (description) body.description = description;
+            if (desc) body.description = desc;
             if (endpoint) body.endpoint = endpoint;
-            if (timeout) body.timeout = parseInt(timeout);
+            if (apiKey) body.api_key = apiKey;
+            if (headersStr) body.headers = headersStr;
             if (status) body.status = parseInt(status);
+
+            if (Object.keys(body).length === 0) {
+                alert('请至少填写一个要更新的字段');
+                return;
+            }
 
             showLoading('mcp_update');
 
@@ -2203,16 +2028,15 @@
             }
         }
 
-        // 删除 MCP 服务
         async function deleteMCPRegistry() {
             const id = document.getElementById('mcp_delete_id').value.trim();
 
             if (!id) {
-                alert('请输入服务 ID');
+                alert('请输入服务ID');
                 return;
             }
 
-            if (!confirm('确定要删除该 MCP 服务吗？')) {
+            if (!confirm('确定要删除该MCP服务吗？')) {
                 return;
             }
 
@@ -2230,12 +2054,11 @@
             }
         }
 
-        // 测试 MCP 连接
-        async function testMCPConnection() {
+        async function testMCPRegistry() {
             const id = document.getElementById('mcp_test_id').value.trim();
 
             if (!id) {
-                alert('请输入服务 ID');
+                alert('请输入服务ID');
                 return;
             }
 
@@ -2253,19 +2076,21 @@
             }
         }
 
-        // 列出 MCP 工具
         async function listMCPTools() {
             const id = document.getElementById('mcp_tools_id').value.trim();
 
             if (!id) {
-                alert('请输入服务 ID');
+                alert('请输入服务ID');
                 return;
             }
 
             showLoading('mcp_tools');
 
             try {
-                const response = await fetch(getBaseUrl() + '/api/v1/mcp/registry/' + id + '/tools');
+                const response = await fetch(getBaseUrl() + '/api/v1/mcp/registry/' + id + '/tools', {
+                    method: 'GET'
+                });
+
                 const data = await response.json();
                 showResponse('mcp_tools', response.ok, data);
             } catch (error) {
@@ -2273,38 +2098,38 @@
             }
         }
 
-        // 调用 MCP 工具
         async function callMCPTool() {
-            const registryId = document.getElementById('mcp_call_registry').value.trim();
-            const toolName = document.getElementById('mcp_call_tool').value.trim();
+            const registryId = document.getElementById('mcp_call_registry_id').value.trim();
+            const toolName = document.getElementById('mcp_call_tool_name').value.trim();
             const argsStr = document.getElementById('mcp_call_args').value.trim();
-            const conversationId = document.getElementById('mcp_call_conv').value.trim();
+            const convId = document.getElementById('mcp_call_conv_id').value.trim();
 
             if (!registryId || !toolName) {
-                alert('请填写必填字段');
+                alert('请填写服务ID和服务名称');
                 return;
             }
 
-            let args = {};
+            const body = {
+                registry_id: registryId,
+                tool_name: toolName
+            };
+
             if (argsStr) {
                 try {
-                    args = JSON.parse(argsStr);
+                    body.arguments = JSON.parse(argsStr);
                 } catch (e) {
                     alert('参数格式错误，请输入有效的 JSON');
                     return;
                 }
             }
 
+            if (convId) {
+                body.conversation_id = convId;
+            }
+
             showLoading('mcp_call');
 
             try {
-                const body = {
-                    registry_id: registryId,
-                    tool_name: toolName,
-                    arguments: args
-                };
-                if (conversationId) body.conversation_id = conversationId;
-
                 const response = await fetch(getBaseUrl() + '/api/v1/mcp/call', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -2318,28 +2143,28 @@
             }
         }
 
-        // 获取 MCP 调用日志
         async function getMCPLogs() {
-            const conversationId = document.getElementById('mcp_logs_conv').value.trim();
-            const registryId = document.getElementById('mcp_logs_registry').value.trim();
-            const toolName = document.getElementById('mcp_logs_tool').value.trim();
-            const status = document.getElementById('mcp_logs_status').value;
+            const convId = document.getElementById('mcp_logs_conv_id').value.trim();
+            const registryId = document.getElementById('mcp_logs_registry_id').value.trim();
+            const toolName = document.getElementById('mcp_logs_tool_name').value.trim();
             const page = document.getElementById('mcp_logs_page').value;
             const size = document.getElementById('mcp_logs_size').value;
 
+            let url = getBaseUrl() + '/api/v1/mcp/logs?';
             const params = new URLSearchParams();
-            if (conversationId) params.append('conversation_id', conversationId);
+            
+            if (convId) params.append('conversation_id', convId);
             if (registryId) params.append('registry_id', registryId);
             if (toolName) params.append('tool_name', toolName);
-            if (status) params.append('status', status);
             params.append('page', page);
             params.append('page_size', size);
+
+            url += params.toString();
 
             showLoading('mcp_logs');
 
             try {
-                const url = getBaseUrl() + '/api/v1/mcp/logs?' + params.toString();
-                const response = await fetch(url);
+                const response = await fetch(url, {method: 'GET'});
                 const data = await response.json();
                 showResponse('mcp_logs', response.ok, data);
             } catch (error) {
@@ -2347,19 +2172,21 @@
             }
         }
 
-        // 获取 MCP 统计信息
         async function getMCPStats() {
             const id = document.getElementById('mcp_stats_id').value.trim();
 
             if (!id) {
-                alert('请输入服务 ID');
+                alert('请输入服务ID');
                 return;
             }
 
             showLoading('mcp_stats');
 
             try {
-                const response = await fetch(getBaseUrl() + '/api/v1/mcp/registry/' + id + '/stats');
+                const response = await fetch(getBaseUrl() + '/api/v1/mcp/registry/' + id + '/stats', {
+                    method: 'GET'
+                });
+
                 const data = await response.json();
                 showResponse('mcp_stats', response.ok, data);
             } catch (error) {

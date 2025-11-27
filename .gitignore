@@ -56,3 +56,6 @@ Thumbs.db
 
 # Local knowledge files
 knowledge_file/
+# Local tmp upload files
+upload/
+/test_mcp_server/

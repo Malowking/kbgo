@@ -1,13 +1,12 @@
-修改
-1.chat对话接口调用知识库
-2.文档切分选择chunksize和overlapsize报错（可能是调用api的问题）
-3.mcp调用日志精简
-4.mcp服务测试
+待办事项
+添加模型信息表，chat接口添加对话参数
+所有调用模型的代码都
 
-待办
-1.添加QA切分
-2.迁移数据库Mysql到PG
-3.工作流添加
-4.独立python服务解析文档
-5.文生图接口
-6多模态模型接口
+
+1. text2sql实现，python独立服务
+2. 文档切分选择chunksize和overlapsize报错（可能是调用api的问题）解决
+3. Rustfs文件和本地文件同样切分chunk大小结果chunk个数不同 解决
+4. mcp调用日志精简
+5. 独立python服务解析文档
+6. 文生图接口
+7. 多模态模型接口

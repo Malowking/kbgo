@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
+	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/internal/history"
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
@@ -28,8 +28,8 @@ func GetChat() *Chat {
 	return chatInstance
 }
 
-// 暂时用不上chat功能，先不init
-func init() {
+// TODO不需要初始化，从数据库中读取模型参数
+func InitChat() {
 	ctx := gctx.New()
 
 	// 加载聊天配置
@@ -325,11 +325,113 @@ func (x *Chat) SaveStreamingMessageWithMetadata(convID string, content string, m
 	return x.eh.SaveMessageWithMetadata(message, convID, metadata)
 }
 
-// ConcatStreamContent 将流式内容连接成完整字符串
-func (x *Chat) ConcatStreamContent(messages []*schema.Message) string {
-	var builder strings.Builder
-	for _, msg := range messages {
-		builder.WriteString(msg.Content)
+// GetAnswerWithFiles 带文件的多模态对话
+func (x *Chat) GetAnswerWithFiles(ctx context.Context, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile) (answer string, err error) {
+	messages, err := x.docsMessagesWithFiles(ctx, convID, docs, question, files)
+	if err != nil {
+		return "", err
 	}
-	return builder.String()
+
+	// 记录开始时间
+	start := time.Now()
+
+	result, err := x.generate(ctx, messages)
+	if err != nil {
+		return "", fmt.Errorf("生成答案失败: %w", err)
+	}
+
+	// 计算延迟
+	latencyMs := time.Since(start).Milliseconds()
+
+	// 获取token使用量
+	tokensUsed := 0
+	if result.ResponseMeta != nil && result.ResponseMeta.Usage != nil {
+		tokensUsed = result.ResponseMeta.Usage.TotalTokens
+	}
+
+	// 创建带指标的消息
+	msgWithMetrics := &history.MessageWithMetrics{
+		Message:    result,
+		LatencyMs:  int(latencyMs),
+		TokensUsed: tokensUsed,
+	}
+
+	err = x.eh.SaveMessageWithMetrics(msgWithMetrics, convID)
+	if err != nil {
+		g.Log().Error(ctx, "save assistant message err: %v", err)
+		return
+	}
+	return result.Content, nil
+}
+
+// GetAnswerStreamWithFiles 带文件的多模态流式对话
+func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile) (answer *schema.StreamReader[*schema.Message], err error) {
+	messages, err := x.docsMessagesWithFiles(ctx, convID, docs, question, files)
+	if err != nil {
+		return
+	}
+
+	// 记录开始时间
+	start := time.Now()
+
+	ctx = context.Background()
+	streamData, err := x.stream(ctx, messages)
+	if err != nil {
+		err = fmt.Errorf("生成答案失败: %w", err)
+		return
+	}
+
+	srs := streamData.Copy(2)
+	go func() {
+		// for save
+		fullMsgs := make([]*schema.Message, 0)
+		defer func() {
+			srs[1].Close()
+			fullMsg, err := schema.ConcatMessages(fullMsgs)
+			if err != nil {
+				g.Log().Error(ctx, "error concatenating messages: %v", err)
+				return
+			}
+
+			// 计算延迟
+			latencyMs := time.Since(start).Milliseconds()
+
+			// 获取token使用量
+			tokensUsed := 0
+			if fullMsg.ResponseMeta != nil && fullMsg.ResponseMeta.Usage != nil {
+				tokensUsed = fullMsg.ResponseMeta.Usage.TotalTokens
+			}
+
+			// 创建带指标的消息
+			msgWithMetrics := &history.MessageWithMetrics{
+				Message:    fullMsg,
+				LatencyMs:  int(latencyMs),
+				TokensUsed: tokensUsed,
+			}
+
+			err = x.eh.SaveMessageWithMetrics(msgWithMetrics, convID)
+			if err != nil {
+				g.Log().Error(ctx, "save assistant message err: %v", err)
+				return
+			}
+		}()
+	outer:
+		for {
+			select {
+			case <-ctx.Done():
+				fmt.Println("context done", ctx.Err())
+				return
+			default:
+				chunk, err := srs[1].Recv()
+				if err != nil {
+					if errors.Is(err, io.EOF) {
+						break outer
+					}
+				}
+				fullMsgs = append(fullMsgs, chunk)
+			}
+		}
+	}()
+
+	return srs[0], nil
 }

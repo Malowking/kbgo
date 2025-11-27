@@ -18,6 +18,32 @@ const (
 	maxPageSize     = 100
 )
 
+// SaveDocumentsInfo 保存文档信息
+func SaveDocumentsInfo(ctx context.Context, documents entity.KnowledgeDocuments) (documentsSave entity.KnowledgeDocuments, err error) {
+	// 转换为 GORM 模型（GORM 会自动设置 CreateTime 和 UpdateTime）
+	gormDoc := gormModel.KnowledgeDocuments{
+		ID:             documents.Id,
+		KnowledgeId:    documents.KnowledgeId,
+		FileName:       documents.FileName,
+		FileExtension:  documents.FileExtension, // 添加文件扩展名
+		CollectionName: documents.CollectionName,
+		SHA256:         documents.SHA256,
+		RustfsBucket:   documents.RustfsBucket,
+		RustfsLocation: documents.RustfsLocation,
+		LocalFilePath:  documents.LocalFilePath, // 添加本地文件路径
+		Status:         int8(documents.Status),
+	}
+
+	// 使用 DAO 中的 GORM 数据库连接
+	result := dao.GetDB().WithContext(ctx).Create(&gormDoc)
+	if result.Error != nil {
+		g.Log().Errorf(ctx, "保存文档信息失败: %+v, 错误: %v", documents, result.Error)
+		return documents, fmt.Errorf("保存文档信息失败: %w", result.Error)
+	}
+	g.Log().Infof(ctx, "文档保存成功, ID: %s", documents.Id)
+	return documents, nil
+}
+
 // SaveDocumentsInfoWithTx 保存文档信息（事务版本）
 func SaveDocumentsInfoWithTx(ctx context.Context, tx *gorm.DB, documents entity.KnowledgeDocuments) (documentsSave entity.KnowledgeDocuments, err error) {
 	id := strings.ReplaceAll(uuid.New().String(), "-", "")
@@ -28,16 +54,24 @@ func SaveDocumentsInfoWithTx(ctx context.Context, tx *gorm.DB, documents entity.
 		ID:             documents.Id,
 		KnowledgeId:    documents.KnowledgeId,
 		FileName:       documents.FileName,
+		FileExtension:  documents.FileExtension, // 添加文件扩展名
 		CollectionName: documents.CollectionName,
 		SHA256:         documents.SHA256,
 		RustfsBucket:   documents.RustfsBucket,
 		RustfsLocation: documents.RustfsLocation,
 		LocalFilePath:  documents.LocalFilePath, // 添加本地文件路径
-		IsQA:           int8(documents.IsQA),
 		Status:         int8(documents.Status),
 	}
 
-	result := tx.WithContext(ctx).Create(&gormDoc)
+	// 如果没有提供事务，则使用默认的数据库连接
+	var result *gorm.DB
+	if tx != nil {
+		result = tx.WithContext(ctx).Create(&gormDoc)
+	} else {
+		// 使用 DAO 中的 GORM 数据库连接
+		result = dao.GetDB().WithContext(ctx).Create(&gormDoc)
+	}
+
 	if result.Error != nil {
 		g.Log().Errorf(ctx, "保存文档信息失败: %+v, 错误: %v", documents, result.Error)
 		return documents, fmt.Errorf("保存文档信息失败: %w", result.Error)
@@ -54,7 +88,21 @@ func UpdateDocumentsStatus(ctx context.Context, documentsId string, status int) 
 
 	_, err := dao.KnowledgeDocuments.Ctx(ctx).Where("id", documentsId).Data(data).Update()
 	if err != nil {
-		g.Log().Errorf(ctx, "更新文档状态失败: ID=%d, 错误: %v", documentsId, err)
+		g.Log().Errorf(ctx, "更新文档状态失败: ID=%s, 错误: %v", documentsId, err)
+	}
+
+	return err
+}
+
+// UpdateDocumentsLocalPath 更新文档的本地文件路径
+func UpdateDocumentsLocalPath(ctx context.Context, documentsId string, localPath string) error {
+	data := g.Map{
+		"local_file_path": localPath,
+	}
+
+	_, err := dao.KnowledgeDocuments.Ctx(ctx).Where("id", documentsId).Data(data).Update()
+	if err != nil {
+		g.Log().Errorf(ctx, "更新文档本地文件路径失败: ID=%s, 路径=%s, 错误: %v", documentsId, localPath, err)
 	}
 
 	return err
@@ -62,12 +110,41 @@ func UpdateDocumentsStatus(ctx context.Context, documentsId string, status int) 
 
 // GetDocumentById 根据ID获取文档信息
 func GetDocumentById(ctx context.Context, id string) (document entity.KnowledgeDocuments, err error) {
-	g.Log().Debugf(ctx, "获取文档信息: ID=%d", id)
+	g.Log().Debugf(ctx, "获取文档信息: ID=%s", id)
 
 	err = dao.KnowledgeDocuments.Ctx(ctx).Where("id", id).Scan(&document)
 	if err != nil {
-		g.Log().Errorf(ctx, "获取文档信息失败: ID=%d, 错误: %v", id, err)
+		g.Log().Errorf(ctx, "获取文档信息失败: ID=%s, 错误: %v", id, err)
 		return document, fmt.Errorf("获取文档信息失败: %w", err)
+	}
+
+	return document, nil
+}
+
+// GetDocumentBySHA256 根据知识库ID和SHA256获取文档信息
+func GetDocumentBySHA256(ctx context.Context, knowledgeId, sha256 string) (document entity.KnowledgeDocuments, err error) {
+	g.Log().Debugf(ctx, "根据SHA256获取文档信息: KnowledgeId=%s, SHA256=%s", knowledgeId, sha256)
+
+	// 使用One方法来处理可能没有结果的查询
+	found, err := dao.KnowledgeDocuments.Ctx(ctx).Where("knowledge_id", knowledgeId).Where("sha256", sha256).One()
+	if err != nil {
+		// 当没有找到匹配的记录时，这不是错误情况
+		if err.Error() == "sql: no rows in result set" {
+			g.Log().Debugf(ctx, "未找到匹配的文档: KnowledgeId=%s, SHA256=%s", knowledgeId, sha256)
+			return document, nil // 返回空文档，无错误
+		}
+
+		g.Log().Errorf(ctx, "根据SHA256获取文档信息失败: KnowledgeId=%s, SHA256=%s, 错误: %v", knowledgeId, sha256, err)
+		return document, fmt.Errorf("根据SHA256获取文档信息失败: %w", err)
+	}
+
+	// 如果找到了记录，则将其转换为实体对象
+	if found != nil {
+		err = found.Struct(&document)
+		if err != nil {
+			g.Log().Errorf(ctx, "转换文档信息失败: KnowledgeId=%s, SHA256=%s, 错误: %v", knowledgeId, sha256, err)
+			return document, fmt.Errorf("转换文档信息失败: %w", err)
+		}
 	}
 
 	return document, nil

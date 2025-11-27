@@ -1,34 +1,171 @@
 package common
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
 	"os"
-
-	"github.com/Malowking/kbgo/core/config"
-	"github.com/cloudwego/eino-ext/components/embedding/openai"
-	"github.com/cloudwego/eino/components/embedding"
+	"time"
 )
 
-func NewEmbedding(ctx context.Context, conf *config.Config) (eb embedding.Embedder, err error) {
-	econf := &openai.EmbeddingConfig{
-		APIKey:     conf.APIKey,
-		Model:      conf.EmbeddingModel,
-		Dimensions: Of(1024),
-		Timeout:    0,
-		BaseURL:    conf.BaseURL,
+// EmbeddingConfig 接口，用于提取embedding配置
+type EmbeddingConfig interface {
+	GetAPIKey() string
+	GetBaseURL() string
+	GetEmbeddingModel() string
+}
+
+// CustomEmbedder 自定义embedding客户端
+type CustomEmbedder struct {
+	apiKey     string
+	baseURL    string
+	model      string
+	httpClient *http.Client
+}
+
+// EmbeddingRequest OpenAI embedding API请求结构
+type EmbeddingRequest struct {
+	Input      []string `json:"input"`
+	Model      string   `json:"model"`
+	Dimensions *int     `json:"dimensions,omitempty"`
+}
+
+// EmbeddingResponse OpenAI embedding API响应结构
+type EmbeddingResponse struct {
+	Data []struct {
+		Embedding []float64 `json:"embedding"`
+		Index     int       `json:"index"`
+		Object    string    `json:"object"`
+	} `json:"data"`
+	Model  string `json:"model"`
+	Object string `json:"object"`
+	Usage  struct {
+		PromptTokens int `json:"prompt_tokens"`
+		TotalTokens  int `json:"total_tokens"`
+	} `json:"usage"`
+}
+
+// ErrorResponse API错误响应
+type ErrorResponse struct {
+	Error struct {
+		Message string `json:"message"`
+		Type    string `json:"type"`
+		Code    string `json:"code,omitempty"`
+	} `json:"error"`
+}
+
+func NewEmbedding(ctx context.Context, conf EmbeddingConfig) (*CustomEmbedder, error) {
+	apiKey := conf.GetAPIKey()
+	baseURL := conf.GetBaseURL()
+	model := conf.GetEmbeddingModel()
+
+	if apiKey == "" {
+		apiKey = os.Getenv("OPENAI_API_KEY")
 	}
-	if econf.APIKey == "" {
-		econf.APIKey = os.Getenv("OPENAI_API_KEY")
+	if baseURL == "" {
+		baseURL = os.Getenv("OPENAI_BASE_URL")
+		if baseURL == "" {
+			baseURL = "https://api.openai.com/v1"
+		}
 	}
-	if econf.BaseURL == "" {
-		econf.BaseURL = os.Getenv("OPENAI_BASE_URL")
+	if model == "" {
+		model = "text-embedding-3-large"
 	}
-	if econf.Model == "" {
-		econf.Model = "text-embedding-3-large"
+
+	// 创建自定义HTTP客户端，设置合理的超时时间
+	httpClient := &http.Client{
+		Timeout: 5 * time.Minute, // 总体超时5分钟
+		Transport: &http.Transport{
+			Dial: (&net.Dialer{
+				Timeout:   30 * time.Second, // 连接超时
+				KeepAlive: 30 * time.Second,
+			}).Dial,
+			TLSHandshakeTimeout:   30 * time.Second, // TLS握手超时
+			ResponseHeaderTimeout: 2 * time.Minute,  // 等待响应头超时
+			ExpectContinueTimeout: 1 * time.Second,
+			IdleConnTimeout:       90 * time.Second,
+			MaxIdleConns:          100,
+			MaxIdleConnsPerHost:   10,
+		},
 	}
-	eb, err = openai.NewEmbedder(ctx, econf)
+
+	return &CustomEmbedder{
+		apiKey:     apiKey,
+		baseURL:    baseURL,
+		model:      model,
+		httpClient: httpClient,
+	}, nil
+}
+
+// EmbedStrings 实现字符串数组的向量化
+func (e *CustomEmbedder) EmbedStrings(ctx context.Context, texts []string) ([][]float64, error) {
+	if len(texts) == 0 {
+		return [][]float64{}, nil
+	}
+
+	// 构造请求
+	dimensions := 1024
+	req := EmbeddingRequest{
+		Input:      texts,
+		Model:      e.model,
+		Dimensions: &dimensions,
+	}
+
+	// 序列化请求
+	jsonData, err := json.Marshal(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-	return eb, nil
+
+	// 创建HTTP请求
+	url := e.baseURL + "/embeddings"
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// 设置请求头
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+e.apiKey)
+
+	// 发送请求
+	resp, err := e.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 检查HTTP状态码
+	if resp.StatusCode != http.StatusOK {
+		var errResp ErrorResponse
+		if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
+			return nil, fmt.Errorf("HTTP %d: failed to decode error response: %w", resp.StatusCode, err)
+		}
+		return nil, fmt.Errorf("API error (HTTP %d): %s", resp.StatusCode, errResp.Error.Message)
+	}
+
+	// 解析响应
+	var embResp EmbeddingResponse
+	if err := json.NewDecoder(resp.Body).Decode(&embResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	// 验证响应数据
+	if len(embResp.Data) != len(texts) {
+		return nil, fmt.Errorf("response data length (%d) doesn't match input length (%d)", len(embResp.Data), len(texts))
+	}
+
+	// 提取embedding向量
+	result := make([][]float64, len(texts))
+	for _, data := range embResp.Data {
+		if data.Index >= len(result) {
+			return nil, fmt.Errorf("invalid embedding index: %d", data.Index)
+		}
+		result[data.Index] = data.Embedding
+	}
+
+	return result, nil
 }

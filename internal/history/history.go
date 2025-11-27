@@ -1,16 +1,28 @@
 package history
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strings"
+	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Malowking/kbgo/internal/dao"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/cloudwego/eino/schema"
+	"github.com/gogf/gf/v2/frame/g"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
+
+// MessageWithContents 带内容块的消息结构
+type MessageWithContents struct {
+	*gormModel.Message // 包含 msg_id, role, tool_calls 等
+	Contents           []gormModel.MessageContent
+}
 
 // MessageWithMetrics 带指标的消息结构
 type MessageWithMetrics struct {
@@ -38,8 +50,19 @@ func (h *Manager) SaveMessage(message *schema.Message, convID string) error {
 	return h.SaveMessageWithMetadata(message, convID, nil)
 }
 
-// SaveMessageWithMetrics 保存带指标的消息
+// SaveMessageWithMetrics 保存带指标的消息（异步）
 func (h *Manager) SaveMessageWithMetrics(message *MessageWithMetrics, convID string) error {
+	// 使用全局异步保存器
+	asyncSaver := GetGlobalAsyncSaver()
+
+	// 异步保存，不等待结果（提升性能）
+	asyncSaver.SaveMessageAsync(message, convID)
+
+	return nil
+}
+
+// SaveMessageWithMetricsSync 保存带指标的消息（同步）
+func (h *Manager) SaveMessageWithMetricsSync(message *MessageWithMetrics, convID string) error {
 	// 确保对话存在
 	if err := h.ensureConversationExists(convID); err != nil {
 		return err
@@ -173,6 +196,132 @@ func (h *Manager) GetHistory(convID string, limit int) ([]*schema.Message, error
 	return result, nil
 }
 
+// GetConversationHistory 获取会话历史消息
+func (h *Manager) GetConversationHistory(convID string) ([]MessageWithContents, error) {
+	var msgs []MessageWithContents
+	err := dao.GetDB().
+		Where("conv_id = ?", convID).
+		Order("create_time ASC").
+		Find(&msgs).
+		Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	// 预加载消息内容
+	for i := range msgs {
+		var contents []gormModel.MessageContent
+		err := dao.GetDB().
+			Where("msg_id = ?", msgs[i].MsgID).
+			Order("sort_order ASC").
+			Find(&contents).
+			Error
+
+		if err != nil {
+			return nil, err
+		}
+
+		msgs[i].Contents = contents
+	}
+
+	return msgs, nil
+}
+
+// BuildLLMMessages 将历史消息转换为LLM格式
+func (h *Manager) BuildLLMMessages(history []MessageWithContents) []map[string]interface{} {
+	var llmMsgs []map[string]interface{}
+
+	for _, m := range history {
+		// 处理 tool 消息
+		if m.Role == "tool" {
+			// tool 消息：content 是 JSON 字符串，需解析为文本描述或保留原样
+			content := fmt.Sprintf("[Tool Result: %s]", m.Contents[0].TextContent)
+			llmMsgs = append(llmMsgs, map[string]interface{}{
+				"role":         "tool",
+				"content":      content,
+				"tool_call_id": m.ToolCallID,
+			})
+			continue
+		}
+
+		// 合并 message_contents 为纯文本
+		var parts []string
+		for _, c := range m.Contents {
+			switch c.ContentType {
+			case "text", "json_data", "tool_result":
+				parts = append(parts, c.TextContent)
+			case "image_url", "audio_url", "file_url":
+				// 当前仅 LLM，无法理解媒体，转为文本描述
+				parts = append(parts, fmt.Sprintf("[Uploaded file: %s]", extractFileName(c.MediaURL)))
+			case "file_binary_ref":
+				parts = append(parts, fmt.Sprintf("[File uploaded: %s]", c.StorageKey))
+			}
+		}
+		content := strings.Join(parts, "\n")
+
+		// 处理 assistant 的 tool_calls
+		if m.Role == "assistant" && len(m.ToolCalls) > 0 {
+			// OpenAI 格式：content 可为空，tool_calls 单独字段
+			msg := map[string]interface{}{
+				"role":       "assistant",
+				"content":    content,
+				"tool_calls": m.ToolCalls, // 假设 ToolCalls 是 json.RawMessage 或 map
+			}
+			llmMsgs = append(llmMsgs, msg)
+		} else {
+			llmMsgs = append(llmMsgs, map[string]interface{}{
+				"role":    m.Role,
+				"content": content,
+			})
+		}
+	}
+
+	return llmMsgs
+}
+
+// TruncateMessagesByToken 根据token数量截断消息
+func (h *Manager) TruncateMessagesByToken(messages []map[string]interface{}, maxTokens int, model string) []map[string]interface{} {
+	// 粗略估算：1 token 4 英文字符 or 1.5 中文字符
+	// 更准的方式：使用 tiktoken 库（见下方建议）
+	totalTokens := 0
+	startIdx := 0
+
+	for i, msg := range messages {
+		content, _ := msg["content"].(string)
+		tokens := h.estimateTokenCount(content) + 10 // + role 开销
+		if totalTokens+tokens > maxTokens {
+			startIdx = i
+			break
+		}
+		totalTokens += tokens
+	}
+
+	// 保证至少包含最后一条用户消息
+	if startIdx >= len(messages) {
+		startIdx = len(messages) - 1
+	}
+
+	return messages[startIdx:]
+}
+
+// estimateTokenCount 估算token数量
+func (h *Manager) estimateTokenCount(text string) int {
+	// 简化版：中文按 1.5 字/词，英文按 4 字/词
+	chinese := utf8.RuneCountInString(regexp.MustCompile(`[\p{Han}]`).ReplaceAllString(text, ""))
+	english := len(regexp.MustCompile(`[a-zA-Z0-9]+`).ReplaceAllString(text, "")) / 4
+	return chinese + english
+}
+
+// extractFileName 从URL中提取文件名
+func extractFileName(url string) string {
+	parts := strings.Split(url, "/")
+	if len(parts) > 0 {
+		return parts[len(parts)-1]
+	}
+	return url
+}
+
 // ensureConversationExists 确保对话存在
 func (h *Manager) ensureConversationExists(convID string) error {
 	conversation, err := dao.Conversation.GetByConvID(nil, convID)
@@ -200,7 +349,7 @@ func (h *Manager) ensureConversationExists(convID string) error {
 
 // generateMessageID 生成消息ID
 func generateMessageID() string {
-	return "msg_" + uuid.New().String()
+	return uuid.New().String()
 }
 
 // GetMessageMetadata 获取消息的元数据
@@ -221,4 +370,211 @@ func (h *Manager) GetMessageMetadata(msgID string) (map[string]interface{}, erro
 	}
 
 	return metadata, nil
+}
+
+// ========== 异步消息保存器 ==========
+
+// SaveTask 消息保存任务
+type SaveTask struct {
+	Message *MessageWithMetrics
+	ConvID  string
+	Result  chan error
+}
+
+// AsyncMessageSaver 异步消息保存器
+type AsyncMessageSaver struct {
+	db         *gorm.DB
+	taskQueue  chan *SaveTask
+	workerPool int
+	wg         sync.WaitGroup
+	ctx        context.Context
+	cancel     context.CancelFunc
+}
+
+// NewAsyncMessageSaver 创建异步消息保存器
+func NewAsyncMessageSaver(workerPool int) *AsyncMessageSaver {
+	if workerPool <= 0 {
+		workerPool = 5 // 默认5个worker
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	saver := &AsyncMessageSaver{
+		db:         dao.GetDB(),
+		taskQueue:  make(chan *SaveTask, 200), // 缓冲队列
+		workerPool: workerPool,
+		ctx:        ctx,
+		cancel:     cancel,
+	}
+
+	// 启动worker pool
+	saver.start()
+
+	return saver
+}
+
+// start 启动worker pool
+func (s *AsyncMessageSaver) start() {
+	for i := 0; i < s.workerPool; i++ {
+		s.wg.Add(1)
+		go s.worker()
+	}
+}
+
+// worker 处理消息保存任务
+func (s *AsyncMessageSaver) worker() {
+	defer s.wg.Done()
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case task, ok := <-s.taskQueue:
+			if !ok {
+				return
+			}
+			// 处理消息保存
+			err := s.saveMessageSync(task.Message, task.ConvID)
+			if task.Result != nil {
+				task.Result <- err
+				close(task.Result)
+			}
+		}
+	}
+}
+
+// saveMessageSync 同步保存消息（worker使用）
+func (s *AsyncMessageSaver) saveMessageSync(message *MessageWithMetrics, convID string) error {
+	// 确保对话存在
+	if err := s.ensureConversationExists(convID); err != nil {
+		return err
+	}
+
+	now := time.Now()
+
+	// 处理工具调用
+	var toolCallsJSON gormModel.JSON
+	if message.ToolCalls != nil {
+		data, err := json.Marshal(message.ToolCalls)
+		if err != nil {
+			g.Log().Errorf(context.Background(), "failed to marshal tool calls: %v", err)
+		} else {
+			toolCallsJSON = gormModel.JSON(data)
+		}
+	}
+
+	// 创建消息记录
+	msg := &gormModel.Message{
+		MsgID:      generateMessageID(),
+		ConvID:     convID,
+		Role:       string(message.Role),
+		CreateTime: &now,
+		TokensUsed: message.TokensUsed,
+		LatencyMs:  message.LatencyMs,
+		TraceID:    message.TraceID,
+		ToolCalls:  toolCallsJSON,
+	}
+
+	// 处理内容块
+	var contents []*gormModel.MessageContent
+	content := &gormModel.MessageContent{
+		ContentType: "text",
+		TextContent: message.Content,
+		SortOrder:   0,
+		CreateTime:  &now,
+	}
+	contents = append(contents, content)
+
+	return dao.Message.CreateWithContents(nil, msg, contents)
+}
+
+// SaveMessageAsync 异步保存消息（不等待结果）
+func (s *AsyncMessageSaver) SaveMessageAsync(message *MessageWithMetrics, convID string) {
+	task := &SaveTask{
+		Message: message,
+		ConvID:  convID,
+		Result:  nil, // 不需要结果通知
+	}
+
+	select {
+	case s.taskQueue <- task:
+		// 任务提交成功
+	default:
+		// 队列满了，记录警告但不阻塞
+		g.Log().Warning(context.Background(), "Message save queue is full, message may be lost")
+	}
+}
+
+// SaveMessageAsyncWait 异步保存消息（等待结果）
+func (s *AsyncMessageSaver) SaveMessageAsyncWait(ctx context.Context, message *MessageWithMetrics, convID string) error {
+	task := &SaveTask{
+		Message: message,
+		ConvID:  convID,
+		Result:  make(chan error, 1),
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case s.taskQueue <- task:
+		// 任务提交成功，等待结果
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-task.Result:
+			return err
+		}
+	default:
+		// 队列满了，同步保存
+		g.Log().Warning(ctx, "Message save queue is full, saving synchronously")
+		return s.saveMessageSync(message, convID)
+	}
+}
+
+// ensureConversationExists 确保对话存在（AsyncMessageSaver使用）
+func (s *AsyncMessageSaver) ensureConversationExists(convID string) error {
+	conversation, err := dao.Conversation.GetByConvID(nil, convID)
+	if err != nil {
+		return err
+	}
+
+	if conversation == nil {
+		now := time.Now()
+		conversation := &gormModel.Conversation{
+			ConvID:           convID,
+			UserID:           "default_user",
+			Title:            "New Conversation",
+			ModelName:        "default_model",
+			ConversationType: "text",
+			Status:           "active",
+			CreateTime:       &now,
+			UpdateTime:       &now,
+		}
+		return dao.Conversation.Create(nil, conversation)
+	}
+
+	return nil
+}
+
+// Shutdown 关闭异步保存器
+func (s *AsyncMessageSaver) Shutdown() {
+	s.cancel()
+	close(s.taskQueue)
+	s.wg.Wait()
+}
+
+// GetQueueSize 获取当前队列大小
+func (s *AsyncMessageSaver) GetQueueSize() int {
+	return len(s.taskQueue)
+}
+
+// 全局异步保存器实例
+var globalAsyncSaver *AsyncMessageSaver
+var saverOnce sync.Once
+
+// GetGlobalAsyncSaver 获取全局异步保存器
+func GetGlobalAsyncSaver() *AsyncMessageSaver {
+	saverOnce.Do(func() {
+		globalAsyncSaver = NewAsyncMessageSaver(5)
+	})
+	return globalAsyncSaver
 }

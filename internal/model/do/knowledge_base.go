@@ -1,7 +1,3 @@
-// =================================================================================
-// Code generated and maintained by GoFrame CLI tool. DO NOT EDIT.
-// =================================================================================
-
 package do
 
 import (
@@ -17,8 +13,7 @@ type KnowledgeBase struct {
 	Description    interface{} // 知识库描述
 	Category       interface{} // 知识库分类
 	CollectionName interface{} // milvus collection name
-	//QACollectionName interface{} // milvus collection name
-	Status     interface{} // 状态：0-禁用，1-启用
-	CreateTime *gtime.Time // 创建时间
-	UpdateTime *gtime.Time // 更新时间
+	Status         interface{} // 状态：0-禁用，1-启用
+	CreateTime     *gtime.Time // 创建时间
+	UpdateTime     *gtime.Time // 更新时间
 }
