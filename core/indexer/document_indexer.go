@@ -10,6 +10,7 @@ import (
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/config"
 	"github.com/Malowking/kbgo/core/file_store"
+	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/core/vector_store"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
 	"github.com/Malowking/kbgo/internal/model/entity"
@@ -27,6 +28,7 @@ type DocumentIndexer struct {
 
 // BatchIndexReq Batch indexing request parameters
 type BatchIndexReq struct {
+	ModelID     string   // Embedding Model ID
 	DocumentIds []string // Document ID list
 	ChunkSize   int      // Document chunk size
 	OverlapSize int      // Chunk overlap size
@@ -35,6 +37,7 @@ type BatchIndexReq struct {
 
 // IndexReq Unified indexing request parameters
 type IndexReq struct {
+	ModelID     string // Embedding Model ID
 	DocumentId  string // Document ID
 	ChunkSize   int    // Document chunk size
 	OverlapSize int    // Chunk overlap size
@@ -44,6 +47,7 @@ type IndexReq struct {
 // indexContext Indexing context, used to pass data between pipeline steps
 type indexContext struct {
 	ctx            context.Context
+	modelID        string
 	documentId     string
 	doc            entity.KnowledgeDocuments
 	storageType    file_store.StorageType
@@ -75,6 +79,7 @@ func (s *DocumentIndexer) BatchDocumentIndex(ctx context.Context, req *BatchInde
 			}()
 
 			indexReq := &IndexReq{
+				ModelID:     req.ModelID,
 				DocumentId:  docId,
 				ChunkSize:   req.ChunkSize,
 				OverlapSize: req.OverlapSize,
@@ -104,6 +109,7 @@ func (s *DocumentIndexer) DocumentIndex(ctx context.Context, req *IndexReq) erro
 	// Create indexing context
 	idxCtx := &indexContext{
 		ctx:         ctx,
+		modelID:     req.ModelID,
 		documentId:  req.DocumentId,
 		chunkSize:   req.ChunkSize,
 		overlapSize: req.OverlapSize,
@@ -284,8 +290,39 @@ func (s *DocumentIndexer) stepSaveChunks(idxCtx *indexContext) error {
 
 // stepVectorizeAndStore Step 7: Vectorize and store
 func (s *DocumentIndexer) stepVectorizeAndStore(idxCtx *indexContext) error {
-	// Create vector embedder
-	embedder, err := NewVectorStoreEmbedder(idxCtx.ctx, s.Config, s.VectorStore)
+	// 从 Registry 获取 embedding 模型信息
+	modelConfig := model.Registry.Get(idxCtx.modelID)
+	if modelConfig == nil {
+		err := fmt.Errorf("embedding model not found in registry: %s", idxCtx.modelID)
+		g.Log().Errorf(idxCtx.ctx, "Failed to get embedding model, documentId=%s, modelID=%s", idxCtx.documentId, idxCtx.modelID)
+		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))
+		return err
+	}
+
+	// 验证模型类型
+	if modelConfig.Type != model.ModelTypeEmbedding {
+		err := fmt.Errorf("model %s is not an embedding model, got type: %s", idxCtx.modelID, modelConfig.Type)
+		g.Log().Errorf(idxCtx.ctx, "Invalid model type, documentId=%s, modelID=%s, type=%s",
+			idxCtx.documentId, idxCtx.modelID, modelConfig.Type)
+		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))
+		return err
+	}
+
+	// 创建动态配置，使用从 Registry 获取的模型信息覆盖静态配置
+	dynamicConfig := &config.IndexerConfig{
+		VectorStore:    s.Config.VectorStore,
+		Database:       s.Config.Database,
+		APIKey:         modelConfig.APIKey,  // 使用动态模型的 APIKey
+		BaseURL:        modelConfig.BaseURL, // 使用动态模型的 BaseURL
+		EmbeddingModel: modelConfig.Name,    // 使用动态模型的名称
+		MetricType:     s.Config.MetricType,
+	}
+
+	g.Log().Infof(idxCtx.ctx, "Using dynamic embedding model, documentId=%s, modelID=%s, modelName=%s",
+		idxCtx.documentId, idxCtx.modelID, modelConfig.Name)
+
+	// 使用动态配置创建 vector embedder
+	embedder, err := NewVectorStoreEmbedder(idxCtx.ctx, dynamicConfig, s.VectorStore)
 	if err != nil {
 		g.Log().Errorf(idxCtx.ctx, "Failed to create vector embedder, documentId=%s, err=%v", idxCtx.documentId, err)
 		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusIndexing))

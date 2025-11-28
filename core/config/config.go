@@ -105,6 +105,10 @@ type RetrieverConfig struct {
 	APIKey         string                   // API密钥（用于调用embedding服务）
 	BaseURL        string                   // API基础URL（用于调用embedding服务）
 	EmbeddingModel string                   // Embedding模型名称
+	// Rerank配置
+	RerankAPIKey  string // Rerank API密钥
+	RerankBaseURL string // Rerank API基础URL
+	RerankModel   string // Rerank模型名称
 	// 检索策略参数
 	// TODO 重写的话需要一个大模型
 	EnableRewrite   bool    // 是否启用查询重写（默认 false）
@@ -133,6 +137,11 @@ func (c *Config) GetEmbeddingModel() string { return c.EmbeddingModel }
 func (c *RetrieverConfig) GetAPIKey() string         { return c.APIKey }
 func (c *RetrieverConfig) GetBaseURL() string        { return c.BaseURL }
 func (c *RetrieverConfig) GetEmbeddingModel() string { return c.EmbeddingModel }
+
+// RetrieverConfig 实现 rerank config 接口
+func (c *RetrieverConfig) GetRerankAPIKey() string  { return c.RerankAPIKey }
+func (c *RetrieverConfig) GetRerankBaseURL() string { return c.RerankBaseURL }
+func (c *RetrieverConfig) GetRerankModel() string   { return c.RerankModel }
 
 // RetrieverConfig 实现 GeneralRetrieverConfig 接口
 func (c *RetrieverConfig) GetTopK() int            { return c.TopK }

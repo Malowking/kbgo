@@ -213,7 +213,7 @@ func (tc *MCPToolCaller) convertMCPToolToLLMTool(serviceName string, mcpTool cli
 
 // CallToolsWithLLM 使用 LLM 智能选择并调用工具
 // serviceToolsFilter: 如果不为 nil，则只允许 LLM 调用指定服务的指定工具
-func (tc *MCPToolCaller) CallToolsWithLLM(ctx context.Context, question string, convID string, serviceToolsFilter map[string][]string) ([]*schema.Document, []*v1.MCPResult, error) {
+func (tc *MCPToolCaller) CallToolsWithLLM(ctx context.Context, modelID string, question string, convID string, serviceToolsFilter map[string][]string) ([]*schema.Document, []*v1.MCPResult, error) {
 	// 1. 准备工具列表（根据过滤器）
 	llmTools := tc.GetAllLLMTools(serviceToolsFilter)
 	if len(llmTools) == 0 {
@@ -258,7 +258,7 @@ func (tc *MCPToolCaller) CallToolsWithLLM(ctx context.Context, question string, 
 		g.Log().Debugf(ctx, "====== 工具调用迭代 %d/%d ======", iteration+1, maxIterations)
 
 		// 调用 LLM
-		response, err := chatInstance.GenerateWithTools(ctx, messages, llmTools)
+		response, err := chatInstance.GenerateWithTools(ctx, modelID, messages, llmTools)
 		if err != nil {
 			return nil, nil, fmt.Errorf("LLM 调用失败: %w", err)
 		}
@@ -353,7 +353,7 @@ func (tc *MCPToolCaller) CallToolsWithLLM(ctx context.Context, question string, 
 			g.Log().Warning(ctx, "达到最大工具调用迭代次数，尝试获取最终答案")
 
 			// 最后一次调用 LLM，不再提供工具（强制它给出最终答案）
-			finalResponse, err := chatInstance.GenerateWithToolsAndSave(ctx, messages, nil)
+			finalResponse, err := chatInstance.GenerateWithTools(ctx, modelID, messages, nil)
 			if err != nil {
 				g.Log().Errorf(ctx, "获取最终答案失败: %v", err)
 			} else {

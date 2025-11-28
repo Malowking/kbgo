@@ -154,6 +154,11 @@ func (fu *FileUploader) saveFile(file *multipart.FileHeader) (*MultimodalFile, e
 		return nil, fmt.Errorf("file is nil")
 	}
 
+	// 检查文件名是否为空
+	if file.Filename == "" {
+		return nil, fmt.Errorf("file filename is empty")
+	}
+
 	// 检查文件大小
 	if file.Size > MaxFileSize {
 		return nil, fmt.Errorf("file size %d exceeds maximum allowed size %d", file.Size, MaxFileSize)

@@ -42,4 +42,11 @@ type IKbgoV1 interface {
 	MCPRegistryDelete(ctx context.Context, req *v1.MCPRegistryDeleteReq) (res *v1.MCPRegistryDeleteRes, err error)
 	MCPRegistryGetOne(ctx context.Context, req *v1.MCPRegistryGetOneReq) (res *v1.MCPRegistryGetOneRes, err error)
 	MCPRegistryGetList(ctx context.Context, req *v1.MCPRegistryGetListReq) (res *v1.MCPRegistryGetListRes, err error)
+
+	// Model management interfaces
+	ReloadModels(ctx context.Context, req *v1.ReloadModelsReq) (res *v1.ReloadModelsRes, err error)
+	ListModels(ctx context.Context, req *v1.ListModelsReq) (res *v1.ListModelsRes, err error)
+	GetModel(ctx context.Context, req *v1.GetModelReq) (res *v1.GetModelRes, err error)
+	ChatCompletion(ctx context.Context, req *v1.ChatCompletionReq) (res *v1.ChatCompletionRes, err error)
+	EmbeddingCompletion(ctx context.Context, req *v1.EmbeddingReq) (res *v1.EmbeddingRes, err error)
 }

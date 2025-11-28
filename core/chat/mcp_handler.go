@@ -39,7 +39,7 @@ func (h *MCPHandler) CallMCPToolsWithLLM(ctx context.Context, req *v1.ChatReq) (
 
 	// 使用 LLM 智能选择并调用工具
 	// 传递 MCPServiceTools 作为过滤器，限制 LLM 只能选择指定的工具
-	documents, mcpResults, err := toolCaller.CallToolsWithLLM(ctx, req.Question, req.ConvID, req.MCPServiceTools)
+	documents, mcpResults, err := toolCaller.CallToolsWithLLM(ctx, req.ModelID, req.Question, req.ConvID, req.MCPServiceTools)
 	if err != nil {
 		return nil, nil, fmt.Errorf("LLM intelligent tool call failed: %w", err)
 	}
@@ -410,7 +410,7 @@ func (h *MCPHandler) CallSingleTool(ctx context.Context, serviceName string, too
 }
 
 // CallMCPToolsWithLLMAndSave Use LLM to intelligently select and call MCP tools, and save message history
-func (h *MCPHandler) CallMCPToolsWithLLMAndSave(ctx context.Context, convID string, messages []*schema.Message, llmTools []*schema.ToolInfo) ([]*schema.Document, []*v1.MCPResult, error) {
+func (h *MCPHandler) CallMCPToolsWithLLMAndSave(ctx context.Context, modelID string, convID string, messages []*schema.Message, llmTools []*schema.ToolInfo) ([]*schema.Document, []*v1.MCPResult, error) {
 	// 1. 创建 MCP 工具调用器
 	toolCaller, err := mcp.NewMCPToolCaller(ctx)
 	if err != nil {
@@ -433,7 +433,7 @@ func (h *MCPHandler) CallMCPToolsWithLLMAndSave(ctx context.Context, convID stri
 		g.Log().Debugf(ctx, "====== 工具调用迭代 %d/%d ======", iteration+1, maxIterations)
 
 		// 调用 LLM
-		response, err := chatInstance.GenerateWithToolsAndSave(ctx, messages, llmTools)
+		response, err := chatInstance.GenerateWithTools(ctx, modelID, messages, llmTools)
 		if err != nil {
 			return nil, nil, fmt.Errorf("LLM 调用失败: %w", err)
 		}
@@ -530,7 +530,7 @@ func (h *MCPHandler) CallMCPToolsWithLLMAndSave(ctx context.Context, convID stri
 			g.Log().Warning(ctx, "达到最大工具调用迭代次数，尝试获取最终答案")
 
 			// 最后一次调用 LLM，不再提供工具（强制它给出最终答案）
-			finalResponse, err := chatInstance.GenerateWithToolsAndSave(ctx, messages, nil)
+			finalResponse, err := chatInstance.GenerateWithTools(ctx, modelID, messages, nil)
 			if err != nil {
 				g.Log().Errorf(ctx, "获取最终答案失败: %v", err)
 			} else {

@@ -22,7 +22,7 @@ func NewStreamHandler() *StreamHandler {
 	return &StreamHandler{}
 }
 
-// ProcessStreamChat 处理流式聊天请求
+// StreamChat 处理流式聊天请求
 func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploadedFiles []*common.MultimodalFile) error {
 	// 获取检索配置
 	cfg := retriever.GetRetrieverConfig()
@@ -48,13 +48,15 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 		var result retrievalResult
 		if req.EnableRetriever && req.KnowledgeId != "" {
 			retrieverRes, err := retriever.ProcessRetrieval(ctx, &v1.RetrieverReq{
-				Question:        req.Question,
-				TopK:            req.TopK,
-				Score:           req.Score,
-				KnowledgeId:     req.KnowledgeId,
-				EnableRewrite:   cfg.EnableRewrite,
-				RewriteAttempts: cfg.RewriteAttempts,
-				RetrieveMode:    cfg.RetrieveMode,
+				Question:         req.Question,
+				EmbeddingModelID: req.EmbeddingModelID,
+				RerankModelID:    req.RerankModelID,
+				TopK:             req.TopK,
+				Score:            req.Score,
+				KnowledgeId:      req.KnowledgeId,
+				EnableRewrite:    cfg.EnableRewrite,
+				RewriteAttempts:  cfg.RewriteAttempts,
+				RetrieveMode:     cfg.RetrieveMode,
 			})
 			if err != nil {
 				g.Log().Error(ctx, err)
@@ -133,9 +135,9 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 	var err error
 	if len(multimodalFiles) > 0 {
 		g.Log().Infof(ctx, "Using multimodal stream chat with %d files", len(multimodalFiles))
-		streamReader, err = chatI.GetAnswerStreamWithFiles(ctx, req.ConvID, documents, req.Question, multimodalFiles)
+		streamReader, err = chatI.GetAnswerStreamWithFiles(ctx, req.ModelID, req.ConvID, documents, req.Question, multimodalFiles)
 	} else {
-		streamReader, err = chatI.GetAnswerStream(ctx, req.ConvID, documents, req.Question)
+		streamReader, err = chatI.GetAnswerStream(ctx, req.ModelID, req.ConvID, documents, req.Question)
 	}
 	if err != nil {
 		g.Log().Error(ctx, err)
@@ -238,7 +240,7 @@ func (h *StreamHandler) handleStreamResponse(ctx context.Context, streamReader *
 		// 流式响应结束后，保存带元数据的完整消息
 		if len(metadata) > 0 {
 			fullMessage := fullContent.String()
-			// 注意：这里需要类型断言或重新设计接口
+			// 这里需要类型断言或重新设计接口
 			if chatInstance, ok := chatI.(interface {
 				SaveStreamingMessageWithMetadata(string, string, map[string]interface{})
 			}); ok {

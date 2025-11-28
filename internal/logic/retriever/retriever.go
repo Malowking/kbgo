@@ -3,10 +3,12 @@ package retriever
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/config"
+	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/core/retriever"
 	"github.com/Malowking/kbgo/internal/service"
 	"github.com/cloudwego/eino/schema"
@@ -30,6 +32,9 @@ func InitRetrieverConfig() {
 		APIKey:          g.Cfg().MustGet(ctx, "embedding.apiKey").String(),
 		BaseURL:         g.Cfg().MustGet(ctx, "embedding.baseURL").String(),
 		EmbeddingModel:  g.Cfg().MustGet(ctx, "embedding.model").String(),
+		RerankAPIKey:    g.Cfg().MustGet(ctx, "rerank.apiKey").String(),
+		RerankBaseURL:   g.Cfg().MustGet(ctx, "rerank.baseURL").String(),
+		RerankModel:     g.Cfg().MustGet(ctx, "rerank.model").String(),
 		EnableRewrite:   g.Cfg().MustGet(ctx, "retriever.enableRewrite", false).Bool(),
 		RewriteAttempts: g.Cfg().MustGet(ctx, "retriever.rewriteAttempts", 3).Int(),
 		RetrieveMode:    g.Cfg().MustGet(ctx, "retriever.retrieveMode", "rerank").String(),
@@ -45,7 +50,56 @@ func GetRetrieverConfig() *config.RetrieverConfig {
 
 // ProcessRetrieval 处理检索请求
 func ProcessRetrieval(ctx context.Context, req *v1.RetrieverReq) (*v1.RetrieverRes, error) {
-	g.Log().Infof(ctx, "retrieveReq: %v, EnableRewrite: %v, RewriteAttempts: %v, RetrieveMode: %v", req, req.EnableRewrite, req.RewriteAttempts, req.RetrieveMode)
+	g.Log().Infof(ctx, "retrieveReq: %v, EmbeddingModelID: %v, RerankModelID: %v, EnableRewrite: %v, RewriteAttempts: %v, RetrieveMode: %v",
+		req, req.EmbeddingModelID, req.RerankModelID, req.EnableRewrite, req.RewriteAttempts, req.RetrieveMode)
+
+	// 从 Registry 获取 embedding 模型信息
+	embeddingModelConfig := model.Registry.Get(req.EmbeddingModelID)
+	if embeddingModelConfig == nil {
+		return nil, fmt.Errorf("embedding model not found in registry: %s", req.EmbeddingModelID)
+	}
+
+	// 验证 embedding 模型类型
+	if embeddingModelConfig.Type != model.ModelTypeEmbedding {
+		return nil, fmt.Errorf("model %s is not an embedding model, got type: %s", req.EmbeddingModelID, embeddingModelConfig.Type)
+	}
+
+	// 创建动态配置，使用从 Registry 获取的模型信息覆盖静态配置
+	dynamicConfig := &config.RetrieverConfig{
+		VectorStore:     retrieverConfig.VectorStore,
+		MetricType:      retrieverConfig.MetricType,
+		APIKey:          embeddingModelConfig.APIKey,  // 使用动态 embedding 模型的 APIKey
+		BaseURL:         embeddingModelConfig.BaseURL, // 使用动态 embedding 模型的 BaseURL
+		EmbeddingModel:  embeddingModelConfig.Name,    // 使用动态 embedding 模型的名称
+		RerankAPIKey:    retrieverConfig.RerankAPIKey, // 先使用静态配置的默认值
+		RerankBaseURL:   retrieverConfig.RerankBaseURL,
+		RerankModel:     retrieverConfig.RerankModel,
+		EnableRewrite:   retrieverConfig.EnableRewrite,
+		RewriteAttempts: retrieverConfig.RewriteAttempts,
+		RetrieveMode:    retrieverConfig.RetrieveMode,
+		TopK:            retrieverConfig.TopK,
+		Score:           retrieverConfig.Score,
+	}
+
+	// 如果提供了 RerankModelID，则从 Registry 获取 rerank 模型配置
+	if req.RerankModelID != "" {
+		rerankModelConfig := model.Registry.Get(req.RerankModelID)
+		if rerankModelConfig == nil {
+			return nil, fmt.Errorf("rerank model not found in registry: %s", req.RerankModelID)
+		}
+
+		// 验证 rerank 模型类型
+		if rerankModelConfig.Type != model.ModelTypeReranker {
+			return nil, fmt.Errorf("model %s is not a reranker model, got type: %s", req.RerankModelID, rerankModelConfig.Type)
+		}
+
+		// 使用动态 rerank 模型配置
+		dynamicConfig.RerankAPIKey = rerankModelConfig.APIKey
+		dynamicConfig.RerankBaseURL = rerankModelConfig.BaseURL
+		dynamicConfig.RerankModel = rerankModelConfig.Name
+
+		g.Log().Infof(ctx, "Using dynamic rerank model: modelID=%s, modelName=%s", req.RerankModelID, rerankModelConfig.Name)
+	}
 
 	// 构建内部请求，只传递必需参数和显式指定的可选参数
 	retrieveReq := &retriever.RetrieveReq{
@@ -65,6 +119,11 @@ func ProcessRetrieval(ctx context.Context, req *v1.RetrieverReq) (*v1.RetrieverR
 	if req.RetrieveMode != "" {
 		mode := retriever.RetrieveMode(req.RetrieveMode)
 		retrieveReq.RetrieveMode = &mode
+
+		// 如果使用 rerank 或 rrf 模式，但没有提供 RerankModelID，返回错误
+		if (req.RetrieveMode == "rerank" || req.RetrieveMode == "rrf") && req.RerankModelID == "" {
+			return nil, fmt.Errorf("rerank_model_id is required when retrieve_mode is %s", req.RetrieveMode)
+		}
 	}
 
 	// EnableRewrite 相关的参数设置
@@ -75,8 +134,8 @@ func ProcessRetrieval(ctx context.Context, req *v1.RetrieverReq) (*v1.RetrieverR
 		}
 	}
 
-	// 直接获取retriever配置并调用retriever
-	msg, err := retriever.Retrieve(ctx, retrieverConfig, retrieveReq)
+	// 使用动态配置调用 retriever
+	msg, err := retriever.Retrieve(ctx, dynamicConfig, retrieveReq)
 	if err != nil {
 		return nil, err
 	}

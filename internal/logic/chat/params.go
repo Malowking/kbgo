@@ -59,7 +59,7 @@ func GetDefaultParams() ModelParams {
 	return ModelParams{
 		Temperature:      ToPointer(0.7),
 		TopP:             ToPointer(0.9),
-		MaxTokens:        ToPointer(2048),
+		MaxTokens:        ToPointer(4096),
 		FrequencyPenalty: ToPointer(0.0),
 		PresencePenalty:  ToPointer(0.0),
 		Stop:             []string{},

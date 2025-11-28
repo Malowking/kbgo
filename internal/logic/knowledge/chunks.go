@@ -85,7 +85,7 @@ func GetChunkById(ctx context.Context, id string) (chunk entity.KnowledgeChunks,
 	return
 }
 
-// DeleteChunkByIdWithTx 根据ID软删除知识块（事务版本）
+// DeleteChunkByIdWithTx 根据ID删除知识块（事务版本）
 func DeleteChunkByIdWithTx(ctx context.Context, tx *gorm.DB, id string) error {
 	result := tx.WithContext(ctx).Where("id = ?", id).Delete(&entity.KnowledgeChunks{})
 	return result.Error

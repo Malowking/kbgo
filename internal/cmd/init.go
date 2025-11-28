@@ -5,6 +5,7 @@ import (
 
 	"github.com/Malowking/kbgo/core/config"
 	"github.com/Malowking/kbgo/core/file_store"
+	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/chat"
 	"github.com/Malowking/kbgo/internal/logic/index"
@@ -45,8 +46,18 @@ func init() {
 	// Initialize retriever configuration
 	retriever.InitRetrieverConfig()
 
-	// Initialize chat handler
-	chat.InitChat()
+	// Initialize chat history manager
+	chat.InitHistory()
+
+	// Initialize model registry from database
+	g.Log().Info(ctx, "Initializing model registry...")
+	err = model.Registry.Reload(ctx, dao.GetDB())
+	if err != nil {
+		g.Log().Warningf(ctx, "Model registry initialization failed (non-fatal): %v", err)
+		g.Log().Warning(ctx, "You can add models to model table and call /v1/model/reload to load them")
+	} else {
+		g.Log().Infof(ctx, "✓ Model registry initialized successfully with %d models", model.Registry.Count())
+	}
 
 	g.Log().Info(ctx, "✓ All components initialized successfully")
 }

@@ -2,31 +2,14 @@ package retriever
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"sync"
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/config"
-	"github.com/Malowking/kbgo/core/vector_store"
 	"github.com/cloudwego/eino/schema"
 	"github.com/gogf/gf/v2/frame/g"
-	"github.com/milvus-io/milvus/client/v2/column"
 )
-
-// MilvusResult2Document converts Milvus search results to schema.Document
-// and filters out chunks with status != 1 for permission control
-// 这是一个包装函数，调用VectorStore接口的ConvertSearchResultsToDocuments方法
-func MilvusResult2Document(ctx context.Context, columns []column.Column, scores []float32) ([]*schema.Document, error) {
-	// 获取VectorStore实例
-	vectorStore, err := vector_store.InitializeMilvusStore(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize vector store: %w", err)
-	}
-
-	// 调用VectorStore接口的方法
-	return vectorStore.ConvertSearchResultsToDocuments(ctx, columns, scores)
-}
 
 // Retrieve 执行检索（主方法）
 func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveReq) ([]*schema.Document, error) {
@@ -60,6 +43,7 @@ func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 	}
 
 	// 启用查询重写
+	// TODO你需实现查询重写逻辑，这边没有指定大模型
 	var (
 		used        = ""          // 记录已经使用过的关键词
 		relatedDocs = &sync.Map{} // 记录相关docs

@@ -48,13 +48,15 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 		if req.EnableRetriever && req.KnowledgeId != "" {
 			g.Log().Infof(ctx, "Chat handler - Triggering retrieval with TopK: %d, Score: %f", req.TopK, req.Score)
 			retrieverRes, err := retriever.ProcessRetrieval(ctx, &v1.RetrieverReq{
-				Question:        req.Question,
-				TopK:            req.TopK,
-				Score:           req.Score,
-				KnowledgeId:     req.KnowledgeId,
-				EnableRewrite:   cfg.EnableRewrite,
-				RewriteAttempts: cfg.RewriteAttempts,
-				RetrieveMode:    cfg.RetrieveMode,
+				Question:         req.Question,
+				EmbeddingModelID: req.EmbeddingModelID,
+				RerankModelID:    req.RerankModelID,
+				TopK:             req.TopK,
+				Score:            req.Score,
+				KnowledgeId:      req.KnowledgeId,
+				EnableRewrite:    cfg.EnableRewrite,
+				RewriteAttempts:  cfg.RewriteAttempts,
+				RetrieveMode:     cfg.RetrieveMode,
 			})
 			if err != nil {
 				result.err = err
@@ -128,9 +130,9 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 	var err error
 	if len(multimodalFiles) > 0 {
 		g.Log().Infof(ctx, "Using multimodal chat with %d files", len(multimodalFiles))
-		answer, err = chatI.GetAnswerWithFiles(ctx, req.ConvID, documents, req.Question, multimodalFiles)
+		answer, err = chatI.GetAnswerWithFiles(ctx, req.ModelID, req.ConvID, documents, req.Question, multimodalFiles)
 	} else {
-		answer, err = chatI.GetAnswer(ctx, req.ConvID, documents, req.Question)
+		answer, err = chatI.GetAnswer(ctx, req.ModelID, req.ConvID, documents, req.Question)
 	}
 	if err != nil {
 		return nil, err
