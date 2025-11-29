@@ -2,9 +2,12 @@ package chat
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/Malowking/kbgo/core/common"
@@ -233,9 +236,242 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 	return srs[0], nil
 }
 
+// preprocessMultimodalMessages 预处理多模态消息，将文件路径转换为base64
+func preprocessMultimodalMessages(ctx context.Context, messages []*schema.Message) error {
+	for _, msg := range messages {
+		// 处理 UserInputMultiContent
+		if len(msg.UserInputMultiContent) > 0 {
+			for i := range msg.UserInputMultiContent {
+				part := &msg.UserInputMultiContent[i]
+
+				// 处理图片
+				if part.Type == schema.ChatMessagePartTypeImageURL && part.Image != nil {
+					// 如果已经有base64数据，跳过
+					if part.Image.Base64Data != nil && *part.Image.Base64Data != "" {
+						continue
+					}
+
+					// 如果URL是文件路径，读取并转换为base64
+					if part.Image.URL != nil && *part.Image.URL != "" {
+						urlStr := *part.Image.URL
+						if len(urlStr) > 0 && (urlStr[0] == '/' || urlStr[0] == '.') {
+							data, err := os.ReadFile(urlStr)
+							if err != nil {
+								g.Log().Warningf(ctx, "Failed to read image file %s: %v, skipping", urlStr, err)
+								continue
+							}
+
+							// 获取MIME类型
+							mimeType := part.Image.MIMEType
+							if mimeType == "" {
+								ext := filepath.Ext(urlStr)
+								mimeType = getMimeType(ext)
+							}
+
+							base64Data := base64.StdEncoding.EncodeToString(data)
+							// 构造data URI格式
+							dataURI := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
+							part.Image.URL = &dataURI
+						}
+					}
+				}
+
+				// 处理音频
+				if part.Type == schema.ChatMessagePartTypeAudioURL && part.Audio != nil {
+					// 如果已经有base64数据，跳过
+					if part.Audio.Base64Data != nil && *part.Audio.Base64Data != "" {
+						continue
+					}
+
+					// 如果URL是文件路径，读取并转换为base64
+					if part.Audio.URL != nil && *part.Audio.URL != "" {
+						urlStr := *part.Audio.URL
+						if len(urlStr) > 0 && (urlStr[0] == '/' || urlStr[0] == '.') {
+							data, err := os.ReadFile(urlStr)
+							if err != nil {
+								g.Log().Warningf(ctx, "Failed to read audio file %s: %v, skipping", urlStr, err)
+								continue
+							}
+
+							// 获取MIME类型
+							mimeType := part.Audio.MIMEType
+							if mimeType == "" {
+								ext := filepath.Ext(urlStr)
+								mimeType = getMimeType(ext)
+							}
+
+							base64Data := base64.StdEncoding.EncodeToString(data)
+							// 构造data URI格式
+							dataURI := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
+							part.Audio.URL = &dataURI
+						}
+					}
+				}
+
+				// 处理视频
+				if part.Type == schema.ChatMessagePartTypeVideoURL && part.Video != nil {
+					// 如果已经有base64数据，跳过
+					if part.Video.Base64Data != nil && *part.Video.Base64Data != "" {
+						continue
+					}
+
+					// 如果URL是文件路径，读取并转换为base64
+					if part.Video.URL != nil && *part.Video.URL != "" {
+						urlStr := *part.Video.URL
+						if len(urlStr) > 0 && (urlStr[0] == '/' || urlStr[0] == '.') {
+							data, err := os.ReadFile(urlStr)
+							if err != nil {
+								g.Log().Warningf(ctx, "Failed to read video file %s: %v, skipping", urlStr, err)
+								continue
+							}
+
+							// 获取MIME类型
+							mimeType := part.Video.MIMEType
+							if mimeType == "" {
+								ext := filepath.Ext(urlStr)
+								mimeType = getMimeType(ext)
+							}
+
+							base64Data := base64.StdEncoding.EncodeToString(data)
+							// 构造data URI格式
+							dataURI := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
+							part.Video.URL = &dataURI
+						}
+					}
+				}
+			}
+		}
+
+		// 处理 MultiContent（旧版字段）
+		if len(msg.MultiContent) > 0 {
+			for i := range msg.MultiContent {
+				part := &msg.MultiContent[i]
+
+				// 处理图片
+				if part.Type == schema.ChatMessagePartTypeImageURL && part.ImageURL != nil {
+					urlStr := part.ImageURL.URL
+					// 如果是文件路径，读取并转换为base64
+					if len(urlStr) > 0 && (urlStr[0] == '/' || urlStr[0] == '.') {
+						data, err := os.ReadFile(urlStr)
+						if err != nil {
+							g.Log().Warningf(ctx, "Failed to read image file %s: %v, skipping", urlStr, err)
+							continue
+						}
+
+						// 获取MIME类型
+						ext := filepath.Ext(urlStr)
+						mimeType := getMimeType(ext)
+
+						base64Data := base64.StdEncoding.EncodeToString(data)
+						// 构造data URI格式
+						part.ImageURL.URL = fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
+					}
+				}
+
+				// 处理音频
+				if part.Type == schema.ChatMessagePartTypeAudioURL && part.AudioURL != nil {
+					urlStr := part.AudioURL.URL
+					// 如果是文件路径，读取并转换为base64
+					if len(urlStr) > 0 && (urlStr[0] == '/' || urlStr[0] == '.') {
+						data, err := os.ReadFile(urlStr)
+						if err != nil {
+							g.Log().Warningf(ctx, "Failed to read audio file %s: %v, skipping", urlStr, err)
+							continue
+						}
+
+						// 获取MIME类型
+						ext := filepath.Ext(urlStr)
+						mimeType := getMimeType(ext)
+
+						base64Data := base64.StdEncoding.EncodeToString(data)
+						// 构造data URI格式
+						part.AudioURL.URL = fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
+					}
+				}
+
+				// 处理视频
+				if part.Type == schema.ChatMessagePartTypeVideoURL && part.VideoURL != nil {
+					urlStr := part.VideoURL.URL
+					// 如果是文件路径，读取并转换为base64
+					if len(urlStr) > 0 && (urlStr[0] == '/' || urlStr[0] == '.') {
+						data, err := os.ReadFile(urlStr)
+						if err != nil {
+							g.Log().Warningf(ctx, "Failed to read video file %s: %v, skipping", urlStr, err)
+							continue
+						}
+
+						// 获取MIME类型
+						ext := filepath.Ext(urlStr)
+						mimeType := getMimeType(ext)
+
+						base64Data := base64.StdEncoding.EncodeToString(data)
+						// 构造data URI格式
+						part.VideoURL.URL = fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// getMimeType 根据文件扩展名获取MIME类型
+func getMimeType(ext string) string {
+	mimeTypes := map[string]string{
+		// 图片格式
+		".jpg":  "image/jpeg",
+		".jpeg": "image/jpeg",
+		".png":  "image/png",
+		".gif":  "image/gif",
+		".bmp":  "image/bmp",
+		".webp": "image/webp",
+		".svg":  "image/svg+xml",
+		".ico":  "image/x-icon",
+		".tiff": "image/tiff",
+
+		// 音频格式
+		".mp3":  "audio/mpeg",
+		".wav":  "audio/wav",
+		".flac": "audio/flac",
+		".aac":  "audio/aac",
+		".ogg":  "audio/ogg",
+		".m4a":  "audio/mp4",
+		".wma":  "audio/x-ms-wma",
+
+		// 视频格式
+		".mp4":  "video/mp4",
+		".avi":  "video/x-msvideo",
+		".mkv":  "video/x-matroska",
+		".mov":  "video/quicktime",
+		".wmv":  "video/x-ms-wmv",
+		".flv":  "video/x-flv",
+		".webm": "video/webm",
+		".m4v":  "video/mp4",
+		".mpeg": "video/mpeg",
+		".mpg":  "video/mpeg",
+	}
+
+	if mime, ok := mimeTypes[ext]; ok {
+		return mime
+	}
+	return "application/octet-stream"
+}
+
 // GetAnswerWithFiles 使用指定模型进行多模态对话
 func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile) (answer string, err error) {
-	// 获取模型和参数
+	// 获取模型配置
+	mc := coreModel.Registry.Get(modelID)
+	if mc == nil {
+		return "", fmt.Errorf("model not found: %s", modelID)
+	}
+
+	// 检查是否为Qwen模型（通过模型名称判断）
+	if IsQwenModel(mc.Name) {
+		g.Log().Infof(ctx, "Detected Qwen model, using QwenAdapter for multimodal chat")
+		return x.GetAnswerWithFilesUsingQwen(ctx, mc, convID, docs, question, files)
+	}
+
+	// 使用标准的eino框架处理
 	chatModel, params, err := x.getModelAndParams(ctx, modelID)
 	if err != nil {
 		return "", err
@@ -244,6 +480,11 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 	messages, err := x.docsMessagesWithFiles(ctx, convID, docs, question, files)
 	if err != nil {
 		return "", err
+	}
+
+	// 预处理消息：将文件路径转换为base64
+	if err := preprocessMultimodalMessages(ctx, messages); err != nil {
+		return "", fmt.Errorf("预处理多模态消息失败: %w", err)
 	}
 
 	// 记录开始时间
@@ -282,7 +523,19 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 
 // GetAnswerStreamWithFiles 使用指定模型进行多模态流式对话
 func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile) (answer *schema.StreamReader[*schema.Message], err error) {
-	// 获取模型和参数
+	// 获取模型配置
+	mc := coreModel.Registry.Get(modelID)
+	if mc == nil {
+		return nil, fmt.Errorf("model not found: %s", modelID)
+	}
+
+	// 检查是否为Qwen模型（通过模型名称判断）
+	if IsQwenModel(mc.Name) {
+		g.Log().Infof(ctx, "Detected Qwen model, using QwenAdapter for multimodal stream chat")
+		return x.GetAnswerStreamWithFilesUsingQwen(ctx, mc, convID, docs, question, files)
+	}
+
+	// 使用标准的eino框架处理
 	chatModel, params, err := x.getModelAndParams(ctx, modelID)
 	if err != nil {
 		return nil, err
@@ -291,6 +544,11 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 	messages, err := x.docsMessagesWithFiles(ctx, convID, docs, question, files)
 	if err != nil {
 		return nil, err
+	}
+
+	// 预处理消息：将文件路径转换为base64
+	if err := preprocessMultimodalMessages(ctx, messages); err != nil {
+		return nil, fmt.Errorf("预处理多模态消息失败: %w", err)
 	}
 
 	// 记录开始时间

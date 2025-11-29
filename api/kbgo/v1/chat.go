@@ -18,6 +18,7 @@ type ChatReq struct {
 	EnableRetriever  bool                    `json:"enable_retriever"`  // Whether to enable knowledge base retrieval
 	TopK             int                     `json:"top_k"`             // 默认为5
 	Score            float64                 `json:"score"`             // 默认为0.2 （默认是rrf检索模式，相似度分数不重要）
+	RetrieveMode     string                  `json:"retrieve_mode"`     // 检索模式: milvus/rerank/rrf (默认rerank)
 	UseMCP           bool                    `json:"use_mcp"`           // 是否使用MCP
 	MCPServiceTools  map[string][]string     `json:"mcp_service_tools"` // 按服务指定允许调用的MCP工具列表
 	Stream           bool                    `json:"stream"`            // 是否流式返回

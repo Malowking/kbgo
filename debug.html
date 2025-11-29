@@ -1029,6 +1029,17 @@
                 </div>
 
                 <div class="form-group">
+                    <label class="form-label">检索模式</label>
+                    <select class="form-select" id="chat_retrieve_mode">
+                        <option value="">使用配置默认值</option>
+                        <option value="milvus">Milvus向量检索</option>
+                        <option value="rerank">Rerank重排序</option>
+                        <option value="rrf">RRF混合检索</option>
+                    </select>
+                    <div class="helper-text">选择知识检索方式，留空使用配置文件默认值</div>
+                </div>
+
+                <div class="form-group">
                     <label class="form-label">启用MCP</label>
                     <div>
                         <label>
@@ -1043,6 +1054,17 @@
                     <label class="form-label">按服务指定MCP工具</label>
                     <textarea class="form-textarea" id="chat_mcp_service_tools" placeholder='{"service_name": ["tool1", "tool2"]}'></textarea>
                     <div class="helper-text">JSON格式，可按服务指定工具，留空表示调用所有工具</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">流式输出</label>
+                    <div>
+                        <label>
+                            <input type="checkbox" id="chat_stream">
+                            启用流式输出
+                        </label>
+                    </div>
+                    <div class="helper-text">启用后将以流式方式返回对话内容</div>
                 </div>
 
                 <button class="btn btn-primary" onclick="chat()">发送消息</button>
@@ -2219,9 +2241,11 @@
             const question = document.getElementById('chat_question').value.trim();
             const topK = document.getElementById('chat_top_k').value;
             const score = document.getElementById('chat_score').value;
+            const retrieveMode = document.getElementById('chat_retrieve_mode').value;
             const useMcp = document.getElementById('chat_use_mcp').checked;
             const mcpServiceToolsStr = document.getElementById('chat_mcp_service_tools').value.trim();
             const fileInput = document.getElementById('chat_file');
+            const useStream = document.getElementById('chat_stream').checked;
 
             if (!convId || !question) {
                 alert('请填写会话ID和问题');
@@ -2236,7 +2260,8 @@
             const body = {
                 conv_id: convId,
                 model_id: modelId,
-                question: question
+                question: question,
+                stream: useStream
             };
 
             // 添加可选参数
@@ -2257,6 +2282,9 @@
                 // Rerank模型ID是可选的
                 if (rerankModelId) {
                     body.rerank_model_id = rerankModelId;
+                }
+                if (retrieveMode) {
+                    body.retrieve_mode = retrieveMode;
                 }
             }
             if (useMcp) {
@@ -2304,6 +2332,7 @@
                     formData.append('conv_id', body.conv_id);
                     formData.append('model_id', body.model_id);
                     formData.append('question', body.question);
+                    formData.append('stream', body.stream);
 
                     if (body.knowledge_id) formData.append('knowledge_id', body.knowledge_id);
                     formData.append('enable_retriever', body.enable_retriever);
@@ -2314,6 +2343,9 @@
                         formData.append('score', body.score);
                         if (body.rerank_model_id) {
                             formData.append('rerank_model_id', body.rerank_model_id);
+                        }
+                        if (body.retrieve_mode) {
+                            formData.append('retrieve_mode', body.retrieve_mode);
                         }
                     }
 
@@ -2337,8 +2369,52 @@
                     });
                 }
 
-                const data = await response.json();
-                showResponse('chat', response.ok, data);
+                // 处理流式响应
+                if (useStream && response.ok) {
+                    hideLoading('chat');
+                    const statusEl = document.getElementById('chat_status');
+                    const bodyEl = document.getElementById('chat_body');
+
+                    statusEl.textContent = '流式接收中...';
+                    statusEl.className = 'response-status success';
+                    bodyEl.textContent = '';
+
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let streamedContent = '';
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+
+                        const chunk = decoder.decode(value, { stream: true });
+                        const lines = chunk.split('\n');
+
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                const data = line.substring(6).trim();
+                                if (data === '[DONE]') {
+                                    statusEl.textContent = '完成';
+                                    continue;
+                                }
+
+                                try {
+                                    const json = JSON.parse(data);
+                                    if (json.content) {
+                                        streamedContent += json.content;
+                                        bodyEl.textContent = streamedContent;
+                                    }
+                                } catch (e) {
+                                    // 忽略解析错误
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // 非流式响应
+                    const data = await response.json();
+                    showResponse('chat', response.ok, data);
+                }
             } catch (error) {
                 showResponse('chat', false, {error: error.message});
             }

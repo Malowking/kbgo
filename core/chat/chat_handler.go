@@ -47,6 +47,17 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 		var result retrievalResult
 		if req.EnableRetriever && req.KnowledgeId != "" {
 			g.Log().Infof(ctx, "Chat handler - Triggering retrieval with TopK: %d, Score: %f", req.TopK, req.Score)
+
+			// 确定使用的检索模式：优先使用请求中的参数，否则使用配置默认值
+			retrieveMode := cfg.RetrieveMode
+			if req.RetrieveMode != "" {
+				retrieveMode = req.RetrieveMode
+			}
+
+			// chat接口默认开启查询重写，重写次数为3
+			enableRewrite := true
+			rewriteAttempts := 3
+
 			retrieverRes, err := retriever.ProcessRetrieval(ctx, &v1.RetrieverReq{
 				Question:         req.Question,
 				EmbeddingModelID: req.EmbeddingModelID,
@@ -54,9 +65,9 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 				TopK:             req.TopK,
 				Score:            req.Score,
 				KnowledgeId:      req.KnowledgeId,
-				EnableRewrite:    cfg.EnableRewrite,
-				RewriteAttempts:  cfg.RewriteAttempts,
-				RetrieveMode:     cfg.RetrieveMode,
+				EnableRewrite:    enableRewrite,
+				RewriteAttempts:  rewriteAttempts,
+				RetrieveMode:     retrieveMode,
 			})
 			if err != nil {
 				result.err = err

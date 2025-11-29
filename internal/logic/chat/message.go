@@ -158,7 +158,7 @@ func (x *Chat) docsMessagesWithFiles(ctx context.Context, convID string, docs []
 	// 构建多模态消息
 	multimodalBuilder := common.NewMultimodalMessageBuilder()
 
-	// 使用base64编码方式（根据实际需求可以改为false使用URL方式）
+	// 使用base64编码方式
 	userMessage, err := multimodalBuilder.BuildMultimodalMessage(question, files, true)
 	if err != nil {
 		return nil, fmt.Errorf("构建多模态消息失败: %w", err)
@@ -179,9 +179,27 @@ func (x *Chat) docsMessagesWithFiles(ctx context.Context, convID string, docs []
 	formattedDocs := formatDocuments(docs)
 	g.Log().Debugf(context.Background(), "formatted docs: %s", formattedDocs)
 
+	// 对于多模态消息，从第一个文本部分提取问题文本
+	questionText := question
+	if len(userMessage.UserInputMultiContent) > 0 {
+		for _, part := range userMessage.UserInputMultiContent {
+			if part.Type == schema.ChatMessagePartTypeText && part.Text != "" {
+				questionText = part.Text
+				break
+			}
+		}
+	} else if len(userMessage.MultiContent) > 0 {
+		for _, part := range userMessage.MultiContent {
+			if part.Type == schema.ChatMessagePartTypeText && part.Text != "" {
+				questionText = part.Text
+				break
+			}
+		}
+	}
+
 	data := map[string]any{
 		"role":           role,
-		"question":       userMessage.Content, // 使用处理后的消息内容
+		"question":       questionText,
 		"formatted_docs": formattedDocs,
 		"chat_history":   chatHistory,
 	}
@@ -192,19 +210,20 @@ func (x *Chat) docsMessagesWithFiles(ctx context.Context, convID string, docs []
 		return
 	}
 
-	// 如果有多模态内容，需要特殊处理最后一条用户消息
-	// 将多模态信息添加到消息的Extra字段中
-	if userMessage.Extra != nil {
-		if multimodalContents, ok := userMessage.Extra["multimodal_contents"]; ok {
-			// 找到最后一条用户消息并添加多模态内容
-			for i := len(messages) - 1; i >= 0; i-- {
-				if messages[i].Role == schema.User {
-					if messages[i].Extra == nil {
-						messages[i].Extra = make(map[string]any)
-					}
-					messages[i].Extra["multimodal_contents"] = multimodalContents
-					break
+	// 如果有多模态内容，需要将多模态内容添加到最后一条用户消息
+	if len(userMessage.UserInputMultiContent) > 0 || len(userMessage.MultiContent) > 0 {
+		// 找到最后一条用户消息并添加多模态内容
+		for i := len(messages) - 1; i >= 0; i-- {
+			if messages[i].Role == schema.User {
+				// 优先使用MultiContent（通义千问兼容）
+				if len(userMessage.MultiContent) > 0 {
+					messages[i].MultiContent = userMessage.MultiContent
+				} else {
+					messages[i].UserInputMultiContent = userMessage.UserInputMultiContent
 				}
+				// 清空Content，因为不能同时设置
+				messages[i].Content = ""
+				break
 			}
 		}
 	}
