@@ -33,10 +33,10 @@ database:
 #     maxLifeTime: 3600
 
 # 向量数据库配置
-# 支持的类型: "milvus" 或 "postgresql"
+# 支持的类型: "milvus" 或 "pgvector"
 # 注意：向量数据库可以独立于主数据库选择
 vectorStore:
-  type: "milvus"  # 默认使用 Milvus，切换到 PostgreSQL 请改为 "postgresql"
+  type: "milvus"  # 默认使用 Milvus，切换到 PostgreSQL 请改为 "pgvector"
 
 # Milvus 向量数据库配置
 milvus:
@@ -51,12 +51,12 @@ postgres:
   port: "5432"                 # PostgreSQL 端口
   user: "postgres"             # PostgreSQL 用户名
   password: "your_password"    # PostgreSQL 密码
-  database: "kbgo_vector"      # PostgreSQL 数据库名称
+  database: "kbgo"      # PostgreSQL 数据库名称
   sslmode: "disable"           # SSL 模式: disable, require, verify-ca, verify-full
 
 # 文件存储配置
 storage:
-  # 存储类型: "rustfs" 或 "local"，默认为"rustfs"
+  # 存储类型: "rustfs" 或 "local"
   type: "local"
 
 # rustfs文件存储配置

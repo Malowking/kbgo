@@ -25,8 +25,8 @@ func ValidateConfiguration(ctx context.Context) error {
 		if milvusAddress == "" {
 			missingConfigs = append(missingConfigs, "milvus.address")
 		}
-	case "postgresql":
-		// 验证 PostgreSQL 配置
+	case "pgvector":
+		// 验证 pgvector 配置
 		pgHost := g.Cfg().MustGet(ctx, "postgres.host", "").String()
 		pgUser := g.Cfg().MustGet(ctx, "postgres.user", "").String()
 		pgDatabase := g.Cfg().MustGet(ctx, "postgres.database", "").String()
