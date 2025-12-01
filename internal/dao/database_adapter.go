@@ -1,6 +1,7 @@
 package dao
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 
 // DBConfig 数据库配置
 type DBConfig struct {
-	Type    string `json:"type"`    // 数据库类型: mysql 或 postgresql
+	Type    string `json:"type"`    // 数据库类型: mysql, pgsql, postgresql 或 postgres
 	Host    string `json:"host"`    // 主机地址
 	Port    string `json:"port"`    // 端口
 	User    string `json:"user"`    // 用户名
@@ -44,9 +45,18 @@ func buildDSN(config *DBConfig) (string, error) {
 	case "mysql":
 		return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=%s&parseTime=True&loc=Local",
 			config.User, config.Pass, config.Host, config.Port, config.Name, config.Charset), nil
-	case "postgresql", "postgres":
-		return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Shanghai",
-			config.Host, config.User, config.Pass, config.Name, config.Port), nil
+	case "postgresql", "postgres", "pgsql":
+		// 构建 PostgreSQL DSN，如果密码为空则不包含 password 参数
+		dsn := fmt.Sprintf("host=%s user=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Shanghai",
+			config.Host, config.User, config.Name, config.Port)
+
+		// 只有当密码非空时才添加 password 参数
+		if config.Pass != "" {
+			dsn = fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Shanghai",
+				config.Host, config.User, config.Pass, config.Name, config.Port)
+		}
+
+		return dsn, nil
 	default:
 		return "", fmt.Errorf("unsupported database type: %s", config.Type)
 	}
@@ -56,11 +66,18 @@ func buildDSN(config *DBConfig) (string, error) {
 func initDatabase() (*gorm.DB, error) {
 	config := getDBConfig()
 
+	// 打印数据库配置用于调试
+	g.Log().Infof(context.Background(), "Database config: type=%s, host=%s:%s, user=%s, dbname=%s",
+		config.Type, config.Host, config.Port, config.User, config.Name)
+
 	// 构建 DSN
 	dsn, err := buildDSN(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build DSN: %v", err)
 	}
+
+	// 打印 DSN 用于调试（注意：生产环境应移除密码）
+	g.Log().Infof(context.Background(), "DSN: %s", dsn)
 
 	// GORM 配置
 	gormConfig := &gorm.Config{
@@ -73,7 +90,7 @@ func initDatabase() (*gorm.DB, error) {
 	switch config.Type {
 	case "mysql":
 		db, err = gorm.Open(mysql.Open(dsn), gormConfig)
-	case "postgresql", "postgres":
+	case "postgresql", "postgres", "pgsql":
 		db, err = gorm.Open(postgres.Open(dsn), gormConfig)
 	default:
 		return nil, fmt.Errorf("unsupported database type: %s", config.Type)

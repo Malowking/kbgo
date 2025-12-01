@@ -5,15 +5,14 @@ import (
 
 	"github.com/cloudwego/eino/components/retriever"
 	"github.com/cloudwego/eino/schema"
-	"github.com/milvus-io/milvus/client/v2/column"
-	"github.com/milvus-io/milvus/client/v2/milvusclient"
 )
 
 // VectorStoreType 向量数据库类型
 type VectorStoreType string
 
 const (
-	VectorStoreTypeMilvus VectorStoreType = "milvus"
+	VectorStoreTypeMilvus     VectorStoreType = "milvus"
+	VectorStoreTypePostgreSQL VectorStoreType = "postgresql"
 	// 未来可以扩展其他类型
 	// VectorStoreTypeChroma VectorStoreType = "chroma"
 	// VectorStoreTypeWeaviate VectorStoreType = "weaviate"
@@ -62,15 +61,11 @@ type VectorStore interface {
 	// CreateDatabaseIfNotExists 创建数据库（如果不存在）
 	CreateDatabaseIfNotExists(ctx context.Context) error
 
-	// GetClient 获取底层客户端实例
-	GetClient() *milvusclient.Client
+	// GetClient 获取底层客户端实例（返回 interface{} 以支持不同的客户端类型）
+	GetClient() interface{}
 
-	// NewMilvusRetriever 创建Milvus检索器实例
-	NewMilvusRetriever(ctx context.Context, conf interface{}, collectionName string) (retriever.Retriever, error)
-
-	// ConvertSearchResultsToDocuments 将搜索结果转换为schema.Document格式
-	// 并进行权限控制，过滤掉status != 1的chunks
-	ConvertSearchResultsToDocuments(ctx context.Context, columns []column.Column, scores []float32) ([]*schema.Document, error)
+	// NewRetriever 创建检索器实例（通用方法名）
+	NewRetriever(ctx context.Context, conf interface{}, collectionName string) (retriever.Retriever, error)
 
 	// VectorSearchOnly 仅使用向量检索的通用方法
 	// 执行向量相似度搜索，去重，排序，并按分数过滤结果

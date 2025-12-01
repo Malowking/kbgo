@@ -17,7 +17,7 @@ type AIModel struct {
 	BaseURL    string    `gorm:"type:varchar(500);column:base_url" json:"base_url"`              // OpenAI-Compatible API Base URL（可选）
 	APIKey     string    `gorm:"type:varchar(500);column:api_key" json:"api_key"`                // 模型调用 Key（可选）
 	Extra      string    `gorm:"type:json;column:extra" json:"extra"`                            // 可扩展字段（JSON格式）
-	Enabled    bool      `gorm:"type:tinyint(1);default:1;column:enabled" json:"enabled"`        // 是否启用
+	Enabled    bool      `gorm:"default:1;column:enabled" json:"enabled"`                        // 是否启用
 	CreateTime time.Time `gorm:"column:create_time;autoCreateTime" json:"create_time"`
 	UpdateTime time.Time `gorm:"column:update_time;autoUpdateTime" json:"update_time"`
 }

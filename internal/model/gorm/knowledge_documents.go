@@ -14,8 +14,8 @@ type KnowledgeDocuments struct {
 	SHA256         string     `gorm:"column:sha256;type:varchar(64);index"`
 	RustfsBucket   string     `gorm:"column:rustfs_bucket;type:varchar(255)"`
 	RustfsLocation string     `gorm:"column:rustfs_location;type:varchar(255)"`
-	LocalFilePath  string     `gorm:"column:local_file_path;type:varchar(512)" // 本地文件路径`
-	Status         int8       `gorm:"column:status;type:tinyint;not null;default:0"`
+	LocalFilePath  string     `gorm:"column:local_file_path;type:varchar(512)"` // 本地文件路径
+	Status         int8       `gorm:"column:status;not null;default:0"`
 	CreateTime     *time.Time `gorm:"column:create_time;type:timestamp;autoCreateTime"`
 	UpdateTime     *time.Time `gorm:"column:update_time;type:timestamp;autoUpdateTime"`
 }

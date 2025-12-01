@@ -27,11 +27,13 @@ func (r *Rag) GetConfig() *config.Config {
 // GetRetrieverConfig returns retriever-specific configuration
 func (r *Rag) GetRetrieverConfig() *config.RetrieverConfig {
 	return &config.RetrieverConfig{
-		VectorStore:    r.VectorStore,
-		MetricType:     r.conf.MetricType,
-		APIKey:         r.conf.APIKey,
-		BaseURL:        r.conf.BaseURL,
-		EmbeddingModel: r.conf.EmbeddingModel,
+		RetrieverConfigBase: config.RetrieverConfigBase{
+			MetricType:     r.conf.MetricType,
+			APIKey:         r.conf.APIKey,
+			BaseURL:        r.conf.BaseURL,
+			EmbeddingModel: r.conf.EmbeddingModel,
+		},
+		VectorStore: r.VectorStore,
 	}
 }
 

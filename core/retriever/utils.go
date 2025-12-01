@@ -32,8 +32,8 @@ func retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 	// 使用配置中的VectorStore
 	vectorStore := conf.VectorStore
 
-	// 直接传入整个配置，让 NewMilvusRetriever 内部处理
-	r, err := vectorStore.NewMilvusRetriever(ctx, conf, collectionName)
+	// 使用通用的 NewRetriever 方法
+	r, err := vectorStore.NewRetriever(ctx, conf, collectionName)
 	if err != nil {
 		g.Log().Errorf(ctx, "failed to create retriever for collection %s, err=%v", collectionName, err)
 		return nil, err
@@ -45,16 +45,15 @@ func retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 		topK = *req.TopK
 	}
 
-	// Milvus 检索的 TopK，可以设置得比最终需要的数量大一些
-	// 因为后续会经过 rerank 重新排序
-	milvusTopK := topK * 5 // 取5倍数量，给 rerank 更多选择空间
-	if milvusTopK < 20 {
-		milvusTopK = 20 // 至少取20个
+	// 因为后续会经过 rerank 重新排序，所以增大TopK
+	realTopK := topK * 3 // 取3倍数量，给 rerank 更多选择空间
+	if realTopK < 15 {
+		realTopK = 15 // 至少取15个
 	}
 
 	// 执行检索
 	var options []er.Option
-	options = append(options, er.WithTopK(milvusTopK))
+	options = append(options, er.WithTopK(realTopK))
 
 	// 只有在有过滤条件时才添加 filter
 	if filter != "" {

@@ -11,7 +11,7 @@ type KnowledgeBase struct {
 	Description    string     `gorm:"column:description;type:varchar(255)"`
 	Category       string     `gorm:"column:category;type:varchar(255)"`
 	CollectionName string     `gorm:"column:collection_name;type:varchar(255)"` // milvus collection name
-	Status         int        `gorm:"column:status;default:1"`
+	Status         int8       `gorm:"column:status;default:1"`
 	CreateTime     *time.Time `gorm:"column:create_time;autoCreateTime"`
 	UpdateTime     *time.Time `gorm:"column:update_time;autoUpdateTime"`
 }

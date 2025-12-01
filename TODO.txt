@@ -2,7 +2,7 @@
 
 qwen对话消息适配支持流式输出
 上传文件大模型对话（python文件解析）
-适配PGvector向量数据库
+knowledge_base 表status字段是bigint而不是smallint
 
 1. text2sql实现，python独立服务
 2. mcp调用日志精简

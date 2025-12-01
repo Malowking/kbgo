@@ -7,26 +7,52 @@ logger:
   level : "all"
   stdout: true
 
+# 主数据库配置（用于存储知识库元数据、文档信息等）
+# 支持 MySQL 和 PostgreSQL
 database:
   default:
     host: "localhost" # 地址
-    port: "3306" # 端口
-    user: "root" # 账号
+    port: "3306" # MySQL端口: 3306, PostgreSQL端口: 5432
+    user: "root" # MySQL默认用户: root, PostgreSQL默认用户: postgres
     pass: "your_password" # 密码
     name: "kbgo" # 数据库名称
-    type: "mysql" # 数据库类型，支持 mysql 和 postgresql
-    charset: "utf8mb4" # 数据库编码，一定要加上，因为文档里面经常出现特殊字符
+    type: "mysql" # 数据库类型: mysql 或 pgsql
+    charset: "utf8mb4" # 数据库编码
     maxLifeTime: 3600 # 连接最大生命周期(秒)
 
-#向量数据库
-vector_db:
-  type: "milvus"
+# === 使用 PostgreSQL 作为主数据库的示例配置 ===
+#database:
+#  default:
+#     host: "localhost"
+#     port: "5432"
+#     user: "postgres"
+#     pass: "your_password"
+#     name: "kbgo"
+#     type: "pgsql"
+#     charset: "utf8mb4"
+#     maxLifeTime: 3600
 
-# Milvus向量数据库配置
+# 向量数据库配置
+# 支持的类型: "milvus" 或 "postgresql"
+# 注意：向量数据库可以独立于主数据库选择
+vectorStore:
+  type: "milvus"  # 默认使用 Milvus，切换到 PostgreSQL 请改为 "postgresql"
+
+# Milvus 向量数据库配置
 milvus:
-  address: "http://localhost:19530"
-  database: "kbgo"
-  dim: 1024
+  address: "localhost:19530"  # Milvus 服务地址
+  database: "kbgo"             # Milvus 数据库名称
+  dim: 1024                    # 向量维度
+
+# PostgreSQL 向量数据库配置 (pgvector)
+# 使用前需要先安装 pgvector 扩展: CREATE EXTENSION vector;
+postgres:
+  host: "localhost"            # PostgreSQL 主机地址
+  port: "5432"                 # PostgreSQL 端口
+  user: "postgres"             # PostgreSQL 用户名
+  password: "your_password"    # PostgreSQL 密码
+  database: "kbgo_vector"      # PostgreSQL 数据库名称
+  sslmode: "disable"           # SSL 模式: disable, require, verify-ca, verify-full
 
 # 文件存储配置
 storage:

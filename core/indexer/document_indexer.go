@@ -59,46 +59,74 @@ type indexContext struct {
 	collectionName string
 }
 
+// IndexResult 索引结果
+type IndexResult struct {
+	DocumentID string
+	Success    bool
+	Error      error
+}
+
 // BatchDocumentIndex Batch document indexing processing (asynchronous operation)
 func (s *DocumentIndexer) BatchDocumentIndex(ctx context.Context, req *BatchIndexReq) error {
 	// 使用 WaitGroup 管理 goroutines
 	var wg sync.WaitGroup
 	semaphore := make(chan struct{}, 5) // 限制并发数为5
+	results := make(chan IndexResult, len(req.DocumentIds))
 
 	for _, documentId := range req.DocumentIds {
 		wg.Add(1)
-		go func(docId string) {
+		documentId := documentId // 捕获循环变量
+		common.SafeGo(ctx, fmt.Sprintf("IndexDoc-%s", documentId), func() {
 			defer wg.Done()
-			semaphore <- struct{}{} // Acquire semaphore
-			defer func() {
-				<-semaphore // 释放信号量
-				if e := recover(); e != nil {
-					g.Log().Errorf(ctx, "Document indexing exception, documentId=%s, err=%v", docId, e)
-					knowledge.UpdateDocumentsStatus(ctx, docId, int(v1.StatusFailed))
-				}
-			}()
+
+			// 获取并发许可
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
 
 			indexReq := &IndexReq{
 				ModelID:     req.ModelID,
-				DocumentId:  docId,
+				DocumentId:  documentId,
 				ChunkSize:   req.ChunkSize,
 				OverlapSize: req.OverlapSize,
 				Separator:   req.Separator,
 			}
 
 			err := s.DocumentIndex(ctx, indexReq)
-			if err != nil {
-				g.Log().Errorf(ctx, "Document indexing failed, documentId=%s, err=%v", docId, err)
-			} else {
-				g.Log().Infof(ctx, "Document indexed successfully, documentId=%s", docId)
+
+			// 发送结果
+			results <- IndexResult{
+				DocumentID: documentId,
+				Success:    err == nil,
+				Error:      err,
 			}
-		}(documentId)
+
+			if err != nil {
+				g.Log().Errorf(ctx, "Document indexing failed, documentId=%s, err=%v", documentId, err)
+			} else {
+				g.Log().Infof(ctx, "Document indexed successfully, documentId=%s", documentId)
+			}
+		})
 	}
 
-	// Wait for all goroutines to complete
+	// 收集结果
 	go func() {
 		wg.Wait()
-		g.Log().Infof(ctx, "Batch document indexing completed, document count: %d", len(req.DocumentIds))
+		close(results)
+	}()
+
+	// 统计结果
+	go func() {
+		successCount := 0
+		failCount := 0
+		for result := range results {
+			if result.Success {
+				successCount++
+			} else {
+				failCount++
+			}
+		}
+		g.Log().Infof(ctx, "Batch document indexing completed: success=%d, failed=%d, total=%d",
+			successCount, failCount, len(req.DocumentIds))
 	}()
 
 	return nil

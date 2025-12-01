@@ -173,10 +173,12 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 	// 记录开始时间
 	start := time.Now()
 
-	// 流式生成
-	ctx = context.Background()
+	// 保留原始 context 用于取消控制（修复 goroutine 泄漏）
+	originalCtx := ctx
+	// 流式生成使用新的 background context（避免过早取消）
+	streamCtx := context.Background()
 	opts := params.ToModelOptions()
-	streamData, err := chatModel.Stream(ctx, messages, opts...)
+	streamData, err := chatModel.Stream(streamCtx, messages, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("生成答案失败: %w", err)
 	}
@@ -189,7 +191,7 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 			srs[1].Close()
 			fullMsg, err := schema.ConcatMessages(fullMsgs)
 			if err != nil {
-				g.Log().Error(ctx, "error concatenating messages: %v", err)
+				g.Log().Error(streamCtx, "error concatenating messages: %v", err)
 				return
 			}
 
@@ -211,15 +213,16 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 
 			err = x.eh.SaveMessageWithMetrics(msgWithMetrics, convID)
 			if err != nil {
-				g.Log().Error(ctx, "save assistant message err: %v", err)
+				g.Log().Error(streamCtx, "save assistant message err: %v", err)
 				return
 			}
 		}()
 	outer:
 		for {
 			select {
-			case <-ctx.Done():
-				fmt.Println("context done", ctx.Err())
+			case <-originalCtx.Done():
+				// 使用原始 ctx 监听客户端取消，确保 goroutine 能正常退出
+				g.Log().Warning(streamCtx, "Stream cancelled by client")
 				return
 			default:
 				chunk, err := srs[1].Recv()
@@ -227,6 +230,9 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 					if errors.Is(err, io.EOF) {
 						break outer
 					}
+					// 遇到其他错误也应该退出
+					g.Log().Warningf(streamCtx, "Stream recv error: %v", err)
+					return
 				}
 				fullMsgs = append(fullMsgs, chunk)
 			}
@@ -554,9 +560,12 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 	// 记录开始时间
 	start := time.Now()
 
-	ctx = context.Background()
+	// 保留原始 context 用于取消控制（修复 goroutine 泄漏）
+	originalCtx := ctx
+	// 流式生成使用新的 background context（避免过早取消）
+	streamCtx := context.Background()
 	opts := params.ToModelOptions()
-	streamData, err := chatModel.Stream(ctx, messages, opts...)
+	streamData, err := chatModel.Stream(streamCtx, messages, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("生成答案失败: %w", err)
 	}
@@ -569,7 +578,7 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 			srs[1].Close()
 			fullMsg, err := schema.ConcatMessages(fullMsgs)
 			if err != nil {
-				g.Log().Error(ctx, "error concatenating messages: %v", err)
+				g.Log().Error(streamCtx, "error concatenating messages: %v", err)
 				return
 			}
 
@@ -591,15 +600,16 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 
 			err = x.eh.SaveMessageWithMetrics(msgWithMetrics, convID)
 			if err != nil {
-				g.Log().Error(ctx, "save assistant message err: %v", err)
+				g.Log().Error(streamCtx, "save assistant message err: %v", err)
 				return
 			}
 		}()
 	outer:
 		for {
 			select {
-			case <-ctx.Done():
-				fmt.Println("context done", ctx.Err())
+			case <-originalCtx.Done():
+				// 使用原始 ctx 监听客户端取消，确保 goroutine 能正常退出
+				g.Log().Warning(streamCtx, "Stream cancelled by client")
 				return
 			default:
 				chunk, err := srs[1].Recv()
@@ -607,6 +617,9 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 					if errors.Is(err, io.EOF) {
 						break outer
 					}
+					// 遇到其他错误也应该退出
+					g.Log().Warningf(streamCtx, "Stream recv error: %v", err)
+					return
 				}
 				fullMsgs = append(fullMsgs, chunk)
 			}

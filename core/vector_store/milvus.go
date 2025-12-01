@@ -290,7 +290,14 @@ func (m *MilvusStore) InsertVectors(ctx context.Context, collectionName string, 
 
 // DeleteByDocumentID 根据文档ID删除所有相关chunks
 func (m *MilvusStore) DeleteByDocumentID(ctx context.Context, collectionName string, documentID string) error {
-	filterExpr := fmt.Sprintf(`document_id == "%s"`, documentID)
+	// 验证 documentID 格式（防止注入）
+	if !common.ValidateUUID(documentID) {
+		return fmt.Errorf("invalid document ID format: %s (must be valid UUID)", documentID)
+	}
+
+	// 转义特殊字符（双重保护）
+	safeDocID := common.SanitizeMilvusString(documentID)
+	filterExpr := fmt.Sprintf(`document_id == "%s"`, safeDocID)
 
 	g.Log().Infof(ctx, "Deleting all chunks of document %s from collection %s", documentID, collectionName)
 
@@ -311,7 +318,14 @@ func (m *MilvusStore) DeleteByDocumentID(ctx context.Context, collectionName str
 
 // DeleteByChunkID 根据chunkID删除单个chunk
 func (m *MilvusStore) DeleteByChunkID(ctx context.Context, collectionName string, chunkID string) error {
-	filterExpr := fmt.Sprintf(`id == "%s"`, chunkID)
+	// 验证 chunkID 格式（防止注入）
+	if !common.ValidateUUID(chunkID) {
+		return fmt.Errorf("invalid chunk ID format: %s (must be valid UUID)", chunkID)
+	}
+
+	// 转义特殊字符（双重保护）
+	safeChunkID := common.SanitizeMilvusString(chunkID)
+	filterExpr := fmt.Sprintf(`id == "%s"`, safeChunkID)
 
 	g.Log().Infof(ctx, "Deleting chunk %s from collection %s", chunkID, collectionName)
 
@@ -354,9 +368,19 @@ func marshalMetadata(metadata map[string]any) ([]byte, error) {
 	return json.Marshal(metadata)
 }
 
-// GetClient returns the underlying Milvus client
-func (m *MilvusStore) GetClient() *milvusclient.Client {
+// GetClient returns the underlying Milvus client as interface{}
+func (m *MilvusStore) GetClient() interface{} {
 	return m.client
+}
+
+// GetMilvusClient returns the underlying Milvus client with specific type
+func (m *MilvusStore) GetMilvusClient() *milvusclient.Client {
+	return m.client
+}
+
+// NewRetriever 创建检索器实例（通用方法名）
+func (m *MilvusStore) NewRetriever(ctx context.Context, conf interface{}, collectionName string) (er.Retriever, error) {
+	return m.NewMilvusRetriever(ctx, conf, collectionName)
 }
 
 // milvusRetriever 实现了 er.Retriever 接口
@@ -402,30 +426,45 @@ func (r *milvusRetriever) Retrieve(ctx context.Context, query string, opts ...er
 	}
 	io := er.GetImplSpecificOptions(&ImplOptions{}, opts...)
 
-	// 创建embedding实例 - 通过反射提取配置信息
+	// 创建embedding实例 - 使用接口方法获取配置,避免反射
 	var apiKey, baseURL, embeddingModel string
 	if r.config != nil {
-		configValue := reflect.ValueOf(r.config)
-		if configValue.Kind() == reflect.Ptr {
-			configValue = configValue.Elem()
+		// 定义接口
+		type embeddingConfigGetter interface {
+			GetAPIKey() string
+			GetBaseURL() string
+			GetEmbeddingModel() string
 		}
-		if configValue.Kind() == reflect.Struct {
-			// 获取 APIKey
-			if apiKeyField := configValue.FieldByName("APIKey"); apiKeyField.IsValid() && apiKeyField.CanInterface() {
-				if key, ok := apiKeyField.Interface().(string); ok {
-					apiKey = key
-				}
+
+		// 尝试通过接口方法获取配置
+		if configGetter, ok := r.config.(embeddingConfigGetter); ok {
+			apiKey = configGetter.GetAPIKey()
+			baseURL = configGetter.GetBaseURL()
+			embeddingModel = configGetter.GetEmbeddingModel()
+		} else {
+			// Fallback: 尝试使用反射获取配置字段(兼容旧代码)
+			configValue := reflect.ValueOf(r.config)
+			if configValue.Kind() == reflect.Ptr {
+				configValue = configValue.Elem()
 			}
-			// 获取 BaseURL
-			if baseURLField := configValue.FieldByName("BaseURL"); baseURLField.IsValid() && baseURLField.CanInterface() {
-				if url, ok := baseURLField.Interface().(string); ok {
-					baseURL = url
+			if configValue.Kind() == reflect.Struct {
+				// 获取 APIKey
+				if apiKeyField := configValue.FieldByName("APIKey"); apiKeyField.IsValid() && apiKeyField.CanInterface() {
+					if key, ok := apiKeyField.Interface().(string); ok {
+						apiKey = key
+					}
 				}
-			}
-			// 获取 EmbeddingModel
-			if modelField := configValue.FieldByName("EmbeddingModel"); modelField.IsValid() && modelField.CanInterface() {
-				if model, ok := modelField.Interface().(string); ok {
-					embeddingModel = model
+				// 获取 BaseURL
+				if baseURLField := configValue.FieldByName("BaseURL"); baseURLField.IsValid() && baseURLField.CanInterface() {
+					if url, ok := baseURLField.Interface().(string); ok {
+						baseURL = url
+					}
+				}
+				// 获取 EmbeddingModel
+				if modelField := configValue.FieldByName("EmbeddingModel"); modelField.IsValid() && modelField.CanInterface() {
+					if model, ok := modelField.Interface().(string); ok {
+						embeddingModel = model
+					}
 				}
 			}
 		}
