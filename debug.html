@@ -330,9 +330,21 @@
 
         <div class="config-section">
             <h3>基础配置</h3>
+            <div class="config-row" style="margin-bottom: 10px;">
+                <label>环境选择:</label>
+                <select class="form-select" id="envSelector" style="flex: 0 0 150px; margin-right: 10px;" onchange="switchEnvironment()">
+                    <option value="local">本地环境</option>
+                    <option value="remote">远程环境</option>
+                    <option value="custom">自定义</option>
+                </select>
+                <label style="margin-left: 10px;">IP:</label>
+                <input type="text" id="serverIp" value="localhost" placeholder="localhost" style="flex: 0 0 200px; margin-right: 10px;">
+                <label>端口:</label>
+                <input type="number" id="serverPort" value="8000" placeholder="8000" style="flex: 0 0 100px;">
+            </div>
             <div class="config-row">
-                <label>API地址:</label>
-                <input type="text" id="baseUrl" value="http://localhost:8000" placeholder="http://localhost:8000">
+                <label>完整API地址:</label>
+                <input type="text" id="baseUrl" value="http://localhost:8000" placeholder="http://localhost:8000" readonly style="background-color: #f0f0f0;">
             </div>
         </div>
 
@@ -1721,6 +1733,61 @@
     </div>
 
     <script>
+        // 环境切换函数
+        function switchEnvironment() {
+            const envSelector = document.getElementById('envSelector');
+            const ipInput = document.getElementById('serverIp');
+            const portInput = document.getElementById('serverPort');
+            const baseUrlInput = document.getElementById('baseUrl');
+
+            const env = envSelector.value;
+
+            if (env === 'local') {
+                ipInput.value = 'localhost';
+                portInput.value = '8000';
+                ipInput.readOnly = true;
+                portInput.readOnly = true;
+                updateBaseUrl();
+            } else if (env === 'remote') {
+                // 远程环境，可以根据你的实际情况设置默认值
+                ipInput.value = '';
+                portInput.value = '8000';
+                ipInput.readOnly = false;
+                portInput.readOnly = false;
+                ipInput.placeholder = '例如: 192.168.1.100';
+            } else if (env === 'custom') {
+                ipInput.readOnly = false;
+                portInput.readOnly = false;
+                ipInput.placeholder = '输入自定义IP或域名';
+            }
+        }
+
+        // 更新BaseURL
+        function updateBaseUrl() {
+            const ip = document.getElementById('serverIp').value.trim();
+            const port = document.getElementById('serverPort').value.trim();
+            const baseUrlInput = document.getElementById('baseUrl');
+
+            if (ip && port) {
+                baseUrlInput.value = `http://${ip}:${port}`;
+            } else if (ip) {
+                baseUrlInput.value = `http://${ip}`;
+            }
+        }
+
+        // 页面加载后初始化
+        window.addEventListener('DOMContentLoaded', function() {
+            const ipInput = document.getElementById('serverIp');
+            const portInput = document.getElementById('serverPort');
+
+            // 监听IP和端口变化
+            ipInput.addEventListener('input', updateBaseUrl);
+            portInput.addEventListener('input', updateBaseUrl);
+
+            // 初始化
+            updateBaseUrl();
+        });
+
         // Helper functions
         function getBaseUrl() {
             return document.getElementById('baseUrl').value || 'http://localhost:8000';
