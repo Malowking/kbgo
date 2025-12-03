@@ -2,6 +2,8 @@ package knowledge
 
 import (
 	"context"
+	"encoding/json"
+	"sort"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/internal/dao"
@@ -20,12 +22,33 @@ func SaveChunksData(ctx context.Context, documentsId string, chunks []entity.Kno
 	// 使用GORM方式保存，以支持自动填充create_time和update_time字段
 	gormChunks := make([]gormModel.KnowledgeChunks, len(chunks))
 	for i, chunk := range chunks {
+		// 构建 ext 字段，添加顺序信息
+		extData := make(map[string]interface{})
+
+		// 如果原有 ext 不为空，先解析
+		if chunk.Ext != "" {
+			if err := json.Unmarshal([]byte(chunk.Ext), &extData); err != nil {
+				g.Log().Warningf(ctx, "Failed to parse existing ext field for chunk %s: %v", chunk.Id, err)
+				extData = make(map[string]interface{})
+			}
+		}
+
+		// 添加顺序字段（从0开始）
+		extData["chunk_order"] = i
+
+		// 序列化为 JSON 字符串
+		extJSON, err := json.Marshal(extData)
+		if err != nil {
+			g.Log().Errorf(ctx, "Failed to marshal ext data for chunk %s: %v", chunk.Id, err)
+			extJSON = []byte("{}")
+		}
+
 		gormChunks[i] = gormModel.KnowledgeChunks{
 			ID:             chunk.Id,
 			KnowledgeDocID: chunk.KnowledgeDocId,
 			Content:        chunk.Content,
 			CollectionName: chunk.CollectionName,
-			Ext:            chunk.Ext,
+			Ext:            string(extJSON),
 			Status:         int8(chunk.Status),
 		}
 	}
@@ -67,15 +90,34 @@ func GetChunksList(ctx context.Context, where entity.KnowledgeChunks, page, size
 		return
 	}
 
-	// 分页查询
-	if page > 0 && size > 0 {
-		model = model.Page(page, size)
+	// 查询所有数据（不分页），以便按 ext 中的 chunk_order 排序
+	var allList []entity.KnowledgeChunks
+	err = model.Scan(&allList)
+	if err != nil {
+		return
 	}
 
-	// 按创建时间倒序
-	model = model.OrderDesc("create_time")
+	// 按照 ext 中的 chunk_order 字段排序
+	sortChunksByOrder(allList)
 
-	err = model.Scan(&list)
+	// 手动分页
+	if page > 0 && size > 0 {
+		start := (page - 1) * size
+		end := start + size
+
+		if start >= len(allList) {
+			// 起始位置超出范围，返回空列表
+			list = []entity.KnowledgeChunks{}
+		} else {
+			if end > len(allList) {
+				end = len(allList)
+			}
+			list = allList[start:end]
+		}
+	} else {
+		list = allList
+	}
+
 	return
 }
 
@@ -85,7 +127,7 @@ func GetChunkById(ctx context.Context, id string) (chunk entity.KnowledgeChunks,
 	return
 }
 
-// DeleteChunkByIdWithTx 根据ID软删除知识块（事务版本）
+// DeleteChunkByIdWithTx 根据ID删除知识块（事务版本）
 func DeleteChunkByIdWithTx(ctx context.Context, tx *gorm.DB, id string) error {
 	result := tx.WithContext(ctx).Where("id = ?", id).Delete(&entity.KnowledgeChunks{})
 	return result.Error
@@ -124,5 +166,46 @@ func GetAllChunksByDocId(ctx context.Context, docId string, fields ...string) (l
 		}
 	}
 	err = model.Scan(&list)
+	if err != nil {
+		return
+	}
+
+	// 按照 ext 中的 chunk_order 字段排序
+	sortChunksByOrder(list)
 	return
+}
+
+// sortChunksByOrder 根据 ext 字段中的 chunk_order 对 chunks 进行排序
+func sortChunksByOrder(chunks []entity.KnowledgeChunks) {
+	sort.Slice(chunks, func(i, j int) bool {
+		orderI := extractChunkOrder(chunks[i].Ext)
+		orderJ := extractChunkOrder(chunks[j].Ext)
+		return orderI < orderJ
+	})
+}
+
+// extractChunkOrder 从 ext 字段中提取 chunk_order 的值
+// 如果提取失败或不存在，返回一个很大的数字以保证排在最后
+func extractChunkOrder(ext string) int {
+	if ext == "" {
+		return 999999
+	}
+
+	var extData map[string]interface{}
+	if err := json.Unmarshal([]byte(ext), &extData); err != nil {
+		return 999999
+	}
+
+	if order, ok := extData["chunk_order"]; ok {
+		// JSON 数字会被解析为 float64
+		if orderFloat, ok := order.(float64); ok {
+			return int(orderFloat)
+		}
+		// 如果是整数类型
+		if orderInt, ok := order.(int); ok {
+			return orderInt
+		}
+	}
+
+	return 999999
 }

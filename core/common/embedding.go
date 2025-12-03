@@ -100,14 +100,12 @@ func NewEmbedding(ctx context.Context, conf EmbeddingConfig) (*CustomEmbedder, e
 	}, nil
 }
 
-// EmbedStrings 实现字符串数组的向量化
-func (e *CustomEmbedder) EmbedStrings(ctx context.Context, texts []string) ([][]float64, error) {
+// EmbedStrings 实现字符串数组的向量化 - 返回float32向量
+func (e *CustomEmbedder) EmbedStrings(ctx context.Context, texts []string, dimensions int) ([][]float32, error) {
 	if len(texts) == 0 {
-		return [][]float64{}, nil
+		return [][]float32{}, nil
 	}
 
-	// 构造请求
-	dimensions := 1024
 	req := EmbeddingRequest{
 		Input:      texts,
 		Model:      e.model,
@@ -158,13 +156,18 @@ func (e *CustomEmbedder) EmbedStrings(ctx context.Context, texts []string) ([][]
 		return nil, fmt.Errorf("response data length (%d) doesn't match input length (%d)", len(embResp.Data), len(texts))
 	}
 
-	// 提取embedding向量
-	result := make([][]float64, len(texts))
+	// 提取embedding向量并转换为float32
+	result := make([][]float32, len(texts))
 	for _, data := range embResp.Data {
 		if data.Index >= len(result) {
 			return nil, fmt.Errorf("invalid embedding index: %d", data.Index)
 		}
-		result[data.Index] = data.Embedding
+		// 将float64向量转换为float32
+		float32Vec := make([]float32, len(data.Embedding))
+		for i, v := range data.Embedding {
+			float32Vec[i] = float32(v)
+		}
+		result[data.Index] = float32Vec
 	}
 
 	return result, nil

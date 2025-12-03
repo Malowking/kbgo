@@ -6,34 +6,66 @@ server:
 logger:
   level : "all"
   stdout: true
+  path: "logs"              # 日志文件保存路径
+  file: "kbgo.log"          # 日志文件名
+  rotateSize: "100MB"       # 日志文件大小限制，超过100MB自动轮转
+  rotateBackupLimit: 5      # 保留的日志文件数量
+  rotateBackupExpire: "7d"  # 日志文件过期时间
+  rotateBackupCompress: 9   # 日志压缩级别 (0-9)
 
+# 主数据库配置（用于存储知识库元数据、文档信息等）
+# 支持 MySQL 和 PostgreSQL
 database:
   default:
     host: "localhost" # 地址
-    port: "3306" # 端口
-    user: "root" # 账号
+    port: "3306" # MySQL端口: 3306, PostgreSQL端口: 5432
+    user: "root" # MySQL默认用户: root, PostgreSQL默认用户: postgres
     pass: "your_password" # 密码
     name: "kbgo" # 数据库名称
-    type: "mysql" # 数据库类型，支持 mysql 和 postgresql
-    charset: "utf8mb4" # 数据库编码，一定要加上，因为文档里面经常出现特殊字符
+    type: "mysql" # 数据库类型: mysql 或 pgsql
+    charset: "utf8mb4" # 数据库编码
     maxLifeTime: 3600 # 连接最大生命周期(秒)
 
-#向量数据库
-vector_db:
-  type: "milvus"
+# === 使用 PostgreSQL 作为主数据库的示例配置 ===
+#database:
+#  default:
+#     host: "localhost"
+#     port: "5432"
+#     user: "postgres"
+#     pass: "your_password"
+#     name: "kbgo"
+#     type: "pgsql"
+#     charset: "utf8mb4"
+#     maxLifeTime: 3600
 
-# Milvus向量数据库配置
+# 向量数据库配置
+# 支持的类型: "milvus" 或 "pgvector"
+# 注意：向量数据库可以独立于主数据库选择
+vectorStore:
+  type: "milvus"  # 默认使用 Milvus，切换到 PostgreSQL 请改为 "pgvector"
+
+# Milvus 向量数据库配置
 milvus:
-  address: "http://localhost:19530"
-  database: "kbgo"
-  dim: 1024
+  address: "localhost:19530"  # Milvus 服务地址
+  database: "kbgo"             # Milvus 数据库名称
+  dim: 1024                    # 向量维度
+
+# PostgreSQL 向量数据库配置 (pgvector)
+# 使用前需要先安装 pgvector 扩展: CREATE EXTENSION vector;
+postgres:
+  host: "localhost"            # PostgreSQL 主机地址
+  port: "5432"                 # PostgreSQL 端口
+  user: "postgres"             # PostgreSQL 用户名
+  password: "your_password"    # PostgreSQL 密码
+  database: "kbgo"      # PostgreSQL 数据库名称
+  sslmode: "disable"           # SSL 模式: disable, require, verify-ca, verify-full
 
 # 文件存储配置
 storage:
-  # 存储类型: "rustfs" 或 "local"，默认为"rustfs"
+  # 存储类型: "rustfs" 或 "local"
   type: "local"
 
-# rustfs文件存储配置（可选）
+# rustfs文件存储配置
 rustfs:
   endpoint: "http://localhost:9000"
   accessKey: "your_access_key"
@@ -41,40 +73,13 @@ rustfs:
   bucketName: ""
   ssl: false
 
-# Embedding模型配置
-embedding:
-  apiKey: "sk-your-api-key-here"
-  baseURL: "https://api.openai.com/v1"
-  model: "text-embedding-v3"
-
-# Rerank模型配置
-rerank:
-  apiKey: "sk-your-api-key-here"
-  baseURL: "https://api.openai.com/v1"
-  model: "gte-rerank-v2"
-
-# Query Rewrite模型配置
-rewrite:
-  apiKey: "sk-your-api-key-here"
-  baseURL: "https://api.openai.com/v1"
-  model: "o4-mini"
-
-# Chat对话模型配置
-chat:
-  apiKey: "sk-your-api-key-here"
-  baseURL: "https://api.openai.com/v1"
-  model: "qwen3-32b"
-  # 大模型推理参数
-  temperature: 0.7           # 控制输出的随机性，0.0-2.0，越小越确定性
-  topP: 0.9                  # 核采样参数，0.0-1.0，控制生成的多样性
-  maxTokens: 4096            # 最大生成token数量
-  frequencyPenalty: 0.0      # 频率惩罚，减少重复词汇，-2.0到2.0
-  presencePenalty: 0.0       # 存在惩罚，鼓励新话题，-2.0到2.0
-  stop: [ ]                   # 停止词列表
-  functions: [ ]              # 函数调用配置
-
 # 知识库检索默认参数配置
 retriever:
   enableRewrite: false       # 是否启用查询重写（默认 false）
   rewriteAttempts: 3         # 查询重写尝试次数（默认 3）
   retrieveMode: "rerank"     # 检索模式: milvus/rerank/rrf（默认 rerank）
+
+# 文档解析服务配置（Python file_parse 服务）
+fileParse:
+  url: "http://localhost:8002"  # file_parse 服务地址
+  timeout: 120                   # 请求超时时间（秒），默认 120 秒

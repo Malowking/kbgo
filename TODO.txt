@@ -1,12 +1,13 @@
 待办事项
-添加模型信息表，chat接口添加对话参数
-所有调用模型的代码都
 
+openai接口传入图片有问题，可能是调用的模型平台的问题
+qwen模型适配器添加stop和function参数
+document_chunk没有存储chunk的顺序
+项目日志保存到logs文件夹下面
+mcp调用逻辑，判断是否传入tool参数
+没有指定mcp工具或者指定工具数量大于20个，添加先用模型选择可能用到的10个mcp工具
 
 1. text2sql实现，python独立服务
-2. 文档切分选择chunksize和overlapsize报错（可能是调用api的问题）解决
-3. Rustfs文件和本地文件同样切分chunk大小结果chunk个数不同 解决
-4. mcp调用日志精简
-5. 独立python服务解析文档
-6. 文生图接口
-7. 多模态模型接口
+2. mcp调用日志精简
+3. 独立python服务解析文档
+4. 文生图接口

@@ -34,14 +34,14 @@ func DeleteDocumentDataOnly(ctx context.Context, documentId string, vectorStore 
 	if document.CollectionName == "" {
 		g.Log().Warningf(ctx, "DeleteDocumentDataOnly: CollectionName is empty for document id %s", documentId)
 	} else {
-		// Use VectorStore interface to delete all chunks of this document in Milvus
+		// Use VectorStore interface to delete all chunks of this document
 		err = vectorStore.DeleteByDocumentID(ctx, document.CollectionName, documentId)
 		if err != nil {
-			g.Log().Errorf(ctx, "DeleteDocumentDataOnly: Milvus deleteDocument failed for documentId %s in collection %s, err: %v", documentId, document.CollectionName, err)
+			g.Log().Errorf(ctx, "DeleteDocumentDataOnly: Vector store deleteDocument failed for documentId %s in collection %s, err: %v", documentId, document.CollectionName, err)
 			tx.Rollback()
-			return fmt.Errorf("failed to delete document data in Milvus: %w", err)
+			return fmt.Errorf("failed to delete document data in vector store: %w", err)
 		}
-		g.Log().Infof(ctx, "DeleteDocumentDataOnly: Successfully deleted document %s from Milvus collection %s", documentId, document.CollectionName)
+		g.Log().Infof(ctx, "DeleteDocumentDataOnly: Successfully deleted document %s from collection %s", documentId, document.CollectionName)
 	}
 
 	// Only delete chunks data, keep the document record

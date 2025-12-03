@@ -22,11 +22,12 @@ type UploadFileRes struct {
 
 // IndexDocumentsReq Document indexing request (batch splitting and vectorization)
 type IndexDocumentsReq struct {
-	g.Meta      `path:"/v1/index" method:"post" tags:"retriever"`
-	DocumentIds []string `p:"document_ids" dc:"Document ID list" v:"required"`
-	ChunkSize   int      `p:"chunk_size" dc:"Document chunk size" d:"1000"`
-	OverlapSize int      `p:"overlap_size" dc:"Chunk overlap size" d:"100"`
-	Separator   string   `p:"separator" dc:"Custom separator for document splitting"`
+	g.Meta           `path:"/v1/index" method:"post" tags:"retriever"`
+	DocumentIds      []string `p:"document_ids" dc:"Document ID list" v:"required"`
+	EmbeddingModelID string   `p:"embedding_model_id" dc:"Embedding model UUID" v:"required"` // Embedding模型UUID（必填）
+	ChunkSize        int      `p:"chunk_size" dc:"Document chunk size" d:"1000"`
+	OverlapSize      int      `p:"overlap_size" dc:"Chunk overlap size" d:"100"`
+	Separator        string   `p:"separator" dc:"Custom separator for document splitting"`
 }
 
 type IndexDocumentsRes struct {

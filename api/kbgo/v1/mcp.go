@@ -203,5 +203,5 @@ type MCPRegistryStatsRes struct {
 	TotalCalls   int64   `json:"total_calls" dc:"Total calls count"`
 	SuccessCalls int64   `json:"success_calls" dc:"Success calls count"`
 	FailedCalls  int64   `json:"failed_calls" dc:"Failed calls count"`
-	AvgDuration  float64 `json:"avg_duration" dc:"Average duration in milliseconds"`
+	AvgDuration  float32 `json:"avg_duration" dc:"Average duration in milliseconds"`
 }

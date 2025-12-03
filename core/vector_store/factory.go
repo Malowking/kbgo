@@ -13,6 +13,8 @@ func NewVectorStore(config *VectorStoreConfig) (VectorStore, error) {
 	switch config.Type {
 	case VectorStoreTypeMilvus:
 		return NewMilvusStore(config)
+	case VectorStoreTypePostgreSQL:
+		return NewPostgresStore(config)
 	default:
 		return nil, fmt.Errorf("unsupported vector store type: %s", config.Type)
 	}

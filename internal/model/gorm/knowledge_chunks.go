@@ -11,9 +11,9 @@ type KnowledgeChunks struct {
 	Content        string     `gorm:"column:content;type:text"`
 	CollectionName string     `gorm:"column:collection_name;type:varchar(255)"`
 	Ext            string     `gorm:"column:ext;type:varchar(1024)"`
-	Status         int8       `gorm:"column:status;type:tinyint(1);not null;default:1"`
-	CreateTime     *time.Time `gorm:"column:create_time;type:datetime(3);autoCreateTime"`
-	UpdateTime     *time.Time `gorm:"column:update_time;type:datetime(3);autoUpdateTime"`
+	Status         int8       `gorm:"column:status;not null;default:1"`
+	CreateTime     *time.Time `gorm:"column:create_time;autoCreateTime"` // MySQL用datetime(3)，PostgreSQL用timestamp
+	UpdateTime     *time.Time `gorm:"column:update_time;autoUpdateTime"` // MySQL用datetime(3)，PostgreSQL用timestamp
 
 	KnowledgeDocument KnowledgeDocuments `gorm:"foreignKey:KnowledgeDocID;references:ID;constraint:OnDelete:CASCADE,OnUpdate:RESTRICT"`
 }

@@ -6,8 +6,8 @@ import (
 	"io"
 	"time"
 
+	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/bytedance/sonic"
-	"github.com/cloudwego/eino/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/google/uuid"

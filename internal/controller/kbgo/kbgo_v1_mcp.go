@@ -522,6 +522,6 @@ func (c *ControllerV1) MCPRegistryStats(ctx context.Context, req *v1.MCPRegistry
 		TotalCalls:   stats.TotalCalls,
 		SuccessCalls: stats.SuccessCalls,
 		FailedCalls:  stats.FailedCalls,
-		AvgDuration:  stats.AvgDuration,
+		AvgDuration:  float32(stats.AvgDuration),
 	}, nil
 }

@@ -7,10 +7,42 @@ import (
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/config"
-	"github.com/Malowking/kbgo/core/rerank"
-	"github.com/cloudwego/eino/schema"
+	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
+
+// convertToRerankDocs 将 schema.Document 转换为 common.RerankDocument
+func convertToRerankDocs(docs []*schema.Document) []common.RerankDocument {
+	result := make([]common.RerankDocument, len(docs))
+	for i, doc := range docs {
+		result[i] = common.RerankDocument{
+			ID:      doc.ID,
+			Content: doc.Content,
+			Score:   float64(doc.Score), // Convert float32 to float64 for reranker
+		}
+	}
+	return result
+}
+
+// convertFromRerankDocs 将 common.RerankDocument 转换回 schema.Document
+func convertFromRerankDocs(rerankDocs []common.RerankDocument, originalDocs []*schema.Document) []*schema.Document {
+	// 创建一个映射，快速查找原始文档
+	docMap := make(map[string]*schema.Document)
+	for _, doc := range originalDocs {
+		docMap[doc.ID] = doc
+	}
+
+	result := make([]*schema.Document, 0, len(rerankDocs))
+	for _, rerankDoc := range rerankDocs {
+		if originalDoc, exists := docMap[rerankDoc.ID]; exists {
+			// 复制原始文档并更新分数
+			doc := originalDoc
+			doc.Score = float32(rerankDoc.Score) // Convert back to float32
+			result = append(result, doc)
+		}
+	}
+	return result
+}
 
 // retrieveWithRerank 使用Milvus检索后进行Rerank重排序
 func retrieveWithRerank(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveReq) ([]*schema.Document, error) {
@@ -25,18 +57,31 @@ func retrieveWithRerank(ctx context.Context, conf *config.RetrieverConfig, req *
 		return doc.ID
 	})
 
+	// 创建 rerank 客户端
+	reranker, err := common.NewReranker(ctx, conf)
+	if err != nil {
+		g.Log().Errorf(ctx, "Failed to create reranker, err=%v", err)
+		return nil, err
+	}
+
+	// 转换文档格式
+	rerankDocs := convertToRerankDocs(docs)
+
 	// 使用Rerank重排序，直接使用req中已设置好的TopK
-	docs, err = rerank.NewRerank(ctx, req.optQuery, docs, *req.TopK)
+	rerankResults, err := reranker.Rerank(ctx, req.optQuery, rerankDocs, *req.TopK)
 	if err != nil {
 		g.Log().Errorf(ctx, "Rerank failed, err=%v", err)
 		return nil, err
 	}
 
+	// 转换回 schema.Document
+	docs = convertFromRerankDocs(rerankResults, docs)
+
 	// 过滤低分文档
 	var relatedDocs []*schema.Document
 	for _, doc := range docs {
-		if doc.Score() < *req.Score {
-			g.Log().Debugf(ctx, "score less: %v, related: %v", doc.Score(), doc.Content)
+		if doc.Score < float32(*req.Score) {
+			g.Log().Debugf(ctx, "score less: %v, related: %v", doc.Score, doc.Content)
 			continue
 		}
 		relatedDocs = append(relatedDocs, doc)
@@ -62,11 +107,22 @@ func retrieveWithRRF(ctx context.Context, conf *config.RetrieverConfig, req *Ret
 		g.Log().Errorf(ctx, "retrieve for rerank failed, err=%v", err)
 		return nil, err
 	}
-	docs2, err = rerank.NewRerank(ctx, req.optQuery, docs2, (*req.TopK)*2)
+
+	// 创建 rerank 客户端
+	reranker, err := common.NewReranker(ctx, conf)
+	if err != nil {
+		g.Log().Errorf(ctx, "Failed to create reranker, err=%v", err)
+		return nil, err
+	}
+
+	// 转换文档格式并执行 rerank
+	rerankDocs2 := convertToRerankDocs(docs2)
+	rerankResults2, err := reranker.Rerank(ctx, req.optQuery, rerankDocs2, (*req.TopK)*2)
 	if err != nil {
 		g.Log().Errorf(ctx, "Rerank failed, err=%v", err)
 		return nil, err
 	}
+	docs2 = convertFromRerankDocs(rerankResults2, docs2)
 
 	// 3. RRF融合
 	rrfScores := make(map[string]float64) // docID -> RRF score
@@ -97,13 +153,13 @@ func retrieveWithRRF(ctx context.Context, conf *config.RetrieverConfig, req *Ret
 		normalizedScore := rrfScores[docID] / maxPossibleScore
 		normalizedScore = math.Min(normalizedScore, 1.0) // 确保不超过1
 
-		doc.WithScore(normalizedScore)
+		doc.Score = float32(normalizedScore) // Convert to float32
 		docs = append(docs, doc)
 	}
 
 	// 5. 按RRF分数排序
 	sort.Slice(docs, func(i, j int) bool {
-		return docs[i].Score() > docs[j].Score()
+		return docs[i].Score > docs[j].Score
 	})
 
 	// 6. 截取TopK，直接使用req中已设置好的TopK
@@ -114,8 +170,8 @@ func retrieveWithRRF(ctx context.Context, conf *config.RetrieverConfig, req *Ret
 	// 7. 过滤低分文档
 	var relatedDocs []*schema.Document
 	for _, doc := range docs {
-		if doc.Score() < *req.Score {
-			g.Log().Debugf(ctx, "score less: %v, related: %v", doc.Score(), doc.Content)
+		if doc.Score < float32(*req.Score) {
+			g.Log().Debugf(ctx, "score less: %v, related: %v", doc.Score, doc.Content)
 			continue
 		}
 		relatedDocs = append(relatedDocs, doc)

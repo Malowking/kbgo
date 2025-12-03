@@ -165,7 +165,7 @@ func GetDocumentsList(ctx context.Context, where entity.KnowledgeDocuments, page
 
 	model := dao.KnowledgeDocuments.Ctx(ctx)
 	if where.KnowledgeId != "" {
-		model = model.Where("knowledge_Id", where.KnowledgeId)
+		model = model.Where("knowledge_id", where.KnowledgeId)
 	}
 
 	total, err = model.Count()

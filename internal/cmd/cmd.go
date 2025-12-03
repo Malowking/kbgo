@@ -16,6 +16,11 @@ var (
 		Brief: "start http server",
 		Func: func(ctx context.Context, parser *gcmd.Parser) (err error) {
 			s := g.Server()
+
+			// 配置静态文件服务
+			s.SetServerRoot(".")
+			s.AddStaticPath("/", ".")
+
 			s.Group("/api", func(group *ghttp.RouterGroup) {
 				group.Middleware(MiddlewareHandlerResponse, ghttp.MiddlewareCORS)
 				group.Bind(

@@ -28,7 +28,7 @@ func GetVectorStore() (vector_store.VectorStore, error) {
 // initializeVectorStore determines which client to use based on configuration
 func initializeVectorStore(ctx context.Context) (vector_store.VectorStore, error) {
 	// Read the vector database type from configuration
-	dbType := g.Cfg().MustGet(ctx, "vector_db.type", "milvus").String()
+	dbType := g.Cfg().MustGet(ctx, "vectorStore.type", "milvus").String()
 
 	g.Log().Infof(ctx, "Initializing vector store with type: %s", dbType)
 
@@ -40,11 +40,18 @@ func initializeVectorStore(ctx context.Context) (vector_store.VectorStore, error
 		}
 		g.Log().Info(ctx, "Milvus vector store initialized successfully")
 		return store, nil
+	case "pgvector":
+		store, err := vector_store.InitializePostgresStore(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize PostgreSQL vector store: %w", err)
+		}
+		g.Log().Info(ctx, "PostgreSQL vector store initialized successfully")
+		return store, nil
 	//case "pinecone":
 	//	return initializePineconeClient(ctx)
 	//case "weaviate":
 	//	return initializeWeaviateClient(ctx)
 	default:
-		return nil, fmt.Errorf("unsupported vector database type: %s. Supported types: milvus", dbType)
+		return nil, fmt.Errorf("unsupported vector database type: %s. Supported types: milvus, postgresql", dbType)
 	}
 }

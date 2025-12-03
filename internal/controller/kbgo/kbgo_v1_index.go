@@ -13,8 +13,8 @@ import (
 // IndexDocuments 文件索引接口（批量切分并向量化）- 异步接口
 func (c *ControllerV1) IndexDocuments(ctx context.Context, req *v1.IndexDocumentsReq) (res *v1.IndexDocumentsRes, err error) {
 	// Log request parameters
-	g.Log().Infof(ctx, "IndexDocuments request received - DocumentIds: %v, ChunkSize: %d, OverlapSize: %d, Separator: %s",
-		req.DocumentIds, req.ChunkSize, req.OverlapSize, req.Separator)
+	g.Log().Infof(ctx, "IndexDocuments request received - EmbeddingModelID: %s, DocumentIds: %v, ChunkSize: %d, OverlapSize: %d, Separator: '%s'",
+		req.EmbeddingModelID, req.DocumentIds, req.ChunkSize, req.OverlapSize, req.Separator)
 
 	g.Log().Infof(ctx, "收到批量索引请求，文档数量: %d", len(req.DocumentIds))
 
@@ -23,6 +23,7 @@ func (c *ControllerV1) IndexDocuments(ctx context.Context, req *v1.IndexDocument
 
 	// 构建批量索引请求参数
 	batchReq := &indexer.BatchIndexReq{
+		ModelID:     req.EmbeddingModelID,
 		DocumentIds: req.DocumentIds,
 		ChunkSize:   req.ChunkSize,
 		OverlapSize: req.OverlapSize,

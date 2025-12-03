@@ -1,0 +1,62 @@
+[tool.poetry]
+name = "file-parse-service"
+version = "1.0.0"
+description = "A powerful file parsing service that converts documents to Markdown with chunking and image handling"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+packages = [{include = "app"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.30.0"}
+pydantic = "^2.10.0"
+pydantic-settings = "^2.6.0"
+markitdown = "^0.0.1a2"
+pillow = "^11.0.0"
+python-multipart = "^0.0.9"
+python-dotenv = "^1.0.1"
+pymupdf = "^1.24.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+pytest-asyncio = "^0.24.0"
+httpx = "^0.27.0"
+black = "^24.8.0"
+flake8 = "^7.1.0"
+mypy = "^1.11.0"
+
+[tool.poetry.scripts]
+file-parse = "app.main:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | __pycache__
+  | build
+  | dist
+)/
+'''
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+asyncio_mode = "auto"

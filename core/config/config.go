@@ -15,40 +15,33 @@ func ValidateConfiguration(ctx context.Context) error {
 	var missingConfigs []string
 	var warnings []string
 
-	// 验证 Milvus 配置
-	milvusAddress := g.Cfg().MustGet(ctx, "milvus.address", "").String()
-	if milvusAddress == "" {
-		missingConfigs = append(missingConfigs, "milvus.address")
-	}
+	// 检查向量数据库类型配置
+	vectorStoreType := g.Cfg().MustGet(ctx, "vectorStore.type", "milvus").String()
 
-	// 验证 Embedding 配置
-	embeddingAPIKey := g.Cfg().MustGet(ctx, "embedding.apiKey", "").String()
-	embeddingBaseURL := g.Cfg().MustGet(ctx, "embedding.baseURL", "").String()
-	embeddingModel := g.Cfg().MustGet(ctx, "embedding.model", "").String()
+	switch vectorStoreType {
+	case "milvus":
+		// 验证 Milvus 配置
+		milvusAddress := g.Cfg().MustGet(ctx, "milvus.address", "").String()
+		if milvusAddress == "" {
+			missingConfigs = append(missingConfigs, "milvus.address")
+		}
+	case "pgvector":
+		// 验证 pgvector 配置
+		pgHost := g.Cfg().MustGet(ctx, "postgres.host", "").String()
+		pgUser := g.Cfg().MustGet(ctx, "postgres.user", "").String()
+		pgDatabase := g.Cfg().MustGet(ctx, "postgres.database", "").String()
 
-	if embeddingAPIKey == "" {
-		missingConfigs = append(missingConfigs, "embedding.apiKey")
-	}
-	if embeddingBaseURL == "" {
-		missingConfigs = append(missingConfigs, "embedding.baseURL")
-	}
-	if embeddingModel == "" {
-		missingConfigs = append(missingConfigs, "embedding.model")
-	}
-
-	// 验证 Chat 配置
-	chatAPIKey := g.Cfg().MustGet(ctx, "chat.apiKey", "").String()
-	chatBaseURL := g.Cfg().MustGet(ctx, "chat.baseURL", "").String()
-	chatModel := g.Cfg().MustGet(ctx, "chat.model", "").String()
-
-	if chatAPIKey == "" {
-		warnings = append(warnings, "chat.apiKey is not set")
-	}
-	if chatBaseURL == "" {
-		warnings = append(warnings, "chat.baseURL is not set")
-	}
-	if chatModel == "" {
-		warnings = append(warnings, "chat.model is not set")
+		if pgHost == "" {
+			missingConfigs = append(missingConfigs, "postgres.host")
+		}
+		if pgUser == "" {
+			missingConfigs = append(missingConfigs, "postgres.user")
+		}
+		if pgDatabase == "" {
+			missingConfigs = append(missingConfigs, "postgres.database")
+		}
+	default:
+		warnings = append(warnings, fmt.Sprintf("Unknown vector store type: %s, defaulting to milvus", vectorStoreType))
 	}
 
 	// 验证数据库配置
@@ -94,24 +87,14 @@ type Config struct {
 	BaseURL        string
 	EmbeddingModel string
 	ChatModel      string
-	// Milvus retriever 配置
+	// retriever 配置
 	MetricType string // 向量相似度度量类型，如 "COSINE", "L2", "IP" 等，默认 "COSINE"
 }
 
-// RetrieverConfig Retriever专用配置
+// RetrieverConfig Retriever专用配置，组合基础配置和向量存储
 type RetrieverConfig struct {
-	VectorStore    vector_store.VectorStore // 向量数据库接口
-	MetricType     string                   // 向量相似度度量类型，如 "COSINE", "L2", "IP" 等，默认 "COSINE"
-	APIKey         string                   // API密钥（用于调用embedding服务）
-	BaseURL        string                   // API基础URL（用于调用embedding服务）
-	EmbeddingModel string                   // Embedding模型名称
-	// 检索策略参数
-	// TODO 重写的话需要一个大模型
-	EnableRewrite   bool    // 是否启用查询重写（默认 false）
-	RewriteAttempts int     // 查询重写尝试次数（默认 3）
-	RetrieveMode    string  // 检索模式: milvus/rerank/rrf（默认 rerank）
-	TopK            int     // 默认返回结果数量（默认 5）
-	Score           float64 // 默认分数阈值（默认 0.2）
+	RetrieverConfigBase
+	VectorStore vector_store.VectorStore // 向量数据库接口
 }
 
 // IndexerConfig Indexer专用配置
@@ -122,6 +105,7 @@ type IndexerConfig struct {
 	BaseURL        string                   // API基础URL（用于调用embedding服务）
 	EmbeddingModel string                   // Embedding模型名称
 	MetricType     string                   // 向量相似度度量类型
+	Dim            int                      // 向量维度（fallback）
 }
 
 // Config 实现 embedding config 接口
@@ -133,6 +117,11 @@ func (c *Config) GetEmbeddingModel() string { return c.EmbeddingModel }
 func (c *RetrieverConfig) GetAPIKey() string         { return c.APIKey }
 func (c *RetrieverConfig) GetBaseURL() string        { return c.BaseURL }
 func (c *RetrieverConfig) GetEmbeddingModel() string { return c.EmbeddingModel }
+
+// RetrieverConfig 实现 rerank config 接口
+func (c *RetrieverConfig) GetRerankAPIKey() string  { return c.RerankAPIKey }
+func (c *RetrieverConfig) GetRerankBaseURL() string { return c.RerankBaseURL }
+func (c *RetrieverConfig) GetRerankModel() string   { return c.RerankModel }
 
 // RetrieverConfig 实现 GeneralRetrieverConfig 接口
 func (c *RetrieverConfig) GetTopK() int            { return c.TopK }

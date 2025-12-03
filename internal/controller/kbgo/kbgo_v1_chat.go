@@ -2,6 +2,7 @@ package kbgo
 
 import (
 	"context"
+	"mime/multipart"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/chat"
@@ -11,18 +12,43 @@ import (
 
 func (c *ControllerV1) Chat(ctx context.Context, req *v1.ChatReq) (res *v1.ChatRes, err error) {
 	// Log request parameters
-	g.Log().Infof(ctx, "Chat request received - ConvID: %s, Question: %s, KnowledgeId: %s, EnableRetriever: %v, TopK: %d, Score: %f, UseMCP: %v, Stream: %v",
-		req.ConvID, req.Question, req.KnowledgeId, req.EnableRetriever, req.TopK, req.Score, req.UseMCP, req.Stream)
+	g.Log().Infof(ctx, "Chat request received - ConvID: %s, Question: %s, ModelID: %s, EmbeddingModelID: %s, RerankModelID: %s, KnowledgeId: %s, EnableRetriever: %v, TopK: %d, Score: %f, UseMCP: %v, Stream: %v",
+		req.ConvID, req.Question, req.ModelID, req.EmbeddingModelID, req.RerankModelID, req.KnowledgeId, req.EnableRetriever, req.TopK, req.Score, req.UseMCP, req.Stream)
+
+	// 手动获取上传的文件（GoFrame 的 type:"file" 标签可能无法从独立 FormData 字段正确解析）
+	r := g.RequestFromCtx(ctx)
+	uploadFiles := r.GetUploadFiles("files")
+
+	g.Log().Infof(ctx, "Manual file check - Found %d files from request", len(uploadFiles))
+
+	// 将 ghttp.UploadFiles 转换为 []*multipart.FileHeader
+	var fileHeaders []*multipart.FileHeader
+	if len(uploadFiles) > 0 {
+		for _, uploadFile := range uploadFiles {
+			if uploadFile != nil && uploadFile.FileHeader != nil {
+				fileHeaders = append(fileHeaders, uploadFile.FileHeader)
+			}
+		}
+	}
 
 	// 异步处理文件上传
 	var uploadedFiles []*common.MultimodalFile
-	if len(req.Files) > 0 {
-		g.Log().Infof(ctx, "Processing %d uploaded files asynchronously", len(req.Files))
+	if len(fileHeaders) > 0 {
+		g.Log().Infof(ctx, "Processing %d uploaded files asynchronously", len(fileHeaders))
+
+		// 打印每个文件的详细信息
+		for i, file := range fileHeaders {
+			if file == nil {
+				g.Log().Warningf(ctx, "File %d is nil", i)
+			} else {
+				g.Log().Infof(ctx, "File %d: Filename='%s', Size=%d", i, file.Filename, file.Size)
+			}
+		}
 
 		// 使用全局文件上传器
 		fileUploader := common.GetGlobalFileUploader()
 
-		uploadedFiles, err = fileUploader.UploadFiles(ctx, req.Files)
+		uploadedFiles, err = fileUploader.UploadFiles(ctx, fileHeaders)
 		if err != nil {
 			g.Log().Errorf(ctx, "Error during file upload: %v", err)
 		}
@@ -43,8 +69,8 @@ func (c *ControllerV1) Chat(ctx context.Context, req *v1.ChatReq) (res *v1.ChatR
 // handleStreamChat 处理流式聊天请求
 func (c *ControllerV1) handleStreamChat(ctx context.Context, req *v1.ChatReq, uploadedFiles []*common.MultimodalFile) error {
 	// Log request parameters
-	g.Log().Infof(ctx, "Stream chat request received - ConvID: %s, Question: %s, KnowledgeId: %s, EnableRetriever: %v, TopK: %d, Score: %f, UseMCP: %v",
-		req.ConvID, req.Question, req.KnowledgeId, req.EnableRetriever, req.TopK, req.Score, req.UseMCP)
+	g.Log().Infof(ctx, "Stream chat request received - ConvID: %s, Question: %s, ModelID: %s, EmbeddingModelID: %s, RerankModelID: %s, KnowledgeId: %s, EnableRetriever: %v, TopK: %d, Score: %f, UseMCP: %v, Files: %d",
+		req.ConvID, req.Question, req.ModelID, req.EmbeddingModelID, req.RerankModelID, req.KnowledgeId, req.EnableRetriever, req.TopK, req.Score, req.UseMCP, len(req.Files))
 
 	// 使用新的流式聊天处理器
 	streamHandler := chat.NewStreamHandler()

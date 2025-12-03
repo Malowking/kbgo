@@ -11,8 +11,7 @@ import (
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/internal/dao"
 	milvusModel "github.com/Malowking/kbgo/internal/model/milvus"
-	er "github.com/cloudwego/eino/components/retriever"
-	"github.com/cloudwego/eino/schema"
+	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/google/uuid"
 	"github.com/milvus-io/milvus/client/v2/column"
@@ -20,44 +19,6 @@ import (
 	"github.com/milvus-io/milvus/client/v2/index"
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
 )
-
-// MilvusImplOptions defines implementation-specific options for Milvus
-type MilvusImplOptions struct {
-	// Filter is the filter for the search
-	// Optional, and the default value is empty
-	// It's means the milvus search required param, and refer to https://milvus.io/docs/boolean.md
-	Filter string
-
-	// Partition is the partition name to search
-	// Optional, and the default value is empty
-	Partition string
-
-	// SearchOptFn is the function to set additional search options
-	// Optional, and the default value is nil
-	// Note: SearchOption is an interface, not a pointer type
-	SearchOptFn func(option milvusclient.SearchOption) milvusclient.SearchOption
-}
-
-// WithFilter sets the filter for Milvus search
-func WithFilter(filter string) er.Option {
-	return er.WrapImplSpecificOptFn(func(o *MilvusImplOptions) {
-		o.Filter = filter
-	})
-}
-
-// WithPartition sets the partition for Milvus search
-func WithPartition(partition string) er.Option {
-	return er.WrapImplSpecificOptFn(func(o *MilvusImplOptions) {
-		o.Partition = partition
-	})
-}
-
-// WithSearchOptFn sets a custom search option function
-func WithSearchOptFn(f func(option milvusclient.SearchOption) milvusclient.SearchOption) er.Option {
-	return er.WrapImplSpecificOptFn(func(o *MilvusImplOptions) {
-		o.SearchOptFn = f
-	})
-}
 
 // MilvusStore Milvus向量数据库实现
 type MilvusStore struct {
@@ -157,12 +118,16 @@ func (m *MilvusStore) CreateDatabaseIfNotExists(ctx context.Context) error {
 
 // CreateCollection 创建集合
 func (m *MilvusStore) CreateCollection(ctx context.Context, collectionName string) error {
+	// 获取向量维度，优先从配置文件读取
+	dim := g.Cfg().MustGet(ctx, "milvus.dim", 1024).Int()
+	dimStr := fmt.Sprintf("%d", dim)
+
 	// 使用标准 text collection schema
 	schema := &entity.Schema{
 		CollectionName: collectionName,
 		Description:    "存储文档分片及其向量",
 		AutoID:         false,
-		Fields:         milvusModel.GetStandardCollectionFields(),
+		Fields:         milvusModel.GetStandardCollectionFields(dimStr),
 	}
 
 	// 创建文档片段集合，并设置vector为索引
@@ -178,7 +143,7 @@ func (m *MilvusStore) CreateCollection(ctx context.Context, collectionName strin
 		return fmt.Errorf("failed to load Milvus collection: %w", err)
 	}
 
-	g.Log().Infof(ctx, "Collection '%s' created, index built and loaded", collectionName)
+	g.Log().Infof(ctx, "Collection '%s' created with dimension %d, index built and loaded", collectionName, dim)
 	return nil
 }
 
@@ -201,15 +166,14 @@ func (m *MilvusStore) DeleteCollection(ctx context.Context, collectionName strin
 	return nil
 }
 
-// InsertVectors 插入向量数据
-func (m *MilvusStore) InsertVectors(ctx context.Context, collectionName string, chunks []*schema.Document, vectors [][]float64) ([]string, error) {
+// InsertVectors 插入向量数据 - 直接使用float32向量
+func (m *MilvusStore) InsertVectors(ctx context.Context, collectionName string, chunks []*schema.Document, vectors [][]float32) ([]string, error) {
 	if len(chunks) != len(vectors) {
 		return nil, fmt.Errorf("chunks and vectors length mismatch: %d vs %d", len(chunks), len(vectors))
 	}
 
 	ids := make([]string, len(chunks))
 	texts := make([]string, len(chunks))
-	vectorsFloat32 := make([][]float32, len(chunks))
 	documentIds := make([]string, len(chunks))
 	metadataList := make([][]byte, len(chunks))
 
@@ -234,9 +198,6 @@ func (m *MilvusStore) InsertVectors(ctx context.Context, collectionName string, 
 
 		// 截断文本（如果需要）
 		texts[idx] = truncateString(chunk.Content, 65535)
-
-		// 转换向量为float32
-		vectorsFloat32[idx] = float64ToFloat32(vectors[idx])
 
 		// 设置document_id
 		var docID string
@@ -268,11 +229,14 @@ func (m *MilvusStore) InsertVectors(ctx context.Context, collectionName string, 
 		metadataList[idx] = metaBytes
 	}
 
-	// 创建列数据
+	// 获取向量维度，优先从配置文件读取
+	dim := g.Cfg().MustGet(ctx, "milvus.dim", 1024).Int()
+
+	// 创建列数据 - 直接使用传入的float32向量
 	columns := []column.Column{
 		column.NewColumnVarChar("id", ids),
 		column.NewColumnVarChar("text", texts),
-		column.NewColumnFloatVector("vector", 1024, vectorsFloat32),
+		column.NewColumnFloatVector("vector", dim, vectors),
 		column.NewColumnVarChar("document_id", documentIds),
 		column.NewColumnJSONBytes("metadata", metadataList),
 	}
@@ -290,7 +254,14 @@ func (m *MilvusStore) InsertVectors(ctx context.Context, collectionName string, 
 
 // DeleteByDocumentID 根据文档ID删除所有相关chunks
 func (m *MilvusStore) DeleteByDocumentID(ctx context.Context, collectionName string, documentID string) error {
-	filterExpr := fmt.Sprintf(`document_id == "%s"`, documentID)
+	// 验证 documentID 格式（防止注入）
+	if !common.ValidateUUID(documentID) {
+		return fmt.Errorf("invalid document ID format: %s (must be valid UUID)", documentID)
+	}
+
+	// 转义特殊字符（双重保护）
+	safeDocID := common.SanitizeMilvusString(documentID)
+	filterExpr := fmt.Sprintf(`document_id == "%s"`, safeDocID)
 
 	g.Log().Infof(ctx, "Deleting all chunks of document %s from collection %s", documentID, collectionName)
 
@@ -311,7 +282,14 @@ func (m *MilvusStore) DeleteByDocumentID(ctx context.Context, collectionName str
 
 // DeleteByChunkID 根据chunkID删除单个chunk
 func (m *MilvusStore) DeleteByChunkID(ctx context.Context, collectionName string, chunkID string) error {
-	filterExpr := fmt.Sprintf(`id == "%s"`, chunkID)
+	// 验证 chunkID 格式（防止注入）
+	if !common.ValidateUUID(chunkID) {
+		return fmt.Errorf("invalid chunk ID format: %s (must be valid UUID)", chunkID)
+	}
+
+	// 转义特殊字符（双重保护）
+	safeChunkID := common.SanitizeMilvusString(chunkID)
+	filterExpr := fmt.Sprintf(`id == "%s"`, safeChunkID)
 
 	g.Log().Infof(ctx, "Deleting chunk %s from collection %s", chunkID, collectionName)
 
@@ -354,12 +332,22 @@ func marshalMetadata(metadata map[string]any) ([]byte, error) {
 	return json.Marshal(metadata)
 }
 
-// GetClient returns the underlying Milvus client
-func (m *MilvusStore) GetClient() *milvusclient.Client {
+// GetClient returns the underlying Milvus client as interface{}
+func (m *MilvusStore) GetClient() interface{} {
 	return m.client
 }
 
-// milvusRetriever 实现了 er.Retriever 接口
+// GetMilvusClient returns the underlying Milvus client with specific type
+func (m *MilvusStore) GetMilvusClient() *milvusclient.Client {
+	return m.client
+}
+
+// NewRetriever 创建检索器实例（通用方法名）
+func (m *MilvusStore) NewRetriever(ctx context.Context, conf interface{}, collectionName string) (Retriever, error) {
+	return m.NewMilvusRetriever(ctx, conf, collectionName)
+}
+
+// milvusRetriever 实现了 Retriever 接口
 type milvusRetriever struct {
 	client         *milvusclient.Client
 	collectionName string
@@ -367,65 +355,78 @@ type milvusRetriever struct {
 	config         interface{} // 使用 interface{} 避免循环导入
 }
 
-// Retrieve 实现检索功能 - 复用 milvus_new_re 的逻辑
-func (r *milvusRetriever) Retrieve(ctx context.Context, query string, opts ...er.Option) ([]*schema.Document, error) {
+// Retrieve 实现检索功能
+func (r *milvusRetriever) Retrieve(ctx context.Context, query string, opts ...Option) ([]*schema.Document, error) {
 	// 使用反射获取配置字段值，避免循环导入
 	topK := 5 // 默认值
+	var scoreThreshold *float64
 
-	// 使用反射获取 TopK 字段
-	if r.config != nil {
-		configValue := reflect.ValueOf(r.config)
-		if configValue.Kind() == reflect.Ptr {
-			configValue = configValue.Elem()
-		}
-		if configValue.Kind() == reflect.Struct {
-			if topKField := configValue.FieldByName("TopK"); topKField.IsValid() && topKField.CanInterface() {
-				if topKInt, ok := topKField.Interface().(int); ok && topKInt > 0 {
-					topK = topKInt
-				}
-			}
-		}
-	}
-
-	// 获取通用选项 - 复用milvus_new_re的方式
-	co := er.GetCommonOptions(&er.Options{
-		Index:          &r.vectorField,
+	// 解析选项
+	options := GetCommonOptions(&Options{
 		TopK:           &topK,
-		ScoreThreshold: nil, // 我们不在这里使用score threshold
-		Embedding:      nil, // 我们会自己创建embedding
+		ScoreThreshold: scoreThreshold,
 	}, opts...)
 
-	type ImplOptions struct {
-		Filter      string
-		Partition   string
-		SearchOptFn func(option milvusclient.SearchOption) milvusclient.SearchOption
+	if options.TopK != nil {
+		topK = *options.TopK
 	}
-	io := er.GetImplSpecificOptions(&ImplOptions{}, opts...)
+	if options.ScoreThreshold != nil {
+		scoreThreshold = options.ScoreThreshold
+	}
 
-	// 创建embedding实例 - 通过反射提取配置信息
+	// 获取 Milvus 特定选项（filter, partition）
+	var filter, partition string
+	for _, opt := range opts {
+		// 尝试应用到临时Options来提取filter和partition
+		tempOpts := &Options{}
+		opt(tempOpts)
+		if tempOpts.Filter != "" {
+			filter = tempOpts.Filter
+		}
+		if tempOpts.Partition != "" {
+			partition = tempOpts.Partition
+		}
+	}
+
+	// 创建embedding实例 - 使用接口方法获取配置,避免反射
 	var apiKey, baseURL, embeddingModel string
 	if r.config != nil {
-		configValue := reflect.ValueOf(r.config)
-		if configValue.Kind() == reflect.Ptr {
-			configValue = configValue.Elem()
+		// 定义接口
+		type embeddingConfigGetter interface {
+			GetAPIKey() string
+			GetBaseURL() string
+			GetEmbeddingModel() string
 		}
-		if configValue.Kind() == reflect.Struct {
-			// 获取 APIKey
-			if apiKeyField := configValue.FieldByName("APIKey"); apiKeyField.IsValid() && apiKeyField.CanInterface() {
-				if key, ok := apiKeyField.Interface().(string); ok {
-					apiKey = key
-				}
+
+		// 尝试通过接口方法获取配置
+		if configGetter, ok := r.config.(embeddingConfigGetter); ok {
+			apiKey = configGetter.GetAPIKey()
+			baseURL = configGetter.GetBaseURL()
+			embeddingModel = configGetter.GetEmbeddingModel()
+		} else {
+			// Fallback: 尝试使用反射获取配置字段(兼容旧代码)
+			configValue := reflect.ValueOf(r.config)
+			if configValue.Kind() == reflect.Ptr {
+				configValue = configValue.Elem()
 			}
-			// 获取 BaseURL
-			if baseURLField := configValue.FieldByName("BaseURL"); baseURLField.IsValid() && baseURLField.CanInterface() {
-				if url, ok := baseURLField.Interface().(string); ok {
-					baseURL = url
+			if configValue.Kind() == reflect.Struct {
+				// 获取 APIKey
+				if apiKeyField := configValue.FieldByName("APIKey"); apiKeyField.IsValid() && apiKeyField.CanInterface() {
+					if key, ok := apiKeyField.Interface().(string); ok {
+						apiKey = key
+					}
 				}
-			}
-			// 获取 EmbeddingModel
-			if modelField := configValue.FieldByName("EmbeddingModel"); modelField.IsValid() && modelField.CanInterface() {
-				if model, ok := modelField.Interface().(string); ok {
-					embeddingModel = model
+				// 获取 BaseURL
+				if baseURLField := configValue.FieldByName("BaseURL"); baseURLField.IsValid() && baseURLField.CanInterface() {
+					if url, ok := baseURLField.Interface().(string); ok {
+						baseURL = url
+					}
+				}
+				// 获取 EmbeddingModel
+				if modelField := configValue.FieldByName("EmbeddingModel"); modelField.IsValid() && modelField.CanInterface() {
+					if model, ok := modelField.Interface().(string); ok {
+						embeddingModel = model
+					}
 				}
 			}
 		}
@@ -443,8 +444,10 @@ func (r *milvusRetriever) Retrieve(ctx context.Context, query string, opts ...er
 		return nil, fmt.Errorf("failed to create embedder: %w", err)
 	}
 
-	// embedding查询 - 复用原有逻辑
-	vectors, err := embedder.EmbedStrings(ctx, []string{query})
+	// embedding查询 - 直接获取float32向量
+	// 获取向量维度，优先从配置文件读取
+	dim := g.Cfg().MustGet(ctx, "milvus.dim", 1024).Int()
+	vectors, err := embedder.EmbedStrings(ctx, []string{query}, dim)
 	if err != nil {
 		return nil, fmt.Errorf("embedding has error: %w", err)
 	}
@@ -453,25 +456,20 @@ func (r *milvusRetriever) Retrieve(ctx context.Context, query string, opts ...er
 		return nil, fmt.Errorf("invalid return length of vector, got=%d, expected=1", len(vectors))
 	}
 
-	// 转换[][]float64为[]entity.Vector作为FloatVector - 复用原有逻辑
+	// 将float32向量转换为entity.Vector
 	entityVectors := make([]entity.Vector, len(vectors))
 	for i, vec := range vectors {
-		// 转换float64为float32给Milvus使用
-		float32Vec := make([]float32, len(vec))
-		for j, v := range vec {
-			float32Vec[j] = float32(v)
-		}
-		entityVectors[i] = entity.FloatVector(float32Vec)
+		entityVectors[i] = entity.FloatVector(vec)
 	}
 
-	// 准备分区 - 复用原有逻辑
+	// 准备分区
 	partitions := []string{}
-	if io.Partition != "" {
-		partitions = []string{io.Partition}
+	if partition != "" {
+		partitions = []string{partition}
 	}
 
-	// 准备搜索选项 - 复用原有逻辑
-	searchOpt := milvusclient.NewSearchOption(r.collectionName, *co.TopK, entityVectors).
+	// 准备搜索选项
+	searchOpt := milvusclient.NewSearchOption(r.collectionName, topK, entityVectors).
 		WithANNSField(r.vectorField).
 		WithOutputFields("id", "text", "document_id", "metadata").
 		WithConsistencyLevel(entity.ClBounded)
@@ -482,18 +480,12 @@ func (r *milvusRetriever) Retrieve(ctx context.Context, query string, opts ...er
 	}
 
 	// 添加过滤条件如果提供
-	if io.Filter != "" {
-		searchOpt = searchOpt.WithFilter(io.Filter)
+	if filter != "" {
+		searchOpt = searchOpt.WithFilter(filter)
 	}
 
-	// 应用自定义搜索选项如果提供
-	var searchOptInterface milvusclient.SearchOption = searchOpt
-	if io.SearchOptFn != nil {
-		searchOptInterface = io.SearchOptFn(searchOptInterface)
-	}
-
-	// 搜索集合 - 复用原有逻辑
-	results, err := r.client.Search(ctx, searchOptInterface)
+	// 搜索集合
+	results, err := r.client.Search(ctx, searchOpt)
 	if err != nil {
 		return nil, fmt.Errorf("search has error: %w", err)
 	}
@@ -524,7 +516,7 @@ func (r *milvusRetriever) convertResultsToDocuments(ctx context.Context, columns
 
 	// 设置分数
 	for i := 0; i < numDocs && i < len(scores); i++ {
-		result[i].WithScore(float64(scores[i]))
+		result[i].Score = scores[i]
 	}
 
 	// 处理各列数据
@@ -604,7 +596,7 @@ func (r *milvusRetriever) IsCallbacksEnabled() bool {
 }
 
 // NewMilvusRetriever 创建Milvus检索器实例
-func (m *MilvusStore) NewMilvusRetriever(ctx context.Context, conf interface{}, collectionName string) (er.Retriever, error) {
+func (m *MilvusStore) NewMilvusRetriever(ctx context.Context, conf interface{}, collectionName string) (Retriever, error) {
 	if m.client == nil {
 		return nil, fmt.Errorf("milvus client not provided")
 	}
@@ -679,7 +671,7 @@ func (m *MilvusStore) ConvertSearchResultsToDocuments(ctx context.Context, colum
 
 	// Set scores for each document
 	for i := 0; i < numDocs && i < len(scores); i++ {
-		result[i].WithScore(float64(scores[i]))
+		result[i].Score = scores[i]
 	}
 
 	// Process each column
@@ -707,21 +699,12 @@ func (m *MilvusStore) ConvertSearchResultsToDocuments(ctx context.Context, colum
 			}
 		case common.FieldContentVector:
 			for i := 0; i < col.Len(); i++ {
-				val, err := col.Get(i)
+				_, err := col.Get(i)
 				if err != nil {
 					return nil, fmt.Errorf("failed to get content_vector: %w", err)
 				}
-				// Milvus returns vectors as []float32 or []byte, convert to []float64
-				switch v := val.(type) {
-				case []float32:
-					vec := make([]float64, len(v))
-					for j, f := range v {
-						vec[j] = float64(f)
-					}
-					result[i].WithDenseVector(vec)
-				case []float64:
-					result[i].WithDenseVector(v)
-				}
+				// Milvus returns vectors as []float32 or []byte - we don't need to store them in the document
+				// The vectors are only used for similarity search, not for retrieval
 			}
 		case common.FieldMetadata: // "metadata" - consolidate JSON parsing logic
 			for i := 0; i < col.Len(); i++ {
@@ -825,8 +808,8 @@ func (m *MilvusStore) VectorSearchOnly(ctx context.Context, conf GeneralRetrieve
 	}
 
 	// 执行检索
-	var options []er.Option
-	options = append(options, er.WithTopK(milvusTopK))
+	var options []Option
+	options = append(options, WithTopK(milvusTopK))
 
 	// 只有在有过滤条件时才添加 filter
 	if filter != "" {
@@ -842,8 +825,8 @@ func (m *MilvusStore) VectorSearchOnly(ctx context.Context, conf GeneralRetrieve
 	// Milvus COSINE分数含义：0=完全相反, 1=正交, 2=完全相同
 	// 归一化后：0=完全相反, 0.5=正交, 1=完全相同
 	for _, s := range docs {
-		normalizedScore := s.Score() / 2.0
-		s.WithScore(normalizedScore)
+		normalizedScore := s.Score / 2.0
+		s.Score = normalizedScore
 	}
 
 	// 去重
@@ -853,7 +836,7 @@ func (m *MilvusStore) VectorSearchOnly(ctx context.Context, conf GeneralRetrieve
 
 	// 按照向量相似度排序并截取 TopK
 	sort.Slice(docs, func(i, j int) bool {
-		return docs[i].Score() > docs[j].Score()
+		return docs[i].Score > docs[j].Score
 	})
 	if len(docs) > topK {
 		docs = docs[:topK]
@@ -862,8 +845,8 @@ func (m *MilvusStore) VectorSearchOnly(ctx context.Context, conf GeneralRetrieve
 	// 过滤低分文档
 	var relatedDocs []*schema.Document
 	for _, doc := range docs {
-		if doc.Score() < score {
-			g.Log().Debugf(ctx, "score less: %v, related: %v", doc.Score(), doc.Content)
+		if doc.Score < float32(score) {
+			g.Log().Debugf(ctx, "score less: %v, related: %v", doc.Score, doc.Content)
 			continue
 		}
 		relatedDocs = append(relatedDocs, doc)

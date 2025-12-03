@@ -10,7 +10,7 @@ import (
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/internal/logic/chat"
 	"github.com/Malowking/kbgo/internal/logic/retriever"
-	"github.com/cloudwego/eino/schema"
+	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -22,7 +22,7 @@ func NewStreamHandler() *StreamHandler {
 	return &StreamHandler{}
 }
 
-// ProcessStreamChat 处理流式聊天请求
+// StreamChat 处理流式聊天请求
 func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploadedFiles []*common.MultimodalFile) error {
 	// 获取检索配置
 	cfg := retriever.GetRetrieverConfig()
@@ -47,14 +47,26 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 	go func() {
 		var result retrievalResult
 		if req.EnableRetriever && req.KnowledgeId != "" {
+			// 确定使用的检索模式：优先使用请求中的参数，否则使用配置默认值
+			retrieveMode := cfg.RetrieveMode
+			if req.RetrieveMode != "" {
+				retrieveMode = req.RetrieveMode
+			}
+
+			// chat接口默认开启查询重写，重写次数为3
+			enableRewrite := true
+			rewriteAttempts := 3
+
 			retrieverRes, err := retriever.ProcessRetrieval(ctx, &v1.RetrieverReq{
-				Question:        req.Question,
-				TopK:            req.TopK,
-				Score:           req.Score,
-				KnowledgeId:     req.KnowledgeId,
-				EnableRewrite:   cfg.EnableRewrite,
-				RewriteAttempts: cfg.RewriteAttempts,
-				RetrieveMode:    cfg.RetrieveMode,
+				Question:         req.Question,
+				EmbeddingModelID: req.EmbeddingModelID,
+				RerankModelID:    req.RerankModelID,
+				TopK:             req.TopK,
+				Score:            req.Score,
+				KnowledgeId:      req.KnowledgeId,
+				EnableRewrite:    enableRewrite,
+				RewriteAttempts:  rewriteAttempts,
+				RetrieveMode:     retrieveMode,
 			})
 			if err != nil {
 				g.Log().Error(ctx, err)
@@ -133,9 +145,9 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 	var err error
 	if len(multimodalFiles) > 0 {
 		g.Log().Infof(ctx, "Using multimodal stream chat with %d files", len(multimodalFiles))
-		streamReader, err = chatI.GetAnswerStreamWithFiles(ctx, req.ConvID, documents, req.Question, multimodalFiles)
+		streamReader, err = chatI.GetAnswerStreamWithFiles(ctx, req.ModelID, req.ConvID, documents, req.Question, multimodalFiles)
 	} else {
-		streamReader, err = chatI.GetAnswerStream(ctx, req.ConvID, documents, req.Question)
+		streamReader, err = chatI.GetAnswerStream(ctx, req.ModelID, req.ConvID, documents, req.Question)
 	}
 	if err != nil {
 		g.Log().Error(ctx, err)
@@ -238,7 +250,7 @@ func (h *StreamHandler) handleStreamResponse(ctx context.Context, streamReader *
 		// 流式响应结束后，保存带元数据的完整消息
 		if len(metadata) > 0 {
 			fullMessage := fullContent.String()
-			// 注意：这里需要类型断言或重新设计接口
+			// 这里需要类型断言或重新设计接口
 			if chatInstance, ok := chatI.(interface {
 				SaveStreamingMessageWithMetadata(string, string, map[string]interface{})
 			}); ok {
