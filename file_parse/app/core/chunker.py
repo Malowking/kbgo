@@ -8,7 +8,7 @@ from typing import List
 from app.config import settings
 from app.utils import get_logger
 
-logger = get_logger("chunker")
+logger = get_logger("file_parse")
 
 
 class TextChunker:
@@ -24,18 +24,18 @@ class TextChunker:
         初始化分块器
 
         Args:
-            chunk_size: 每个块的大小（字符数）
+            chunk_size: 每个块的大小（字符数），-1 表示不切分
             chunk_overlap: 块之间的重叠大小
             separators: 分隔符列表，按优先级排序
         """
-        self.chunk_size = chunk_size or settings.DEFAULT_CHUNK_SIZE
-        self.chunk_overlap = chunk_overlap or settings.DEFAULT_CHUNK_OVERLAP
+        self.chunk_size = chunk_size if chunk_size is not None else settings.DEFAULT_CHUNK_SIZE
+        self.chunk_overlap = chunk_overlap if chunk_overlap is not None else settings.DEFAULT_CHUNK_OVERLAP
         self.separators = separators or settings.DEFAULT_SEPARATORS
 
         # 验证参数
-        if self.chunk_size <= 0:
-            raise ValueError("chunk_size must be greater than 0")
-        if self.chunk_overlap >= self.chunk_size:
+        if self.chunk_size != -1 and self.chunk_size <= 0:
+            raise ValueError("chunk_size must be -1 (no chunking) or greater than 0")
+        if self.chunk_size != -1 and self.chunk_overlap >= self.chunk_size:
             raise ValueError("chunk_overlap must be less than chunk_size")
 
         # 编译图片URL的正则表达式
@@ -52,6 +52,11 @@ class TextChunker:
             文本块列表
         """
         text_len = len(text)
+
+        # 如果 chunk_size 为 -1，不切分，全量返回
+        if self.chunk_size == -1:
+            logger.info(f"chunk_size is -1, returning full text without chunking (length: {text_len})")
+            return [text]
 
         # 如果文本短于chunk_size，直接返回
         if text_len <= self.chunk_size:

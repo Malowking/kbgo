@@ -14,9 +14,7 @@ class ParseRequest(BaseModel):
     file_path: str = Field(..., description="要解析的文件路径")
     chunk_size: int = Field(
         default=settings.DEFAULT_CHUNK_SIZE,
-        ge=settings.MIN_CHUNK_SIZE,
-        le=settings.MAX_CHUNK_SIZE,
-        description="文本块大小"
+        description="文本块大小，-1 表示不切分，全量返回"
     )
     chunk_overlap: int = Field(
         default=settings.DEFAULT_CHUNK_OVERLAP,
@@ -28,10 +26,25 @@ class ParseRequest(BaseModel):
         description="文本分隔符列表"
     )
 
+    @validator("chunk_size")
+    def validate_chunk_size(cls, v):
+        """验证chunk_size，允许-1（不切分）或正常范围内的值"""
+        if v == -1:
+            return v
+        if v < settings.MIN_CHUNK_SIZE or v > settings.MAX_CHUNK_SIZE:
+            raise ValueError(
+                f"chunk_size must be -1 (no chunking) or between "
+                f"{settings.MIN_CHUNK_SIZE} and {settings.MAX_CHUNK_SIZE}"
+            )
+        return v
+
     @validator("chunk_overlap")
     def validate_chunk_overlap(cls, v, values):
         """验证chunk_overlap必须小于chunk_size"""
         chunk_size = values.get("chunk_size", settings.DEFAULT_CHUNK_SIZE)
+        # 如果不切分，overlap无意义
+        if chunk_size == -1:
+            return 0
         if v >= chunk_size:
             raise ValueError("chunk_overlap must be less than chunk_size")
         return v

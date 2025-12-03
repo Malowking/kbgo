@@ -19,7 +19,7 @@ if [ "$MODE" = "dev" ]; then
 else
     echo "启动生产模式..."
     mkdir -p logs
-    nohup poetry run uvicorn app.main:app --host 127.0.0.1 --port 8002 > logs/server.log 2>&1 &
+    nohup poetry run uvicorn app.main:app --host 127.0.0.1 --port 8002 > logs/file_parse.log 2>&1 &
     echo "服务已启动: http://127.0.0.1:8002"
-    echo "查看日志: tail -f logs/server.log"
+    echo "查看日志: tail -f logs/file_parse.log"
 fi

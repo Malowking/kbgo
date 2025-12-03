@@ -11,7 +11,7 @@ from app.api.schemas import ErrorResponse
 from app.config import settings
 from app.utils import get_logger
 
-logger = get_logger("main")
+logger = get_logger("file_parse")
 
 
 def create_app() -> FastAPI:

@@ -19,7 +19,7 @@ from app.core import create_parser, create_chunker, image_handler
 from app.config import settings
 from app.utils import get_logger
 
-logger = get_logger("api")
+logger = get_logger("file_parse")
 router = APIRouter()
 
 
@@ -149,7 +149,9 @@ async def get_config():
         "chunk_size_range": {
             "min": settings.MIN_CHUNK_SIZE,
             "max": settings.MAX_CHUNK_SIZE,
-            "default": settings.DEFAULT_CHUNK_SIZE
+            "default": settings.DEFAULT_CHUNK_SIZE,
+            "no_chunking": -1,
+            "description": "Set chunk_size to -1 to return full document without chunking"
         },
         "default_chunk_overlap": settings.DEFAULT_CHUNK_OVERLAP,
         "default_separators": settings.DEFAULT_SEPARATORS,

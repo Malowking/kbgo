@@ -81,5 +81,5 @@ retriever:
 
 # 文档解析服务配置（Python file_parse 服务）
 fileParse:
-  url: "http://localhost:8000"  # file_parse 服务地址
+  url: "http://localhost:8002"  # file_parse 服务地址
   timeout: 120                   # 请求超时时间（秒），默认 120 秒

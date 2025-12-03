@@ -48,12 +48,8 @@ def setup_logger(
 
     # 如果指定了日志文件，添加文件处理器
     if log_file:
-        file_handler = RotatingFileHandler(
-            log_file,
-            maxBytes=settings.LOG_MAX_BYTES,
-            backupCount=settings.LOG_BACKUP_COUNT,
-            encoding='utf-8'
-        )
+        # 使用 'w' 模式在每次启动时覆盖日志文件
+        file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
         file_handler.setLevel(log_level)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
@@ -75,8 +71,7 @@ def get_logger(name: str = "file_parse") -> logging.Logger:
     Returns:
         logger实例
     """
-    # 所有日志写入到统一的日志文件
-    log_file = settings.LOG_DIR / "app.log"
+    log_file = settings.LOG_DIR / "file_parse.log"
     return setup_logger(name, log_file)
 
 

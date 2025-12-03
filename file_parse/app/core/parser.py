@@ -17,7 +17,7 @@ import fitz  # PyMuPDF
 from app.config import settings
 from app.utils import get_logger
 
-logger = get_logger("parser")
+logger = get_logger("file_parse")
 
 
 class FileParser:
@@ -65,13 +65,12 @@ class FileParser:
 
             # 提取图片
             image_urls = []
-            if self.extract_images:
-                if ext == '.docx':
-                    image_urls = self._extract_images_from_docx(file_path)
-                elif ext == '.pdf':
-                    image_urls = self._extract_images_from_pdf(file_path)
-                elif ext == '.pptx':
-                    image_urls = self._extract_images_from_pptx(file_path)
+            if ext == '.docx':
+                image_urls = self._extract_images_from_docx(file_path)
+            elif ext == '.pdf':
+                image_urls = self._extract_images_from_pdf(file_path)
+            elif ext == '.pptx':
+                image_urls = self._extract_images_from_pptx(file_path)
 
             # 解析为 Markdown
             result = self.md.convert(file_path)

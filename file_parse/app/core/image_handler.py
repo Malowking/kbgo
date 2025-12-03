@@ -15,7 +15,7 @@ from PIL import Image
 from app.config import settings
 from app.utils import get_logger
 
-logger = get_logger("image_handler")
+logger = get_logger("file_parse")
 
 
 class ImageHandler:
