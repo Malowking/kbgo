@@ -23,16 +23,12 @@ logger = get_logger("parser")
 class FileParser:
     """文件解析器"""
 
-    def __init__(self, extract_images: bool = True, convert_inline_images: bool = True):
+    def __init__(self):
         """
         初始化文件解析器
 
         Args:
-            extract_images: 是否提取文档中的图片
-            convert_inline_images: 是否转换内联图片
         """
-        self.extract_images = extract_images
-        self.convert_inline_images = convert_inline_images
         self.md = MarkItDown()
         self.image_dir = Path(settings.IMAGE_DIR)
         logger.info("FileParser initialized")
@@ -250,15 +246,13 @@ class FileParser:
                 logger.warning(f"Failed to delete temp file {tmp_path}: {str(e)}")
 
 
-def create_parser(extract_images: bool = True, convert_inline_images: bool = True) -> FileParser:
+def create_parser() -> FileParser:
     """
     创建文件解析器（工厂函数）
 
     Args:
-        extract_images: 是否提取文档中的图片
-        convert_inline_images: 是否转换内联图片
 
     Returns:
         FileParser实例
     """
-    return FileParser(extract_images, convert_inline_images)
+    return FileParser()
