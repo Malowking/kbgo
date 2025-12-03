@@ -26,15 +26,16 @@ class ImageHandler:
         self.max_size = settings.MAX_IMAGE_SIZE
         self.base_url = settings.base_url
 
-    async def save_base64_image(self, base64_str: str) -> str:
+    async def save_base64_image(self, base64_str: str, format_url: bool = True) -> str:
         """
         保存base64编码的图片到本地并返回URL
 
         Args:
             base64_str: base64编码的图片字符串
+            format_url: 是否格式化为静态地址URL，False则返回绝对路径
 
         Returns:
-            图片的URL地址
+            图片的URL地址或绝对路径
 
         Raises:
             ValueError: 如果base64字符串格式无效
@@ -72,14 +73,20 @@ class ImageHandler:
             await asyncio.to_thread(img.save, file_path)
 
         logger.info(f"Saved image: {file_name}{ext}")
-        return f"{self.base_url}/images/{file_name}{ext}"
 
-    async def replace_images_with_urls(self, md_text: str) -> Tuple[str, List[str]]:
+        # 根据 format_url 参数决定返回格式
+        if format_url:
+            return f"{self.base_url}/images/{file_name}{ext}"
+        else:
+            return str(file_path.absolute())
+
+    async def replace_images_with_urls(self, md_text: str, format_url: bool = True) -> Tuple[str, List[str]]:
         """
         替换Markdown文本中的base64图片为URL
 
         Args:
             md_text: 包含base64图片的Markdown文本
+            format_url: 是否格式化为静态地址URL，False则返回绝对路径
 
         Returns:
             (替换后的文本, 图片URL列表)
@@ -91,7 +98,7 @@ class ImageHandler:
             return md_text, []
 
         # 并发保存所有图片
-        tasks = [self.save_base64_image(img) for img in images]
+        tasks = [self.save_base64_image(img, format_url) for img in images]
         urls = await asyncio.gather(*tasks)
 
         # 替换文本中的base64为URL
@@ -112,7 +119,7 @@ class ImageHandler:
         Returns:
             图片URL列表
         """
-        pattern = r"!\[.*?\]\((http.*?)\)"
+        pattern = r"!\[.*?\]\(([^)]+)\)"
         return re.findall(pattern, text)
 
     @staticmethod

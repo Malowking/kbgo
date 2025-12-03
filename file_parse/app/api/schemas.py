@@ -25,6 +25,10 @@ class ParseRequest(BaseModel):
         default=settings.DEFAULT_SEPARATORS,
         description="文本分隔符列表"
     )
+    image_url_format: bool = Field(
+        default=True,
+        description="是否格式化图片URL为静态地址，False则返回图片绝对路径"
+    )
 
     @validator("chunk_size")
     def validate_chunk_size(cls, v):

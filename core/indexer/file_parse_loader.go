@@ -16,20 +16,22 @@ import (
 
 // FileParseLoader 使用 file_parse 服务进行文档解析和切分
 type FileParseLoader struct {
-	ctx          context.Context
-	fileParseURL string
-	chunkSize    int
-	chunkOverlap int
-	separators   []string
-	client       *gclient.Client
+	ctx            context.Context
+	fileParseURL   string
+	chunkSize      int
+	chunkOverlap   int
+	separators     []string
+	imageURLFormat *bool // 是否格式化图片URL为静态地址，nil表示使用默认值
+	client         *gclient.Client
 }
 
 // ParseRequest file_parse 服务的请求结构
 type ParseRequest struct {
-	FilePath     string   `json:"file_path"`
-	ChunkSize    int      `json:"chunk_size"`
-	ChunkOverlap int      `json:"chunk_overlap"`
-	Separators   []string `json:"separators"` // 必须是数组，不能为 null
+	FilePath       string   `json:"file_path"`
+	ChunkSize      int      `json:"chunk_size"`
+	ChunkOverlap   int      `json:"chunk_overlap"`
+	Separators     []string `json:"separators"`       // 必须是数组，不能为 null
+	ImageURLFormat *bool    `json:"image_url_format"` // 是否格式化图片URL为静态地址，nil表示使用默认值true
 }
 
 // ChunkData file_parse 服务返回的分片数据
@@ -59,7 +61,7 @@ type HealthResponse struct {
 // NewFileParseLoader 创建新的 FileParseLoader
 func NewFileParseLoader(ctx context.Context, chunkSize, chunkOverlap int, separator string) (*FileParseLoader, error) {
 	// 从配置中读取 file_parse 服务地址和超时时间
-	fileParseURL := g.Cfg().MustGet(ctx, "fileParse.url", "http://localhost:8000").String()
+	fileParseURL := g.Cfg().MustGet(ctx, "fileParse.url", "http://localhost:8002").String()
 	timeout := g.Cfg().MustGet(ctx, "fileParse.timeout", 120).Int()
 
 	// 处理分隔符 - 必须是数组，不能为 nil
@@ -91,6 +93,20 @@ func NewFileParseLoader(ctx context.Context, chunkSize, chunkOverlap int, separa
 		separators:   separators,
 		client:       client,
 	}, nil
+}
+
+// NewFileParseLoaderForChat 创建用于文件对话的 FileParseLoader，imageURLFormat=false返回绝对路径
+func NewFileParseLoaderForChat(ctx context.Context, chunkSize, chunkOverlap int, separator string) (*FileParseLoader, error) {
+	loader, err := NewFileParseLoader(ctx, chunkSize, chunkOverlap, separator)
+	if err != nil {
+		return nil, err
+	}
+
+	// 设置 imageURLFormat 为 false，返回绝对路径而不是HTTP URL
+	imageURLFormat := false
+	loader.imageURLFormat = &imageURLFormat
+
+	return loader, nil
 }
 
 // CheckHealth 检查 file_parse 服务健康状态
@@ -156,10 +172,11 @@ func (l *FileParseLoader) Load(ctx context.Context, filePath string) ([]*schema.
 
 	// 构造请求
 	parseReq := ParseRequest{
-		FilePath:     absFilePath,
-		ChunkSize:    l.chunkSize,
-		ChunkOverlap: l.chunkOverlap,
-		Separators:   l.separators, // 现在保证是数组，不会是 nil
+		FilePath:       absFilePath,
+		ChunkSize:      l.chunkSize,
+		ChunkOverlap:   l.chunkOverlap,
+		Separators:     l.separators,     // 现在保证是数组，不会是 nil
+		ImageURLFormat: l.imageURLFormat, // 传递imageURLFormat参数
 	}
 
 	// 记录开始时间

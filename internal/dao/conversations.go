@@ -75,3 +75,12 @@ func (d *ConversationDAO) Delete(ctx context.Context, convID string) error {
 	}
 	return nil
 }
+
+// UpdateMetadata 更新会话元数据
+func (d *ConversationDAO) UpdateMetadata(ctx context.Context, convID string, metadata gormModel.JSON) error {
+	if err := GetDB().WithContext(ctx).Model(&gormModel.Conversation{}).Where("conv_id = ?", convID).Update("metadata", metadata).Error; err != nil {
+		g.Log().Errorf(ctx, "更新会话元数据失败: %v", err)
+		return err
+	}
+	return nil
+}

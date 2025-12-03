@@ -67,10 +67,13 @@ async def parse_file(request: ParseRequest):
 
         # 1. 解析文件为Markdown文本并提取图片
         parser = create_parser()
-        md_text, extracted_image_urls = parser.parse(file_path)
+        md_text, extracted_image_urls = parser.parse(file_path, format_url=request.image_url_format)
 
         # 2. 替换base64图片为URL（如果有markitdown生成的base64图片）
-        md_text, base64_image_urls = await image_handler.replace_images_with_urls(md_text)
+        md_text, base64_image_urls = await image_handler.replace_images_with_urls(
+            md_text,
+            format_url=request.image_url_format
+        )
 
         # 合并所有图片URL
         all_image_urls = extracted_image_urls + base64_image_urls

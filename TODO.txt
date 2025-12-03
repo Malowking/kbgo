@@ -1,6 +1,6 @@
 待办事项
 
-上传文件大模型对话(python文件解析)
+openai接口传入图片有问题，可能是调用的模型平台的问题
 qwen模型适配器添加stop和function参数
 document_chunk没有存储chunk的顺序
 项目日志保存到logs文件夹下面

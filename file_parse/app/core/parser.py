@@ -33,12 +33,13 @@ class FileParser:
         self.image_dir = Path(settings.IMAGE_DIR)
         logger.info("FileParser initialized")
 
-    def parse(self, file_path: str) -> Tuple[str, List[str]]:
+    def parse(self, file_path: str, format_url: bool = True) -> Tuple[str, List[str]]:
         """
-        解析文件为Markdown文本，并提取图片
+        解析文件为Markdown文本,并提取图片
 
         Args:
             file_path: 文件路径
+            format_url: 是否格式化为静态地址URL，False则返回绝对路径
 
         Returns:
             (Markdown格式的文本内容, 图片URL列表)
@@ -66,11 +67,11 @@ class FileParser:
             # 提取图片
             image_urls = []
             if ext == '.docx':
-                image_urls = self._extract_images_from_docx(file_path)
+                image_urls = self._extract_images_from_docx(file_path, format_url)
             elif ext == '.pdf':
-                image_urls = self._extract_images_from_pdf(file_path)
+                image_urls = self._extract_images_from_pdf(file_path, format_url)
             elif ext == '.pptx':
-                image_urls = self._extract_images_from_pptx(file_path)
+                image_urls = self._extract_images_from_pptx(file_path, format_url)
 
             # 解析为 Markdown
             result = self.md.convert(file_path)
@@ -87,7 +88,7 @@ class FileParser:
             logger.error(f"Error parsing file {file_path}: {str(e)}")
             raise RuntimeError(f"Error converting file: {str(e)}") from e
 
-    def _extract_images_from_docx(self, file_path: str) -> List[str]:
+    def _extract_images_from_docx(self, file_path: str, format_url: bool = True) -> List[str]:
         """从DOCX文件中提取图片"""
         image_urls = []
         try:
@@ -112,8 +113,11 @@ class FileParser:
                     else:
                         save_path.write_bytes(img_data)
 
-                    # 生成URL
-                    url = f"{settings.base_url}/images/{file_name}"
+                    # 根据 format_url 参数决定返回格式
+                    if format_url:
+                        url = f"{settings.base_url}/images/{file_name}"
+                    else:
+                        url = str(save_path.absolute())
                     image_urls.append(url)
                     logger.info(f"Extracted image from DOCX: {file_name}")
 
@@ -122,7 +126,7 @@ class FileParser:
 
         return image_urls
 
-    def _extract_images_from_pdf(self, file_path: str) -> List[str]:
+    def _extract_images_from_pdf(self, file_path: str, format_url: bool = True) -> List[str]:
         """从PDF文件中提取图片"""
         image_urls = []
         try:
@@ -149,8 +153,11 @@ class FileParser:
                     else:
                         save_path.write_bytes(img_data)
 
-                    # 生成URL
-                    url = f"{settings.base_url}/images/{file_name}"
+                    # 根据 format_url 参数决定返回格式
+                    if format_url:
+                        url = f"{settings.base_url}/images/{file_name}"
+                    else:
+                        url = str(save_path.absolute())
                     image_urls.append(url)
                     logger.info(f"Extracted image from PDF: {file_name}")
 
@@ -160,7 +167,7 @@ class FileParser:
 
         return image_urls
 
-    def _extract_images_from_pptx(self, file_path: str) -> List[str]:
+    def _extract_images_from_pptx(self, file_path: str, format_url: bool = True) -> List[str]:
         """从PPTX文件中提取图片"""
         image_urls = []
         try:
@@ -185,8 +192,11 @@ class FileParser:
                     else:
                         save_path.write_bytes(img_data)
 
-                    # 生成URL
-                    url = f"{settings.base_url}/images/{file_name}"
+                    # 根据 format_url 参数决定返回格式
+                    if format_url:
+                        url = f"{settings.base_url}/images/{file_name}"
+                    else:
+                        url = str(save_path.absolute())
                     image_urls.append(url)
                     logger.info(f"Extracted image from PPTX: {file_name}")
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gfile"
+	"github.com/google/uuid"
 )
 
 const (
@@ -177,8 +178,14 @@ func (fu *FileUploader) saveFile(file *multipart.FileHeader) (*MultimodalFile, e
 		}
 	}
 
-	// 构建目标文件路径（直接使用原文件名，重复则覆盖）
-	targetPath := filepath.Join(targetDir, file.Filename)
+	// 获取文件扩展名
+	ext := filepath.Ext(file.Filename)
+
+	// 为所有文件生成UUID文件名（保留原始扩展名）
+	uuidFileName := strings.ReplaceAll(uuid.New().String(), "-", "") + ext
+
+	// 构建目标文件路径
+	targetPath := filepath.Join(targetDir, uuidFileName)
 
 	// 打开上传的文件
 	src, err := file.Open()
@@ -201,10 +208,10 @@ func (fu *FileUploader) saveFile(file *multipart.FileHeader) (*MultimodalFile, e
 	}
 
 	multiFile := &MultimodalFile{
-		FileName:     file.Filename,
+		FileName:     file.Filename, // 保留原始文件名用于显示
 		FileType:     fileType,
-		FilePath:     targetPath,
-		RelativePath: filepath.Join(string(fileType), file.Filename),
+		FilePath:     targetPath,                                    // UUID重命名后的完整路径
+		RelativePath: filepath.Join(string(fileType), uuidFileName), // UUID重命名后的相对路径
 		Size:         size,
 	}
 
