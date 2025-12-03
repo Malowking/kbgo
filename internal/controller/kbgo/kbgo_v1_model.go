@@ -77,8 +77,8 @@ func (c *ControllerV1) RegisterModel(ctx context.Context, req *v1.RegisterModelR
 	if req.ContextWindow > 0 {
 		extra["context_window"] = req.ContextWindow
 	}
-	if req.MaxTokens > 0 {
-		extra["max_tokens"] = req.MaxTokens
+	if req.MaxCompletionTokens > 0 {
+		extra["max_completion_tokens"] = req.MaxCompletionTokens
 	}
 	if req.Dimension > 0 {
 		extra["dimension"] = req.Dimension

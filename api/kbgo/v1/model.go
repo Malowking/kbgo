@@ -149,19 +149,19 @@ type EmbeddingUsage struct {
 
 // RegisterModelReq 注册模型请求
 type RegisterModelReq struct {
-	g.Meta        `path:"/v1/model/register" method:"post" tags:"model" summary:"Register a new model"`
-	ModelName     string                 `json:"model_name" v:"required"`                                                        // 模型名称
-	ModelType     string                 `json:"model_type" v:"required|in:llm,embedding,reranker,multimodal,image,video,audio"` // 模型类型
-	Provider      string                 `json:"provider"`                                                                       // 提供商（openai, ollama等）（可选）
-	BaseURL       string                 `json:"base_url"`                                                                       // API基础URL（可选）
-	APIKey        string                 `json:"api_key"`                                                                        // API密钥（可选）
-	Capabilities  []string               `json:"capabilities"`                                                                   // 能力列表（可选）
-	ContextWindow int                    `json:"context_window"`                                                                 // 上下文窗口大小（可选）
-	MaxTokens     int                    `json:"max_tokens"`                                                                     // 最大输出token数（可选）
-	Dimension     int                    `json:"dimension"`                                                                      // 向量维度（embedding模型专用）
-	Config        map[string]interface{} `json:"config"`                                                                         // 其他配置（可选）
-	Enabled       bool                   `json:"enabled"`                                                                        // 是否启用（默认true）
-	Description   string                 `json:"description"`                                                                    // 描述（可选）
+	g.Meta              `path:"/v1/model/register" method:"post" tags:"model" summary:"Register a new model"`
+	ModelName           string                 `json:"model_name" v:"required"`                                                        // 模型名称
+	ModelType           string                 `json:"model_type" v:"required|in:llm,embedding,reranker,multimodal,image,video,audio"` // 模型类型
+	Provider            string                 `json:"provider"`                                                                       // 提供商（openai, ollama等）（可选）
+	BaseURL             string                 `json:"base_url"`                                                                       // API基础URL（可选）
+	APIKey              string                 `json:"api_key"`                                                                        // API密钥（可选）
+	Capabilities        []string               `json:"capabilities"`                                                                   // 能力列表（可选）
+	ContextWindow       int                    `json:"context_window"`                                                                 // 上下文窗口大小（可选）
+	MaxCompletionTokens int                    `json:"max_completion_tokens"`                                                          // 最大输出token数（可选）
+	Dimension           int                    `json:"dimension"`                                                                      // 向量维度（embedding模型专用）
+	Config              map[string]interface{} `json:"config"`                                                                         // 其他配置（可选）
+	Enabled             bool                   `json:"enabled"`                                                                        // 是否启用（默认true）
+	Description         string                 `json:"description"`                                                                    // 描述（可选）
 }
 
 // RegisterModelRes 注册模型响应

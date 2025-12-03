@@ -9,8 +9,7 @@ import (
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/internal/dao"
-	"github.com/cloudwego/eino/components/retriever"
-	"github.com/cloudwego/eino/schema"
+	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -135,18 +134,19 @@ func (p *PostgresStore) CreateCollection(ctx context.Context, collectionName str
 	// 清理表名，防止SQL注入
 	tableName := p.sanitizeTableName(collectionName)
 	fullTableName := fmt.Sprintf("%s.%s", p.schema, tableName)
+	dim := g.Cfg().MustGet(ctx, "milvus.dim", 1024).Int()
 
 	// 创建表的SQL
 	createTableSQL := fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS %s (
 			id VARCHAR(255) PRIMARY KEY,
 			text TEXT NOT NULL,
-			vector vector(1024) NOT NULL,
+			vector vector(%d) NOT NULL,
 			document_id VARCHAR(255) NOT NULL,
 			metadata JSONB DEFAULT '{}'::jsonb,
 			created_at TIMESTAMP DEFAULT NOW()
 		)
-	`, fullTableName)
+	`, fullTableName, dim)
 
 	_, err := p.pool.Exec(ctx, createTableSQL)
 	if err != nil {
@@ -211,7 +211,7 @@ func (p *PostgresStore) DeleteCollection(ctx context.Context, collectionName str
 }
 
 // InsertVectors 插入向量数据
-func (p *PostgresStore) InsertVectors(ctx context.Context, collectionName string, chunks []*schema.Document, vectors [][]float64) ([]string, error) {
+func (p *PostgresStore) InsertVectors(ctx context.Context, collectionName string, chunks []*schema.Document, vectors [][]float32) ([]string, error) {
 	if len(chunks) != len(vectors) {
 		return nil, fmt.Errorf("chunks and vectors length mismatch: %d vs %d", len(chunks), len(vectors))
 	}
@@ -254,8 +254,8 @@ func (p *PostgresStore) InsertVectors(ctx context.Context, collectionName string
 		// 截断文本（如果需要）
 		text := p.truncateString(chunk.Content, 65535)
 
-		// 转换向量为pgvector格式
-		pgVector := pgvector.NewVector(p.float64ToFloat32(vectors[idx]))
+		// 转换向量为pgvector格式 - 直接使用float32向量
+		pgVector := pgvector.NewVector(vectors[idx])
 
 		// 设置document_id
 		var docID string
@@ -366,7 +366,7 @@ func (p *PostgresStore) GetClient() interface{} {
 }
 
 // NewRetriever 创建PostgreSQL检索器实例
-func (p *PostgresStore) NewRetriever(ctx context.Context, conf interface{}, collectionName string) (retriever.Retriever, error) {
+func (p *PostgresStore) NewRetriever(ctx context.Context, conf interface{}, collectionName string) (Retriever, error) {
 	if p.pool == nil {
 		return nil, fmt.Errorf("postgres pool not provided")
 	}
@@ -459,7 +459,7 @@ type postgresRetriever struct {
 }
 
 // Retrieve 实现检索功能
-func (r *postgresRetriever) Retrieve(ctx context.Context, query string, opts ...retriever.Option) ([]*schema.Document, error) {
+func (r *postgresRetriever) Retrieve(ctx context.Context, query string, opts ...Option) ([]*schema.Document, error) {
 	// 默认参数
 	topK := 5
 
@@ -515,7 +515,9 @@ func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query
 	}
 
 	// 生成查询向量
-	vectors, err := embedder.EmbedStrings(ctx, []string{query})
+	// 获取向量维度，优先从配置文件读取
+	dim := g.Cfg().MustGet(ctx, "postgres.dim", 1024).Int()
+	vectors, err := embedder.EmbedStrings(ctx, []string{query}, dim)
 	if err != nil {
 		return nil, fmt.Errorf("embedding has error: %w", err)
 	}
@@ -524,17 +526,43 @@ func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query
 		return nil, fmt.Errorf("invalid return length of vector, got=%d, expected=1", len(vectors))
 	}
 
-	queryVector := pgvector.NewVector(r.float64ToFloat32(vectors[0]))
+	// 直接使用float32向量
+	queryVector := pgvector.NewVector(vectors[0])
+
+	// 获取距离度量类型，从配置文件读取
+	metricType := g.Cfg().MustGet(ctx, "vectordb.metricType", "COSINE").String()
+
+	// 根据metricType选择pgvector操作符和分数计算方式
+	var scoreCalc, orderBy string
+	switch strings.ToUpper(metricType) {
+	case "COSINE":
+		// 余弦距离: 0=相同, 2=相反
+		scoreCalc = "1 - (vector <=> $1)" // 转换为相似度: 1=相同, -1=相反
+		orderBy = "vector <=> $1"
+	case "L2":
+		// 欧氏距离: 0=相同, 越大越远
+		scoreCalc = "1 / (1 + (vector <-> $1))" // 归一化: 1=相同, 接近0=很远
+		orderBy = "vector <-> $1"
+	case "IP", "INNER_PRODUCT":
+		// 内积: 值越大越相似
+		scoreCalc = "(vector <#> $1)"  // 直接使用内积值作为分数
+		orderBy = "vector <#> $1 DESC" // 内积需要降序排列（越大越好）
+	default:
+		// 默认使用余弦距离
+		g.Log().Warningf(ctx, "Unknown metricType '%s', using COSINE as default", metricType)
+		scoreCalc = "1 - (vector <=> $1)"
+		orderBy = "vector <=> $1"
+	}
 
 	// 执行向量相似度搜索
 	searchSQL := fmt.Sprintf(`
 		SELECT id, text, document_id, metadata,
-		       1 - (vector <=> $1) as similarity_score
+		       %s as similarity_score
 		FROM %s
-		WHERE 1 - (vector <=> $1) >= $2
-		ORDER BY vector <=> $1
+		WHERE %s >= $2
+		ORDER BY %s
 		LIMIT $3
-	`, r.tableName)
+	`, scoreCalc, r.tableName, scoreCalc, orderBy)
 
 	rows, err := r.pool.Query(ctx, searchSQL, queryVector, threshold, topK)
 	if err != nil {
@@ -558,7 +586,7 @@ func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query
 			Content:  text,
 			MetaData: make(map[string]any),
 		}
-		doc.WithScore(score)
+		doc.Score = float32(score)
 
 		// 解析metadata
 		if len(metadataBytes) > 0 {
@@ -610,7 +638,7 @@ func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query
 
 	// 按相似度排序
 	sort.Slice(results, func(i, j int) bool {
-		return results[i].Score() > results[j].Score()
+		return results[i].Score > results[j].Score
 	})
 
 	return results, nil

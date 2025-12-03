@@ -6,6 +6,12 @@ server:
 logger:
   level : "all"
   stdout: true
+  path: "logs"              # 日志文件保存路径
+  file: "kbgo.log"          # 日志文件名
+  rotateSize: "100MB"       # 日志文件大小限制，超过100MB自动轮转
+  rotateBackupLimit: 5      # 保留的日志文件数量
+  rotateBackupExpire: "7d"  # 日志文件过期时间
+  rotateBackupCompress: 9   # 日志压缩级别 (0-9)
 
 # 主数据库配置（用于存储知识库元数据、文档信息等）
 # 支持 MySQL 和 PostgreSQL
@@ -72,3 +78,8 @@ retriever:
   enableRewrite: false       # 是否启用查询重写（默认 false）
   rewriteAttempts: 3         # 查询重写尝试次数（默认 3）
   retrieveMode: "rerank"     # 检索模式: milvus/rerank/rrf（默认 rerank）
+
+# 文档解析服务配置（Python file_parse 服务）
+fileParse:
+  url: "http://localhost:8000"  # file_parse 服务地址
+  timeout: 120                   # 请求超时时间（秒），默认 120 秒

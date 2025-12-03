@@ -5,8 +5,7 @@ import (
 
 	"github.com/Malowking/kbgo/core/config"
 	"github.com/Malowking/kbgo/core/vector_store"
-	er "github.com/cloudwego/eino/components/retriever"
-	"github.com/cloudwego/eino/schema"
+	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -52,8 +51,8 @@ func retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 	}
 
 	// 执行检索
-	var options []er.Option
-	options = append(options, er.WithTopK(realTopK))
+	var options []vector_store.Option
+	options = append(options, vector_store.WithTopK(realTopK))
 
 	// 只有在有过滤条件时才添加 filter
 	if filter != "" {
@@ -69,8 +68,8 @@ func retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 	// Milvus COSINE分数含义：0=完全相反, 1=正交, 2=完全相同
 	// 归一化后：0=完全相反, 0.5=正交, 1=完全相同
 	for _, s := range msg {
-		normalizedScore := s.Score() / 2.0
-		s.WithScore(normalizedScore)
+		normalizedScore := s.Score / 2.0
+		s.Score = normalizedScore
 	}
 
 	return msg, nil

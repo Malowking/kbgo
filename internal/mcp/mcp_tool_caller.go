@@ -12,7 +12,7 @@ import (
 	"github.com/Malowking/kbgo/internal/logic/chat"
 	"github.com/Malowking/kbgo/internal/mcp/client"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
-	"github.com/cloudwego/eino/schema"
+	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/google/uuid"
 )
@@ -179,7 +179,7 @@ func (tc *MCPToolCaller) convertMCPToolToLLMTool(serviceName string, mcpTool cli
 
 					// 设置类型
 					if typeStr, ok := paramDef["type"].(string); ok {
-						paramInfo.Type = schema.DataType(typeStr)
+						paramInfo.Type = typeStr
 					}
 
 					// 设置描述

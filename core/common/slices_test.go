@@ -3,7 +3,7 @@ package common
 import (
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
+	"github.com/Malowking/kbgo/pkg/schema"
 )
 
 func TestRemoveDuplicates(t *testing.T) {

@@ -40,7 +40,7 @@ func initializeVectorStore(ctx context.Context) (vector_store.VectorStore, error
 		}
 		g.Log().Info(ctx, "Milvus vector store initialized successfully")
 		return store, nil
-	case "postgresql", "postgres":
+	case "pgvector":
 		store, err := vector_store.InitializePostgresStore(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize PostgreSQL vector store: %w", err)

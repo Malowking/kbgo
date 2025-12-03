@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"sync"
@@ -9,7 +10,7 @@ import (
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/vector_store"
-	"github.com/cloudwego/eino/schema"
+	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -17,6 +18,8 @@ import (
 type VectorStoreEmbedder struct {
 	embedding   *common.CustomEmbedder
 	vectorStore vector_store.VectorStore
+	modelConfig interface{} // 保存模型配置，用于提取维度信息
+	configDim   int         // 配置文件中的向量维度（fallback）
 }
 
 // BatchInfo 批次信息
@@ -31,13 +34,13 @@ type BatchInfo struct {
 // BatchResult 批次结果
 type BatchResult struct {
 	BatchIndex int
-	Vectors    [][]float64
+	Vectors    [][]float32
 	ChunkIds   []string
 	Error      error
 }
 
 // NewVectorStoreEmbedder 创建向量存储嵌入器
-func NewVectorStoreEmbedder(ctx context.Context, conf common.EmbeddingConfig, vectorStore vector_store.VectorStore) (*VectorStoreEmbedder, error) {
+func NewVectorStoreEmbedder(ctx context.Context, conf common.EmbeddingConfig, vectorStore vector_store.VectorStore, modelConfig interface{}, configDim int) (*VectorStoreEmbedder, error) {
 	// Create embedding instance
 	embeddingIns, err := common.NewEmbedding(ctx, conf)
 	if err != nil {
@@ -47,6 +50,8 @@ func NewVectorStoreEmbedder(ctx context.Context, conf common.EmbeddingConfig, ve
 	return &VectorStoreEmbedder{
 		embedding:   embeddingIns,
 		vectorStore: vectorStore,
+		modelConfig: modelConfig,
+		configDim:   configDim,
 	}, nil
 }
 
@@ -178,10 +183,62 @@ func (v *VectorStoreEmbedder) createBatches(chunks []*schema.Document, batchSize
 	return batches
 }
 
+// getDimension 获取embedding维度
+// 1. 首先尝试从模型配置的extra字段中解析dimension
+// 2. 如果没有，使用配置文件中的dim作为fallback
+func (v *VectorStoreEmbedder) getDimension(ctx context.Context) int {
+	// 尝试从模型配置的extra字段中提取dimension
+	if v.modelConfig != nil {
+		// 尝试将modelConfig转换为map类型
+		if configMap, ok := v.modelConfig.(map[string]any); ok {
+			if extra, exists := configMap["Extra"]; exists {
+				if extraMap, ok := extra.(map[string]any); ok {
+					if dim, exists := extraMap["dimension"]; exists {
+						if dimInt, ok := dim.(int); ok {
+							g.Log().Debugf(ctx, "Using dimension from model extra field: %d", dimInt)
+							return dimInt
+						}
+						if dimFloat, ok := dim.(float64); ok {
+							dimInt := int(dimFloat)
+							g.Log().Debugf(ctx, "Using dimension from model extra field: %d", dimInt)
+							return dimInt
+						}
+					}
+				} else if extraStr, ok := extra.(string); ok && extraStr != "" {
+					// 尝试解析字符串形式的JSON
+					var extraMap map[string]any
+					if err := json.Unmarshal([]byte(extraStr), &extraMap); err == nil {
+						if dim, exists := extraMap["dimension"]; exists {
+							if dimFloat, ok := dim.(float64); ok {
+								dimInt := int(dimFloat)
+								g.Log().Debugf(ctx, "Using dimension from model extra JSON: %d", dimInt)
+								return dimInt
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback：使用配置文件中的dim
+	if v.configDim > 0 {
+		g.Log().Debugf(ctx, "Using dimension from config file: %d", v.configDim)
+		return v.configDim
+	}
+
+	// 默认值
+	g.Log().Warningf(ctx, "No dimension found in model config or config file, using default: 1024")
+	return 1024
+}
+
 // embedTextsWithRetry 带重试的文本向量化
-func (v *VectorStoreEmbedder) embedTextsWithRetry(ctx context.Context, texts []string, maxRetries int, initialDelay, maxDelay time.Duration, multiplier float64) ([][]float64, error) {
+func (v *VectorStoreEmbedder) embedTextsWithRetry(ctx context.Context, texts []string, maxRetries int, initialDelay, maxDelay time.Duration, multiplier float64) ([][]float32, error) {
 	var lastErr error
 	delay := initialDelay
+
+	// 获取维度
+	dimensions := v.getDimension(ctx)
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
@@ -200,7 +257,7 @@ func (v *VectorStoreEmbedder) embedTextsWithRetry(ctx context.Context, texts []s
 			}
 		}
 
-		vectors, err := v.embedding.EmbedStrings(ctx, texts)
+		vectors, err := v.embedding.EmbedStrings(ctx, texts, dimensions)
 		if err != nil {
 			lastErr = err
 			g.Log().Warningf(ctx, "Embedding attempt %d failed: %v", attempt+1, err)

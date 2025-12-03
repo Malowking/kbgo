@@ -8,14 +8,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
-	"github.com/Malowking/kbgo/core/common"
+	"github.com/Malowking/kbgo/core/formatter"
 	coreModel "github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/internal/history"
-	"github.com/cloudwego/eino-ext/components/model/openai"
-	"github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino/schema"
+	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gctx"
 )
@@ -42,35 +41,6 @@ func InitHistory() {
 	g.Log().Info(ctx, "Chat history manager initialized successfully")
 }
 
-// getModelAndParams 根据 model_id 获取模型客户端和推理参数
-func (x *Chat) getModelAndParams(ctx context.Context, modelID string) (model.BaseChatModel, *ModelParams, error) {
-	// 从 Registry 获取模型配置
-	mc := coreModel.Registry.Get(modelID)
-	if mc == nil {
-		return nil, nil, fmt.Errorf("model not found: %s", modelID)
-	}
-
-	// 确保是 LLM 类型的模型
-	if mc.Type != coreModel.ModelTypeLLM && mc.Type != coreModel.ModelTypeMultimodal {
-		return nil, nil, fmt.Errorf("model %s is not a chat model, type: %s", modelID, mc.Type)
-	}
-
-	// 创建 EINO ChatModel
-	chatModel, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
-		APIKey:  mc.APIKey,
-		BaseURL: mc.BaseURL,
-		Model:   mc.Name,
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create chat model: %w", err)
-	}
-
-	// 从 Extra 字段解析推理参数
-	params := parseModelParams(mc.Extra)
-
-	return chatModel, params, nil
-}
-
 // parseModelParams 从 Extra 字段解析推理参数
 func parseModelParams(extra map[string]any) *ModelParams {
 	params := GetDefaultParams()
@@ -81,19 +51,22 @@ func parseModelParams(extra map[string]any) *ModelParams {
 
 	// 解析各个参数
 	if temp, ok := extra["temperature"].(float64); ok {
-		params.Temperature = ToPointer(temp)
+		params.Temperature = ToPointer(float32(temp))
 	}
 	if topP, ok := extra["topP"].(float64); ok {
-		params.TopP = ToPointer(topP)
+		params.TopP = ToPointer(float32(topP))
 	}
-	if maxTokens, ok := extra["maxTokens"].(float64); ok {
-		params.MaxTokens = ToPointer(int(maxTokens))
+	if maxCompletionTokens, ok := extra["maxCompletionTokens"].(int); ok {
+		params.MaxCompletionTokens = ToPointer(maxCompletionTokens)
 	}
 	if freqPenalty, ok := extra["frequencyPenalty"].(float64); ok {
-		params.FrequencyPenalty = ToPointer(freqPenalty)
+		params.FrequencyPenalty = ToPointer(float32(freqPenalty))
 	}
 	if presPenalty, ok := extra["presencePenalty"].(float64); ok {
-		params.PresencePenalty = ToPointer(presPenalty)
+		params.PresencePenalty = ToPointer(float32(presPenalty))
+	}
+	if n, ok := extra["n"].(int); ok {
+		params.N = ToPointer(n)
 	}
 	if stop, ok := extra["stop"].([]interface{}); ok {
 		stopWords := make([]string, 0, len(stop))
@@ -110,43 +83,103 @@ func parseModelParams(extra map[string]any) *ModelParams {
 	return &params
 }
 
-// GetAnswer 使用指定模型生成答案（非流式）
+// GetAnswer 使用指定模型生成答案（非流式，使用新架构）
 func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string) (answer string, err error) {
-	// 获取模型和参数
-	chatModel, params, err := x.getModelAndParams(ctx, modelID)
+	// 获取模型配置
+	mc := coreModel.Registry.Get(modelID)
+	if mc == nil {
+		return "", fmt.Errorf("model not found: %s", modelID)
+	}
+
+	// 根据模型类型选择格式适配器
+	var msgFormatter formatter.MessageFormatter
+	if IsQwenModel(mc.Name) {
+		msgFormatter = formatter.NewQwenFormatter()
+	} else {
+		msgFormatter = formatter.NewOpenAIFormatter()
+	}
+
+	// 创建模型服务
+	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
+
+	// 获取聊天历史
+	chatHistory, err := x.eh.GetHistory(convID, 100)
 	if err != nil {
 		return "", err
 	}
 
-	messages, err := x.docsMessages(ctx, convID, docs, question)
+	// 保存用户消息
+	userMessage := &schema.Message{
+		Role:    schema.User,
+		Content: question,
+	}
+	err = x.eh.SaveMessage(userMessage, convID)
 	if err != nil {
 		return "", err
+	}
+
+	// 格式化文档为系统提示
+	formattedDocs := formatDocumentsForChat(docs)
+
+	// 构建消息列表
+	messages := []*schema.Message{
+		{
+			Role: schema.System,
+			Content: "你是一个专业的AI助手，能够根据提供的参考信息准确回答用户问题。" +
+				"如果没有提供参考信息，也请根据你的知识自由回答用户问题。\n\n" +
+				formattedDocs,
+		},
+	}
+	messages = append(messages, chatHistory...)
+	messages = append(messages, userMessage)
+
+	// 解析推理参数
+	params := parseModelParams(mc.Extra)
+
+	// 构建请求参数
+	chatParams := coreModel.ChatCompletionParams{
+		ModelName:           mc.Name,
+		Messages:            messages,
+		Temperature:         getFloat32OrDefault(params.Temperature, 0.7),
+		MaxCompletionTokens: getIntOrDefault(params.MaxCompletionTokens, 2000),
+		TopP:                getFloat32OrDefault(params.TopP, 0.9),
+		FrequencyPenalty:    getFloat32OrDefault(params.FrequencyPenalty, 0.0),
+		PresencePenalty:     getFloat32OrDefault(params.PresencePenalty, 0.0),
+		N:                   getIntOrDefault(params.N, 1),
+		Tools:               params.Tools,
+		ToolChoice:          params.ToolChoice,
+		ResponseFormat:      params.ResponseFormat,
 	}
 
 	// 记录开始时间
 	start := time.Now()
 
-	// 生成答案
-	opts := params.ToModelOptions()
-	result, err := chatModel.Generate(ctx, messages, opts...)
+	// 调用模型服务
+	resp, err := modelService.ChatCompletion(ctx, chatParams)
 	if err != nil {
-		return "", fmt.Errorf("生成答案失败: %w", err)
+		return "", fmt.Errorf("API调用失败: %w", err)
 	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("received empty choices from API")
+	}
+
+	answerContent := resp.Choices[0].Message.Content
 
 	// 计算延迟
 	latencyMs := time.Since(start).Milliseconds()
 
-	// 获取token使用量
-	tokensUsed := 0
-	if result.ResponseMeta != nil && result.ResponseMeta.Usage != nil {
-		tokensUsed = result.ResponseMeta.Usage.TotalTokens
+	// 创建assistant消息
+	assistantMsg := &schema.Message{
+		Role:    schema.Assistant,
+		Content: answerContent,
 	}
 
 	// 创建带指标的消息
 	msgWithMetrics := &history.MessageWithMetrics{
-		Message:    result,
+		Message:    assistantMsg,
 		LatencyMs:  int(latencyMs),
-		TokensUsed: tokensUsed,
+		TokensUsed: resp.Usage.TotalTokens,
 	}
 
 	err = x.eh.SaveMessageWithMetrics(msgWithMetrics, convID)
@@ -154,92 +187,162 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 		g.Log().Error(ctx, "save assistant message err: %v", err)
 		return
 	}
-	return result.Content, nil
+
+	return answerContent, nil
 }
 
-// GetAnswerStream 使用指定模型流式生成答案
+// GetAnswerStream 使用指定模型流式生成答案（使用新架构）
 func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string) (answer *schema.StreamReader[*schema.Message], err error) {
-	// 获取模型和参数
-	chatModel, params, err := x.getModelAndParams(ctx, modelID)
+	// 获取模型配置
+	mc := coreModel.Registry.Get(modelID)
+	if mc == nil {
+		return nil, fmt.Errorf("model not found: %s", modelID)
+	}
+
+	// 根据模型类型选择格式适配器
+	var msgFormatter formatter.MessageFormatter
+	if IsQwenModel(mc.Name) {
+		msgFormatter = formatter.NewQwenFormatter()
+	} else {
+		msgFormatter = formatter.NewOpenAIFormatter()
+	}
+
+	// 创建模型服务
+	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
+
+	// 获取聊天历史
+	chatHistory, err := x.eh.GetHistory(convID, 100)
 	if err != nil {
 		return nil, err
 	}
 
-	messages, err := x.docsMessages(ctx, convID, docs, question)
+	// 保存用户消息
+	userMessage := &schema.Message{
+		Role:    schema.User,
+		Content: question,
+	}
+	err = x.eh.SaveMessage(userMessage, convID)
 	if err != nil {
 		return nil, err
+	}
+
+	// 格式化文档为系统提示
+	formattedDocs := formatDocumentsForChat(docs)
+
+	// 构建消息列表
+	messages := []*schema.Message{
+		{
+			Role: schema.System,
+			Content: "你是一个专业的AI助手，能够根据提供的参考信息准确回答用户问题。" +
+				"如果没有提供参考信息，也请根据你的知识自由回答用户问题。\n\n" +
+				formattedDocs,
+		},
+	}
+	messages = append(messages, chatHistory...)
+	messages = append(messages, userMessage)
+
+	// 解析推理参数
+	params := parseModelParams(mc.Extra)
+
+	// 构建请求参数
+	chatParams := coreModel.ChatCompletionParams{
+		ModelName:           mc.Name,
+		Messages:            messages,
+		Temperature:         getFloat32OrDefault(params.Temperature, 0.7),
+		MaxCompletionTokens: getIntOrDefault(params.MaxCompletionTokens, 2000),
+		TopP:                getFloat32OrDefault(params.TopP, 0.9),
+		FrequencyPenalty:    getFloat32OrDefault(params.FrequencyPenalty, 0.0),
+		PresencePenalty:     getFloat32OrDefault(params.PresencePenalty, 0.0),
+		N:                   getIntOrDefault(params.N, 1),
+		Tools:               params.Tools,
+		ToolChoice:          params.ToolChoice,
+		ResponseFormat:      params.ResponseFormat,
 	}
 
 	// 记录开始时间
 	start := time.Now()
 
-	// 保留原始 context 用于取消控制（修复 goroutine 泄漏）
-	originalCtx := ctx
-	// 流式生成使用新的 background context（避免过早取消）
-	streamCtx := context.Background()
-	opts := params.ToModelOptions()
-	streamData, err := chatModel.Stream(streamCtx, messages, opts...)
+	// 调用模型服务流式接口
+	stream, err := modelService.ChatCompletionStream(ctx, chatParams)
 	if err != nil {
-		return nil, fmt.Errorf("生成答案失败: %w", err)
+		return nil, fmt.Errorf("API调用失败: %w", err)
 	}
 
-	srs := streamData.Copy(2)
+	// 创建 Pipe 用于流式传输
+	streamReader, streamWriter := schema.Pipe[*schema.Message](10)
+
+	// 启动goroutine处理流式响应
 	go func() {
-		// for save
-		fullMsgs := make([]*schema.Message, 0)
-		defer func() {
-			srs[1].Close()
-			fullMsg, err := schema.ConcatMessages(fullMsgs)
-			if err != nil {
-				g.Log().Error(streamCtx, "error concatenating messages: %v", err)
-				return
-			}
+		defer streamWriter.Close()
+		defer stream.Close()
 
-			// 计算延迟
-			latencyMs := time.Since(start).Milliseconds()
+		var fullContent strings.Builder
+		var tokenCount int
 
-			// 获取token使用量
-			tokensUsed := 0
-			if fullMsg.ResponseMeta != nil && fullMsg.ResponseMeta.Usage != nil {
-				tokensUsed = fullMsg.ResponseMeta.Usage.TotalTokens
-			}
-
-			// 创建带指标的消息
-			msgWithMetrics := &history.MessageWithMetrics{
-				Message:    fullMsg,
-				LatencyMs:  int(latencyMs),
-				TokensUsed: tokensUsed,
-			}
-
-			err = x.eh.SaveMessageWithMetrics(msgWithMetrics, convID)
-			if err != nil {
-				g.Log().Error(streamCtx, "save assistant message err: %v", err)
-				return
-			}
-		}()
-	outer:
 		for {
-			select {
-			case <-originalCtx.Done():
-				// 使用原始 ctx 监听客户端取消，确保 goroutine 能正常退出
-				g.Log().Warning(streamCtx, "Stream cancelled by client")
-				return
-			default:
-				chunk, err := srs[1].Recv()
-				if err != nil {
-					if errors.Is(err, io.EOF) {
-						break outer
-					}
-					// 遇到其他错误也应该退出
-					g.Log().Warningf(streamCtx, "Stream recv error: %v", err)
-					return
+			response, err := stream.Recv()
+			if errors.Is(err, io.EOF) {
+				// 流结束，保存完整消息
+				assistantMsg := &schema.Message{
+					Role:    schema.Assistant,
+					Content: fullContent.String(),
 				}
-				fullMsgs = append(fullMsgs, chunk)
+
+				// 计算延迟
+				latencyMs := time.Since(start).Milliseconds()
+
+				// 创建带指标的消息
+				msgWithMetrics := &history.MessageWithMetrics{
+					Message:    assistantMsg,
+					LatencyMs:  int(latencyMs),
+					TokensUsed: tokenCount,
+				}
+
+				// 异步保存消息
+				saveErr := x.eh.SaveMessageWithMetrics(msgWithMetrics, convID)
+				if saveErr != nil {
+					g.Log().Errorf(ctx, "save assistant message err: %v", saveErr)
+				}
+
+				return
+			}
+
+			if err != nil {
+				g.Log().Errorf(ctx, "stream receive error: %v", err)
+				streamWriter.Send(&schema.Message{
+					Role:    schema.Assistant,
+					Content: "",
+				}, err)
+				return
+			}
+
+			// 处理流式响应
+			if len(response.Choices) > 0 {
+				delta := response.Choices[0].Delta.Content
+				if delta != "" {
+					fullContent.WriteString(delta)
+
+					// 创建增量消息并发送到流
+					chunk := &schema.Message{
+						Role:    schema.Assistant,
+						Content: delta,
+					}
+					closed := streamWriter.Send(chunk, nil)
+					if closed {
+						g.Log().Warningf(ctx, "stream writer closed unexpectedly")
+						return
+					}
+				}
+
+				// 累计token数量（如果有usage信息）
+				if response.Usage != nil {
+					tokenCount = response.Usage.TotalTokens
+				}
 			}
 		}
 	}()
 
-	return srs[0], nil
+	return streamReader, nil
 }
 
 // preprocessMultimodalMessages 预处理多模态消息，将文件路径转换为base64
@@ -463,210 +566,110 @@ func getMimeType(ext string) string {
 	return "application/octet-stream"
 }
 
-// GetAnswerWithFiles 使用指定模型进行多模态对话
-func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile) (answer string, err error) {
-	// 获取模型配置
-	mc := coreModel.Registry.Get(modelID)
-	if mc == nil {
-		return "", fmt.Errorf("model not found: %s", modelID)
-	}
-
-	// 检查是否为Qwen模型（通过模型名称判断）
-	if IsQwenModel(mc.Name) {
-		g.Log().Infof(ctx, "Detected Qwen model, using QwenAdapter for multimodal chat")
-		return x.GetAnswerWithFilesUsingQwen(ctx, mc, convID, docs, question, files)
-	}
-
-	// 使用标准的eino框架处理
-	chatModel, params, err := x.getModelAndParams(ctx, modelID)
-	if err != nil {
-		return "", err
-	}
-
-	messages, err := x.docsMessagesWithFiles(ctx, convID, docs, question, files)
-	if err != nil {
-		return "", err
-	}
-
-	// 预处理消息：将文件路径转换为base64
-	if err := preprocessMultimodalMessages(ctx, messages); err != nil {
-		return "", fmt.Errorf("预处理多模态消息失败: %w", err)
-	}
-
-	// 记录开始时间
-	start := time.Now()
-
-	// 生成答案
-	opts := params.ToModelOptions()
-	result, err := chatModel.Generate(ctx, messages, opts...)
-	if err != nil {
-		return "", fmt.Errorf("生成答案失败: %w", err)
-	}
-
-	// 计算延迟
-	latencyMs := time.Since(start).Milliseconds()
-
-	// 获取token使用量
-	tokensUsed := 0
-	if result.ResponseMeta != nil && result.ResponseMeta.Usage != nil {
-		tokensUsed = result.ResponseMeta.Usage.TotalTokens
-	}
-
-	// 创建带指标的消息
-	msgWithMetrics := &history.MessageWithMetrics{
-		Message:    result,
-		LatencyMs:  int(latencyMs),
-		TokensUsed: tokensUsed,
-	}
-
-	err = x.eh.SaveMessageWithMetrics(msgWithMetrics, convID)
-	if err != nil {
-		g.Log().Error(ctx, "save assistant message err: %v", err)
-		return
-	}
-	return result.Content, nil
-}
-
-// GetAnswerStreamWithFiles 使用指定模型进行多模态流式对话
-func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile) (answer *schema.StreamReader[*schema.Message], err error) {
+// GenerateWithTools 使用指定模型进行工具调用（支持 Function Calling）
+func (x *Chat) GenerateWithTools(ctx context.Context, modelID string, messages []*schema.Message, tools []*schema.ToolInfo) (*schema.Message, error) {
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
 		return nil, fmt.Errorf("model not found: %s", modelID)
 	}
 
-	// 检查是否为Qwen模型（通过模型名称判断）
+	// 根据模型类型选择格式适配器
+	var msgFormatter formatter.MessageFormatter
 	if IsQwenModel(mc.Name) {
-		g.Log().Infof(ctx, "Detected Qwen model, using QwenAdapter for multimodal stream chat")
-		return x.GetAnswerStreamWithFilesUsingQwen(ctx, mc, convID, docs, question, files)
+		msgFormatter = formatter.NewQwenFormatter()
+	} else {
+		msgFormatter = formatter.NewOpenAIFormatter()
 	}
 
-	// 使用标准的eino框架处理
-	chatModel, params, err := x.getModelAndParams(ctx, modelID)
-	if err != nil {
-		return nil, err
-	}
+	// 创建模型服务
+	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
 
-	messages, err := x.docsMessagesWithFiles(ctx, convID, docs, question, files)
-	if err != nil {
-		return nil, err
-	}
+	// 解析推理参数
+	params := parseModelParams(mc.Extra)
 
-	// 预处理消息：将文件路径转换为base64
-	if err := preprocessMultimodalMessages(ctx, messages); err != nil {
-		return nil, fmt.Errorf("预处理多模态消息失败: %w", err)
-	}
-
-	// 记录开始时间
-	start := time.Now()
-
-	// 保留原始 context 用于取消控制（修复 goroutine 泄漏）
-	originalCtx := ctx
-	// 流式生成使用新的 background context（避免过早取消）
-	streamCtx := context.Background()
-	opts := params.ToModelOptions()
-	streamData, err := chatModel.Stream(streamCtx, messages, opts...)
-	if err != nil {
-		return nil, fmt.Errorf("生成答案失败: %w", err)
-	}
-
-	srs := streamData.Copy(2)
-	go func() {
-		// for save
-		fullMsgs := make([]*schema.Message, 0)
-		defer func() {
-			srs[1].Close()
-			fullMsg, err := schema.ConcatMessages(fullMsgs)
-			if err != nil {
-				g.Log().Error(streamCtx, "error concatenating messages: %v", err)
-				return
-			}
-
-			// 计算延迟
-			latencyMs := time.Since(start).Milliseconds()
-
-			// 获取token使用量
-			tokensUsed := 0
-			if fullMsg.ResponseMeta != nil && fullMsg.ResponseMeta.Usage != nil {
-				tokensUsed = fullMsg.ResponseMeta.Usage.TotalTokens
-			}
-
-			// 创建带指标的消息
-			msgWithMetrics := &history.MessageWithMetrics{
-				Message:    fullMsg,
-				LatencyMs:  int(latencyMs),
-				TokensUsed: tokensUsed,
-			}
-
-			err = x.eh.SaveMessageWithMetrics(msgWithMetrics, convID)
-			if err != nil {
-				g.Log().Error(streamCtx, "save assistant message err: %v", err)
-				return
-			}
-		}()
-	outer:
-		for {
-			select {
-			case <-originalCtx.Done():
-				// 使用原始 ctx 监听客户端取消，确保 goroutine 能正常退出
-				g.Log().Warning(streamCtx, "Stream cancelled by client")
-				return
-			default:
-				chunk, err := srs[1].Recv()
-				if err != nil {
-					if errors.Is(err, io.EOF) {
-						break outer
-					}
-					// 遇到其他错误也应该退出
-					g.Log().Warningf(streamCtx, "Stream recv error: %v", err)
-					return
-				}
-				fullMsgs = append(fullMsgs, chunk)
-			}
-		}
-	}()
-
-	return srs[0], nil
-}
-
-// GenerateWithTools 使用指定模型进行工具调用（支持 Function Calling）
-func (x *Chat) GenerateWithTools(ctx context.Context, modelID string, messages []*schema.Message, tools []*schema.ToolInfo) (*schema.Message, error) {
-	// 获取模型和参数
-	chatModel, params, err := x.getModelAndParams(ctx, modelID)
-	if err != nil {
-		return nil, err
-	}
-
-	// 准备模型选项
-	opts := params.ToModelOptions()
-
-	// 如果有工具，添加工具选项
+	// 转换 schema.ToolInfo 到 openai.Tool
+	var openaiTools []interface{}
 	if len(tools) > 0 {
-		opts = append(opts, model.WithTools(tools))
-		opts = append(opts, model.WithToolChoice(schema.ToolChoiceAllowed))
+		for _, tool := range tools {
+			// 将ParamsOneOf转换为OpenAPIV3格式
+			var params interface{}
+			if tool.ParamsOneOf != nil {
+				openAPIV3Schema, err := tool.ParamsOneOf.ToOpenAPIV3()
+				if err != nil {
+					g.Log().Warningf(ctx, "Failed to convert tool params to OpenAPIV3: %v", err)
+					continue
+				}
+				params = openAPIV3Schema
+			}
+
+			openaiTools = append(openaiTools, map[string]interface{}{
+				"type": "function",
+				"function": map[string]interface{}{
+					"name":        tool.Name,
+					"description": tool.Desc,
+					"parameters":  params,
+				},
+			})
+		}
+	}
+
+	// 构建请求参数
+	chatParams := coreModel.ChatCompletionParams{
+		ModelName:           mc.Name,
+		Messages:            messages,
+		Temperature:         getFloat32OrDefault(params.Temperature, 0.7),
+		MaxCompletionTokens: getIntOrDefault(params.MaxCompletionTokens, 2000),
+		TopP:                getFloat32OrDefault(params.TopP, 0.9),
+		FrequencyPenalty:    getFloat32OrDefault(params.FrequencyPenalty, 0.0),
+		PresencePenalty:     getFloat32OrDefault(params.PresencePenalty, 0.0),
+		N:                   getIntOrDefault(params.N, 1),
+		ToolChoice:          "auto", // 让模型自动决定是否调用工具
+		ResponseFormat:      params.ResponseFormat,
 	}
 
 	// 记录开始时间
 	start := time.Now()
 
-	result, err := chatModel.Generate(ctx, messages, opts...)
+	// 调用模型服务
+	resp, err := modelService.ChatCompletion(ctx, chatParams)
 	if err != nil {
-		return nil, fmt.Errorf("llm generate failed: %v", err)
+		return nil, fmt.Errorf("API调用失败: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return nil, fmt.Errorf("received empty choices from API")
 	}
 
 	// 计算延迟
 	latencyMs := time.Since(start).Milliseconds()
 
-	// 获取token使用量
-	tokensUsed := 0
-	if result.ResponseMeta != nil && result.ResponseMeta.Usage != nil {
-		tokensUsed = result.ResponseMeta.Usage.TotalTokens
+	// 转换 OpenAI 响应为 schema.Message
+	choice := resp.Choices[0]
+	result := &schema.Message{
+		Role:    schema.Assistant,
+		Content: choice.Message.Content,
+	}
+
+	// 转换 ToolCalls
+	if len(choice.Message.ToolCalls) > 0 {
+		result.ToolCalls = make([]schema.ToolCall, len(choice.Message.ToolCalls))
+		for i, tc := range choice.Message.ToolCalls {
+			result.ToolCalls[i] = schema.ToolCall{
+				ID:   tc.ID,
+				Type: string(tc.Type), // Convert openai.ToolType to string
+				Function: schema.FunctionCall{
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				},
+			}
+		}
 	}
 
 	// 添加指标信息到返回的消息中（通过扩展字段）
 	result.Extra = map[string]any{
 		"latency_ms":  latencyMs,
-		"tokens_used": tokensUsed,
+		"tokens_used": resp.Usage.TotalTokens,
 	}
 
 	return result, nil
@@ -684,4 +687,18 @@ func (x *Chat) SaveStreamingMessageWithMetadata(convID string, content string, m
 		Content: content,
 	}
 	return x.eh.SaveMessageWithMetadata(message, convID, metadata)
+}
+
+// formatDocumentsForChat 格式化文档为聊天上下文
+func formatDocumentsForChat(docs []*schema.Document) string {
+	if len(docs) == 0 {
+		return ""
+	}
+
+	var builder strings.Builder
+	builder.WriteString("参考资料:\n")
+	for i, doc := range docs {
+		builder.WriteString(fmt.Sprintf("[%d] %s\n", i+1, doc.Content))
+	}
+	return builder.String()
 }

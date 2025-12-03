@@ -3,16 +3,78 @@ package vector_store
 import (
 	"context"
 
-	"github.com/cloudwego/eino/components/retriever"
-	"github.com/cloudwego/eino/schema"
+	"github.com/Malowking/kbgo/pkg/schema"
 )
+
+// Retriever interface for vector search and retrieval operations
+type Retriever interface {
+	// Retrieve performs vector search and returns matching documents
+	Retrieve(ctx context.Context, query string, opts ...Option) ([]*schema.Document, error)
+
+	// GetType returns the type of retriever
+	GetType() string
+
+	// IsCallbacksEnabled returns whether callbacks are enabled
+	IsCallbacksEnabled() bool
+}
+
+// Option represents a functional option for retriever configuration
+type Option func(*Options)
+
+// Options contains configuration options for retrieval
+type Options struct {
+	TopK           *int
+	ScoreThreshold *float64
+	Filter         string
+	Partition      string
+}
+
+// WithTopK sets the number of top results to return
+func WithTopK(topK int) Option {
+	return func(o *Options) {
+		o.TopK = &topK
+	}
+}
+
+// WithScoreThreshold sets the minimum score threshold
+func WithScoreThreshold(threshold float64) Option {
+	return func(o *Options) {
+		o.ScoreThreshold = &threshold
+	}
+}
+
+// WithFilter sets the filter expression for Milvus
+func WithFilter(filter string) Option {
+	return func(o *Options) {
+		o.Filter = filter
+	}
+}
+
+// WithPartition sets the partition for Milvus search
+func WithPartition(partition string) Option {
+	return func(o *Options) {
+		o.Partition = partition
+	}
+}
+
+// GetCommonOptions applies options and returns the resulting configuration
+func GetCommonOptions(defaultOpts *Options, opts ...Option) *Options {
+	if defaultOpts == nil {
+		defaultOpts = &Options{}
+	}
+	result := *defaultOpts // copy
+	for _, opt := range opts {
+		opt(&result)
+	}
+	return &result
+}
 
 // VectorStoreType 向量数据库类型
 type VectorStoreType string
 
 const (
 	VectorStoreTypeMilvus     VectorStoreType = "milvus"
-	VectorStoreTypePostgreSQL VectorStoreType = "postgresql"
+	VectorStoreTypePostgreSQL VectorStoreType = "pgvector"
 	// 未来可以扩展其他类型
 	// VectorStoreTypeChroma VectorStoreType = "chroma"
 	// VectorStoreTypeWeaviate VectorStoreType = "weaviate"
@@ -49,8 +111,8 @@ type VectorStore interface {
 	// DeleteCollection 删除集合
 	DeleteCollection(ctx context.Context, collectionName string) error
 
-	// InsertVectors 插入向量数据
-	InsertVectors(ctx context.Context, collectionName string, chunks []*schema.Document, vectors [][]float64) ([]string, error)
+	// InsertVectors 插入向量数据 - 使用float32以直接与向量库兼容，无需转换
+	InsertVectors(ctx context.Context, collectionName string, chunks []*schema.Document, vectors [][]float32) ([]string, error)
 
 	// DeleteByDocumentID 根据文档ID删除所有相关chunks
 	DeleteByDocumentID(ctx context.Context, collectionName string, documentID string) error
@@ -65,7 +127,7 @@ type VectorStore interface {
 	GetClient() interface{}
 
 	// NewRetriever 创建检索器实例（通用方法名）
-	NewRetriever(ctx context.Context, conf interface{}, collectionName string) (retriever.Retriever, error)
+	NewRetriever(ctx context.Context, conf interface{}, collectionName string) (Retriever, error)
 
 	// VectorSearchOnly 仅使用向量检索的通用方法
 	// 执行向量相似度搜索，去重，排序，并按分数过滤结果

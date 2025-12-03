@@ -28,6 +28,9 @@ func InitDocumentIndexer() {
 	// 距离度量类型
 	MetricType := g.Cfg().MustGet(ctx, "vectordb.metricType", "L2").String()
 
+	// 向量维度（用于fallback）
+	Dim := g.Cfg().MustGet(ctx, fmt.Sprintf("%s.dim", vectorDBType), 1024).Int()
+
 	// 初始化全局 IndexerConfig
 	vectorStore, err := service.GetVectorStore()
 	if err != nil {
@@ -47,6 +50,7 @@ func InitDocumentIndexer() {
 		BaseURL:        BaseURL,
 		EmbeddingModel: EmbeddingModel,
 		MetricType:     MetricType,
+		Dim:            Dim,
 	}
 
 	// 初始化 DocumentIndexer

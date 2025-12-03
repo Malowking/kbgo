@@ -7,7 +7,7 @@ import (
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/config"
-	"github.com/cloudwego/eino/schema"
+	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -18,7 +18,7 @@ func convertToRerankDocs(docs []*schema.Document) []common.RerankDocument {
 		result[i] = common.RerankDocument{
 			ID:      doc.ID,
 			Content: doc.Content,
-			Score:   doc.Score(),
+			Score:   float64(doc.Score), // Convert float32 to float64 for reranker
 		}
 	}
 	return result
@@ -37,7 +37,7 @@ func convertFromRerankDocs(rerankDocs []common.RerankDocument, originalDocs []*s
 		if originalDoc, exists := docMap[rerankDoc.ID]; exists {
 			// 复制原始文档并更新分数
 			doc := originalDoc
-			doc.WithScore(rerankDoc.Score)
+			doc.Score = float32(rerankDoc.Score) // Convert back to float32
 			result = append(result, doc)
 		}
 	}
@@ -80,8 +80,8 @@ func retrieveWithRerank(ctx context.Context, conf *config.RetrieverConfig, req *
 	// 过滤低分文档
 	var relatedDocs []*schema.Document
 	for _, doc := range docs {
-		if doc.Score() < *req.Score {
-			g.Log().Debugf(ctx, "score less: %v, related: %v", doc.Score(), doc.Content)
+		if doc.Score < float32(*req.Score) {
+			g.Log().Debugf(ctx, "score less: %v, related: %v", doc.Score, doc.Content)
 			continue
 		}
 		relatedDocs = append(relatedDocs, doc)
@@ -153,13 +153,13 @@ func retrieveWithRRF(ctx context.Context, conf *config.RetrieverConfig, req *Ret
 		normalizedScore := rrfScores[docID] / maxPossibleScore
 		normalizedScore = math.Min(normalizedScore, 1.0) // 确保不超过1
 
-		doc.WithScore(normalizedScore)
+		doc.Score = float32(normalizedScore) // Convert to float32
 		docs = append(docs, doc)
 	}
 
 	// 5. 按RRF分数排序
 	sort.Slice(docs, func(i, j int) bool {
-		return docs[i].Score() > docs[j].Score()
+		return docs[i].Score > docs[j].Score
 	})
 
 	// 6. 截取TopK，直接使用req中已设置好的TopK
@@ -170,8 +170,8 @@ func retrieveWithRRF(ctx context.Context, conf *config.RetrieverConfig, req *Ret
 	// 7. 过滤低分文档
 	var relatedDocs []*schema.Document
 	for _, doc := range docs {
-		if doc.Score() < *req.Score {
-			g.Log().Debugf(ctx, "score less: %v, related: %v", doc.Score(), doc.Content)
+		if doc.Score < float32(*req.Score) {
+			g.Log().Debugf(ctx, "score less: %v, related: %v", doc.Score, doc.Content)
 			continue
 		}
 		relatedDocs = append(relatedDocs, doc)

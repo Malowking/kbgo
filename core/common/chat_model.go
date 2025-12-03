@@ -9,7 +9,6 @@ import (
 	"github.com/Malowking/kbgo/core/model"
 	modelRegistry "github.com/Malowking/kbgo/core/model"
 	"github.com/cloudwego/eino-ext/components/model/openai"
-	"github.com/cloudwego/eino-ext/components/model/qwen"
 	einoModel "github.com/cloudwego/eino/components/model"
 	"github.com/gogf/gf/v2/frame/g"
 )
@@ -59,7 +58,7 @@ func GetEmbeddingModel(ctx context.Context, cfg *openai.ChatModelConfig) (einoMo
 	return cm, nil
 }
 
-func GetRewriteModel(ctx context.Context, cfg *qwen.ChatModelConfig) (einoModel.BaseChatModel, error) {
+func GetRewriteModel(ctx context.Context) (einoModel.BaseChatModel, error) {
 	// 每次都从注册表中重新获取，确保使用的是最新的模型配置
 	// 从注册表中获取所有 LLM 类型的模型
 	llmModels := modelRegistry.Registry.GetByType(model.ModelTypeLLM)

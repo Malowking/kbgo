@@ -57,15 +57,16 @@ func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *
 	// 如果使用本地存储，则创建对应的文件夹
 	storageType := file_store.GetStorageType()
 	if storageType == file_store.StorageTypeLocal {
-		// 创建 knowledge_file/{knowledge_id} 目录
-		knowledgeDir := filepath.Join("knowledge_file", knowledgeId)
+		// 创建 upload/knowledge_file/{knowledge_id} 目录
+		knowledgeDir := filepath.Join("upload", "knowledge_file", knowledgeId)
 		if !gfile.Exists(knowledgeDir) {
 			err = os.MkdirAll(knowledgeDir, 0755)
 			if err != nil {
 				g.Log().Errorf(ctx, "创建知识库目录失败: %s, 错误: %v", knowledgeDir, err)
 				// 不返回错误，因为数据库记录和 Milvus collection 已创建成功
 			} else {
-				g.Log().Infof(ctx, "成功创建知识库目录: %s", knowledgeDir)
+				cwd, _ := os.Getwd()
+				g.Log().Infof(ctx, "成功创建知识库目录: %s 在 %s", knowledgeDir, cwd)
 			}
 		}
 	}
@@ -213,7 +214,7 @@ func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *
 			}
 		} else {
 			// 即使没有文件，也要删除知识库目录
-			knowledgeDir := filepath.Join("knowledge_file", req.Id)
+			knowledgeDir := filepath.Join("upload", "knowledge_file", req.Id)
 			if gfile.Exists(knowledgeDir) {
 				err = os.RemoveAll(knowledgeDir)
 				if err != nil {

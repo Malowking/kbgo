@@ -87,7 +87,7 @@ type Config struct {
 	BaseURL        string
 	EmbeddingModel string
 	ChatModel      string
-	// Milvus retriever 配置
+	// retriever 配置
 	MetricType string // 向量相似度度量类型，如 "COSINE", "L2", "IP" 等，默认 "COSINE"
 }
 
@@ -105,6 +105,7 @@ type IndexerConfig struct {
 	BaseURL        string                   // API基础URL（用于调用embedding服务）
 	EmbeddingModel string                   // Embedding模型名称
 	MetricType     string                   // 向量相似度度量类型
+	Dim            int                      // 向量维度（fallback）
 }
 
 // Config 实现 embedding config 接口

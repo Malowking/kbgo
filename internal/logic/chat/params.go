@@ -1,35 +1,43 @@
 package chat
 
 import (
-	"fmt"
-
-	"github.com/cloudwego/eino-ext/components/model/openai"
-	"github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino/schema"
+	openaiSDK "github.com/sashabaranov/go-openai"
 )
 
 // ModelParams 封装大模型的推理参数
 type ModelParams struct {
 	// Temperature 控制输出的随机性，0.0-2.0，越小越确定性
-	Temperature *float64 `json:"temperature,omitempty" yaml:"temperature,omitempty"`
+	Temperature *float32 `json:"temperature,omitempty" yaml:"temperature,omitempty"`
 
 	// TopP 核采样参数，0.0-1.0，控制生成的多样性
-	TopP *float64 `json:"topP,omitempty" yaml:"topP,omitempty"`
+	TopP *float32 `json:"topP,omitempty" yaml:"topP,omitempty"`
 
-	// MaxTokens 最大生成token数量
-	MaxTokens *int `json:"maxTokens,omitempty" yaml:"maxTokens,omitempty"`
+	// MaxCompletionTokens 最大生成token数量
+	MaxCompletionTokens *int `json:"maxCompletionTokens,omitempty" yaml:"maxCompletionTokens,omitempty"`
 
 	// FrequencyPenalty 频率惩罚，减少重复词汇，-2.0到2.0
-	FrequencyPenalty *float64 `json:"frequencyPenalty,omitempty" yaml:"frequencyPenalty,omitempty"`
+	FrequencyPenalty *float32 `json:"frequencyPenalty,omitempty" yaml:"frequencyPenalty,omitempty"`
 
 	// PresencePenalty 存在惩罚，鼓励新话题，-2.0到2.0
-	PresencePenalty *float64 `json:"presencePenalty,omitempty" yaml:"presencePenalty,omitempty"`
+	PresencePenalty *float32 `json:"presencePenalty,omitempty" yaml:"presencePenalty,omitempty"`
+
+	// N 生成多少个回复选项，默认为1
+	N *int `json:"n,omitempty" yaml:"n,omitempty"`
 
 	// Stop 停止词列表
 	Stop []string `json:"stop,omitempty" yaml:"stop,omitempty"`
 
 	// Functions 函数调用配置
 	Functions []Function `json:"functions,omitempty" yaml:"functions,omitempty"`
+
+	// Tools 工具列表（OpenAI格式）
+	Tools []openaiSDK.Tool `json:"tools,omitempty" yaml:"tools,omitempty"`
+
+	// ToolChoice 工具选择策略
+	ToolChoice any `json:"toolChoice,omitempty" yaml:"toolChoice,omitempty"`
+
+	// ResponseFormat 响应格式
+	ResponseFormat *openaiSDK.ChatCompletionResponseFormat `json:"responseFormat,omitempty" yaml:"responseFormat,omitempty"`
 }
 
 // Function 函数调用定义
@@ -57,78 +65,12 @@ func ToPointer[T any](value T) *T {
 // GetDefaultParams 获取默认参数
 func GetDefaultParams() ModelParams {
 	return ModelParams{
-		Temperature:      ToPointer(0.7),
-		TopP:             ToPointer(0.9),
-		MaxTokens:        ToPointer(4096),
-		FrequencyPenalty: ToPointer(0.0),
-		PresencePenalty:  ToPointer(0.0),
-		Stop:             []string{},
-		Functions:        []Function{},
+		Temperature:         ToPointer(float32(0.7)),
+		TopP:                ToPointer(float32(0.9)),
+		MaxCompletionTokens: ToPointer(4096),
+		FrequencyPenalty:    ToPointer(float32(0.0)),
+		PresencePenalty:     ToPointer(float32(0.0)),
+		Stop:                []string{},
+		Functions:           []Function{},
 	}
-}
-
-// ToModelOptions 将 ModelParams 转换为 eino model.Option 列表
-func (p ModelParams) ToModelOptions() []model.Option {
-	var options []model.Option
-
-	// 基础参数 - 使用eino标准选项
-	if p.Temperature != nil {
-		options = append(options, model.WithTemperature(float32(*p.Temperature)))
-	}
-	if p.TopP != nil {
-		options = append(options, model.WithTopP(float32(*p.TopP)))
-	}
-	if p.MaxTokens != nil {
-		options = append(options, model.WithMaxTokens(*p.MaxTokens))
-	}
-	if len(p.Stop) > 0 {
-		options = append(options, model.WithStop(p.Stop))
-	}
-
-	// 函数调用支持
-	if len(p.Functions) > 0 {
-		tools := make([]*schema.ToolInfo, len(p.Functions))
-		for i, fn := range p.Functions {
-			// 将函数参数转换为ParameterInfo map
-			params := make(map[string]*schema.ParameterInfo)
-			if fn.Parameters != nil {
-				// 这里需要根据实际的参数结构进行转换
-				// 简化实现：假设Parameters是一个map[string]interface{}格式
-				for key, value := range fn.Parameters {
-					paramInfo := &schema.ParameterInfo{
-						Type:     schema.Object, // 可以根据实际类型动态设置
-						Desc:     fmt.Sprintf("Parameter: %s", key),
-						Required: false,
-					}
-					// 如果value也是map，表示有更复杂的结构
-					if _, ok := value.(map[string]interface{}); ok {
-						paramInfo.Type = schema.Object
-					}
-					params[key] = paramInfo
-				}
-			}
-
-			tools[i] = &schema.ToolInfo{
-				Name:        fn.Name,
-				Desc:        fn.Description,
-				ParamsOneOf: schema.NewParamsOneOfByParams(params),
-			}
-		}
-		options = append(options, model.WithTools(tools))
-	}
-
-	// OpenAI特定参数 - 使用ExtraFields传递
-	extraFields := make(map[string]interface{})
-	if p.FrequencyPenalty != nil {
-		extraFields["frequency_penalty"] = *p.FrequencyPenalty
-	}
-	if p.PresencePenalty != nil {
-		extraFields["presence_penalty"] = *p.PresencePenalty
-	}
-
-	if len(extraFields) > 0 {
-		options = append(options, openai.WithExtraFields(extraFields))
-	}
-
-	return options
 }

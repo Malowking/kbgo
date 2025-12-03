@@ -11,7 +11,7 @@ import (
 	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/core/retriever"
 	"github.com/Malowking/kbgo/internal/service"
-	"github.com/cloudwego/eino/schema"
+	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gctx"
 )
@@ -175,7 +175,7 @@ func ProcessRetrieval(ctx context.Context, req *v1.RetrieverReq) (*v1.RetrieverR
 
 	// 按分数降序排序
 	sort.Slice(msg, func(i, j int) bool {
-		return msg[i].Score() > msg[j].Score()
+		return msg[i].Score > msg[j].Score
 	})
 
 	return &v1.RetrieverRes{

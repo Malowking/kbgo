@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/Malowking/kbgo/core/common"
-	"github.com/cloudwego/eino/schema"
+	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

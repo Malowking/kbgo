@@ -2,12 +2,15 @@ package retriever
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/config"
-	"github.com/cloudwego/eino/schema"
+	"github.com/Malowking/kbgo/core/formatter"
+	"github.com/Malowking/kbgo/core/model"
+	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -48,10 +51,19 @@ func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 		used        = ""          // 记录已经使用过的关键词
 	)
 
-	rewriteModel, err := common.GetRewriteModel(ctx, nil)
-	if err != nil {
-		return nil, err
+	// 从注册表获取 LLM 模型配置
+	llmModels := model.Registry.GetByType(model.ModelTypeLLM)
+	if len(llmModels) == 0 {
+		return nil, fmt.Errorf("no LLM models registered in registry")
 	}
+
+	// 随机选择一个 LLM 模型
+	selectedModel := llmModels[0] // 简化处理，使用第一个模型
+	g.Log().Infof(ctx, "Selected LLM model for rewrite: %s (Provider: %s)", selectedModel.Name, selectedModel.Provider)
+
+	// 创建模型服务
+	modelFormatter := formatter.NewOpenAIFormatter()
+	modelService := model.NewModelService(selectedModel.APIKey, selectedModel.BaseURL, modelFormatter)
 
 	// 确定重写次数，默认为3次
 	rewriteAttempts := *req.RewriteAttempts
@@ -70,13 +82,23 @@ func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 			continue
 		}
 
-		// 调用LLM进行查询重写
-		rewriteMessage, err := rewriteModel.Generate(ctx, optMessages)
+		// 使用 OpenAI 通用对话接口调用 LLM 进行查询重写
+		resp, err := modelService.ChatCompletion(ctx, model.ChatCompletionParams{
+			ModelName:   selectedModel.Name,
+			Messages:    optMessages,
+			Temperature: 0.7,
+		})
 		if err != nil {
-			g.Log().Errorf(ctx, "rewriteModel.Generate failed at attempt %d: %v", i+1, err)
+			g.Log().Errorf(ctx, "ChatCompletion failed at attempt %d: %v", i+1, err)
 			continue
 		}
-		optimizedQuery := rewriteMessage.Content
+
+		if len(resp.Choices) == 0 {
+			g.Log().Errorf(ctx, "ChatCompletion returned no choices at attempt %d", i+1)
+			continue
+		}
+
+		optimizedQuery := resp.Choices[0].Message.Content
 		used += optimizedQuery + " "
 
 		g.Log().Infof(ctx, "Rewrite attempt %d: %s", i+1, optimizedQuery)
@@ -110,7 +132,7 @@ func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 			for _, doc := range rDocs {
 				if old, e := relatedDocs.LoadOrStore(doc.ID, doc); e {
 					// 同文档则保存较高分的结果（对于不同的optQuery，rerank可能会有不同的结果）
-					if doc.Score() > old.(*schema.Document).Score() {
+					if doc.Score > old.(*schema.Document).Score {
 						relatedDocs.Store(doc.ID, doc)
 					}
 				}
@@ -126,7 +148,7 @@ func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 		return true
 	})
 	sort.Slice(msg, func(i, j int) bool {
-		return msg[i].Score() > msg[j].Score()
+		return msg[i].Score > msg[j].Score
 	})
 	if len(msg) > *req.TopK {
 		msg = msg[:*req.TopK]

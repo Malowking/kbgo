@@ -24,7 +24,7 @@ type CollectionSchema struct {
 }
 
 // GetFields returns the Milvus field definitions for text collection
-func (CollectionSchema) GetFields() []*entity.Field {
+func (CollectionSchema) GetFields(dim string) []*entity.Field {
 	return []*entity.Field{
 		{
 			Name:        "id",
@@ -43,7 +43,7 @@ func (CollectionSchema) GetFields() []*entity.Field {
 		{
 			Name:        "vector",
 			DataType:    entity.FieldTypeFloatVector,
-			TypeParams:  map[string]string{"dim": "1024"},
+			TypeParams:  map[string]string{"dim": dim},
 			Description: "Document chunk embedding vector",
 		},
 		{
@@ -61,6 +61,6 @@ func (CollectionSchema) GetFields() []*entity.Field {
 }
 
 // GetStandardTextCollectionFields is a helper function to get standard text collection fields
-func GetStandardCollectionFields() []*entity.Field {
-	return CollectionSchema{}.GetFields()
+func GetStandardCollectionFields(dim string) []*entity.Field {
+	return CollectionSchema{}.GetFields(dim)
 }
