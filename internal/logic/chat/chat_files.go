@@ -274,7 +274,7 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 	return answerContent, nil
 }
 
-// GetAnswerStreamWithFiles 统一的多模态流式对话处理（使用新架构）
+// GetAnswerStreamWithFiles 统一的多模态流式对话处理
 func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile) (answer *schema.StreamReader[*schema.Message], err error) {
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)

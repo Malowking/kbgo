@@ -321,9 +321,7 @@ func (tc *MCPToolCaller) CallToolsWithLLM(ctx context.Context, modelID string, q
 				idx+1, len(response.ToolCalls), len(result.Content))
 
 			// 收集结果
-			if result != nil {
-				allDocuments = append(allDocuments, result)
-			}
+			allDocuments = append(allDocuments, result)
 			if mcpResult != nil {
 				allMCPResults = append(allMCPResults, mcpResult)
 			}
