@@ -1,0 +1,49 @@
+# Git 仓库（不需要打包进镜像）
+.git/
+.gitignore
+.gitattributes
+
+# 构建产物（本地编译的二进制）
+kbgo
+kbgo_test
+chat
+*.exe
+*.dll
+*.so
+*.dylib
+
+# 测试文件（减少镜像大小）
+*_test.go
+*.test
+
+# 日志和临时文件
+*.log
+logs/
+tmp/
+temp/
+
+# IDE 和编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS 文件
+.DS_Store
+Thumbs.db
+
+# 本地配置（包含敏感信息，不应打包）
+config/config.yaml
+.env
+.env.*
+
+# 文档（不需要在运行时）
+*.md
+TODO.txt
+LICENSE
+
+# Docker 相关（避免递归）
+Dockerfile
+.dockerignore
+docker-compose.yml
