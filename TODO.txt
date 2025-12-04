@@ -1,8 +1,6 @@
 待办事项
 
 openai接口传入图片有问题，可能是调用的模型平台的问题
-qwen模型适配器添加stop和function参数
-mcp调用逻辑，判断是否传入tool参数
 dockerfile
 
 1. text2sql实现，python独立服务

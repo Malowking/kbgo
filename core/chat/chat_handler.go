@@ -163,11 +163,11 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 		g.Log().Infof(ctx, "Using file-based chat with %d multimodal files, text content length: %d, %d images",
 			len(fileParseRes.multimodalFiles), len(fileParseRes.fileContent), len(fileParseRes.fileImages))
 		answer, err = chatI.GetAnswerWithParsedFiles(ctx, req.ModelID, req.ConvID, documents, req.Question,
-			fileParseRes.multimodalFiles, fileParseRes.fileContent, fileParseRes.fileImages)
+			fileParseRes.multimodalFiles, fileParseRes.fileContent, fileParseRes.fileImages, req.JsonFormat)
 	} else {
 		// 无文件：普通对话模式
 		g.Log().Infof(ctx, "Using standard chat without files")
-		answer, err = chatI.GetAnswer(ctx, req.ModelID, req.ConvID, documents, req.Question)
+		answer, err = chatI.GetAnswer(ctx, req.ModelID, req.ConvID, documents, req.Question, req.JsonFormat)
 	}
 
 	if err != nil {

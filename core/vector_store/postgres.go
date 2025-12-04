@@ -9,6 +9,7 @@ import (
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/internal/dao"
+	pgvectorModel "github.com/Malowking/kbgo/internal/model/pgvector"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/google/uuid"
@@ -129,53 +130,32 @@ func (p *PostgresStore) CreateDatabaseIfNotExists(ctx context.Context) error {
 	return nil
 }
 
-// CreateCollection 创建集合（表）
+// CreateCollection 创建集合（表）- 使用模型定义
 func (p *PostgresStore) CreateCollection(ctx context.Context, collectionName string) error {
 	// 清理表名，防止SQL注入
 	tableName := p.sanitizeTableName(collectionName)
-	fullTableName := fmt.Sprintf("%s.%s", p.schema, tableName)
 	dim := g.Cfg().MustGet(ctx, "milvus.dim", 1024).Int()
 
-	// 创建表的SQL
-	createTableSQL := fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s (
-			id VARCHAR(255) PRIMARY KEY,
-			text TEXT NOT NULL,
-			vector vector(%d) NOT NULL,
-			document_id VARCHAR(255) NOT NULL,
-			metadata JSONB DEFAULT '{}'::jsonb,
-			created_at TIMESTAMP DEFAULT NOW()
-		)
-	`, fullTableName, dim)
+	// 使用标准表结构模型
+	schema := pgvectorModel.TableSchema{}
 
+	// 1. 创建表
+	createTableSQL := schema.GenerateCreateTableSQL(p.schema, tableName, dim)
 	_, err := p.pool.Exec(ctx, createTableSQL)
 	if err != nil {
-		return fmt.Errorf("failed to create table %s: %w", fullTableName, err)
+		return fmt.Errorf("failed to create table %s.%s: %w", p.schema, tableName, err)
 	}
 
-	// 创建向量索引
-	createIndexSQL := fmt.Sprintf(`
-		CREATE INDEX IF NOT EXISTS %s_vector_idx
-		ON %s USING hnsw (vector vector_cosine_ops)
-	`, tableName, fullTableName)
-
-	_, err = p.pool.Exec(ctx, createIndexSQL)
-	if err != nil {
-		return fmt.Errorf("failed to create vector index on table %s: %w", fullTableName, err)
+	// 2. 创建索引
+	createIndexSQLs := schema.GenerateCreateIndexSQL(p.schema, tableName)
+	for _, indexSQL := range createIndexSQLs {
+		_, err = p.pool.Exec(ctx, indexSQL)
+		if err != nil {
+			return fmt.Errorf("failed to create index on table %s.%s: %w", p.schema, tableName, err)
+		}
 	}
 
-	// 创建document_id索引
-	createDocIndexSQL := fmt.Sprintf(`
-		CREATE INDEX IF NOT EXISTS %s_document_id_idx
-		ON %s (document_id)
-	`, tableName, fullTableName)
-
-	_, err = p.pool.Exec(ctx, createDocIndexSQL)
-	if err != nil {
-		return fmt.Errorf("failed to create document_id index on table %s: %w", fullTableName, err)
-	}
-
-	g.Log().Infof(ctx, "Table '%s' created with vector and document_id indexes", fullTableName)
+	g.Log().Infof(ctx, "Table '%s.%s' created with dimension %d and indexes", p.schema, tableName, dim)
 	return nil
 }
 

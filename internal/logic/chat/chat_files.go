@@ -22,10 +22,11 @@ import (
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/sashabaranov/go-openai"
 )
 
-// GetAnswerWithParsedFiles 使用已解析的文件内容进行多模态对话（新架构，用于并行处理）
-func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, multimodalFiles []*common.MultimodalFile, fileContent string, fileImages []string) (answer string, err error) {
+// GetAnswerWithParsedFiles 使用已解析的文件内容进行多模态对话
+func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, multimodalFiles []*common.MultimodalFile, fileContent string, fileImages []string, jsonFormat bool) (answer string, err error) {
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
@@ -76,6 +77,13 @@ func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, con
 
 	// 解析推理参数
 	params := parseModelParams(mc.Extra)
+
+	// 如果需要JSON格式化，设置ResponseFormat
+	if jsonFormat {
+		params.ResponseFormat = &openai.ChatCompletionResponseFormat{
+			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+		}
+	}
 
 	// 构建请求参数
 	chatParams := coreModel.ChatCompletionParams{
@@ -275,7 +283,7 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 }
 
 // GetAnswerStreamWithFiles 统一的多模态流式对话处理
-func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile) (answer *schema.StreamReader[*schema.Message], err error) {
+func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile, jsonFormat bool) (answer *schema.StreamReader[*schema.Message], err error) {
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
@@ -360,6 +368,13 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 
 	// 解析推理参数
 	params := parseModelParams(mc.Extra)
+
+	// 如果需要JSON格式化，设置ResponseFormat
+	if jsonFormat {
+		params.ResponseFormat = &openai.ChatCompletionResponseFormat{
+			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+		}
+	}
 
 	// 构建请求参数
 	chatParams := coreModel.ChatCompletionParams{

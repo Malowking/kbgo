@@ -34,6 +34,7 @@ type ChatCompletionRequest struct {
 	FrequencyPenalty    float32
 	PresencePenalty     float32
 	N                   int
+	Stop                []string
 	Tools               []openai.Tool
 	ToolChoice          any
 	ResponseFormat      *openai.ChatCompletionResponseFormat
@@ -51,6 +52,7 @@ func (c *OpenAIClient) ChatCompletion(ctx context.Context, req ChatCompletionReq
 		FrequencyPenalty:    req.FrequencyPenalty,
 		PresencePenalty:     req.PresencePenalty,
 		N:                   req.N,
+		Stop:                req.Stop,
 		Tools:               req.Tools,
 		ToolChoice:          req.ToolChoice,
 		ResponseFormat:      req.ResponseFormat,
@@ -75,6 +77,7 @@ func (c *OpenAIClient) ChatCompletionStream(ctx context.Context, req ChatComplet
 		FrequencyPenalty:    req.FrequencyPenalty,
 		PresencePenalty:     req.PresencePenalty,
 		N:                   req.N,
+		Stop:                req.Stop,
 		Tools:               req.Tools,
 		ToolChoice:          req.ToolChoice,
 		ResponseFormat:      req.ResponseFormat,

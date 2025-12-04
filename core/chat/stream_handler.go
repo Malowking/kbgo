@@ -145,9 +145,9 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 	var err error
 	if len(multimodalFiles) > 0 {
 		g.Log().Infof(ctx, "Using multimodal stream chat with %d files", len(multimodalFiles))
-		streamReader, err = chatI.GetAnswerStreamWithFiles(ctx, req.ModelID, req.ConvID, documents, req.Question, multimodalFiles)
+		streamReader, err = chatI.GetAnswerStreamWithFiles(ctx, req.ModelID, req.ConvID, documents, req.Question, multimodalFiles, req.JsonFormat)
 	} else {
-		streamReader, err = chatI.GetAnswerStream(ctx, req.ModelID, req.ConvID, documents, req.Question)
+		streamReader, err = chatI.GetAnswerStream(ctx, req.ModelID, req.ConvID, documents, req.Question, req.JsonFormat)
 	}
 	if err != nil {
 		g.Log().Error(ctx, err)

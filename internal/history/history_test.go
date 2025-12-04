@@ -3,11 +3,17 @@ package history
 import (
 	"testing"
 
+	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestManager_SaveMessageWithMetadata(t *testing.T) {
+	// Skip if database is not initialized
+	if dao.GetDB() == nil {
+		t.Skip("Database not initialized, skipping test")
+	}
+
 	// 创建历史记录管理器（不实际连接数据库）
 	manager := NewManager()
 
@@ -49,6 +55,11 @@ func TestManager_SaveMessageWithMetadata(t *testing.T) {
 }
 
 func TestManager_SaveMessage(t *testing.T) {
+	// Skip if database is not initialized
+	if dao.GetDB() == nil {
+		t.Skip("Database not initialized, skipping test")
+	}
+
 	// 创建历史记录管理器
 	manager := NewManager()
 
