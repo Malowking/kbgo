@@ -27,7 +27,7 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 	// 获取检索配置
 	cfg := retriever.GetRetrieverConfig()
 
-	// 使用channel并行处理检索和MCP
+	// 1. 执行知识检索
 	type retrievalResult struct {
 		documents         []*schema.Document
 		retrieverMetadata map[string]interface{}
@@ -41,7 +41,6 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 	}
 
 	retrievalChan := make(chan retrievalResult, 1)
-	mcpChan := make(chan mcpResult, 1)
 
 	// 并行执行检索
 	go func() {
@@ -69,7 +68,7 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 				RetrieveMode:     retrieveMode,
 			})
 			if err != nil {
-				g.Log().Error(ctx, err)
+				g.Log().Errorf(ctx, "知识检索失败: %v", err)
 				result.err = err
 			} else {
 				result.documents = retrieverRes.Document
@@ -80,47 +79,48 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 					"score":          req.Score,
 					"document_count": len(retrieverRes.Document),
 				}
+				g.Log().Infof(ctx, "知识检索完成，返回 %d 个文档", len(retrieverRes.Document))
 			}
 		}
 		retrievalChan <- result
 	}()
 
-	// 并行执行MCP
-	go func() {
-		var result mcpResult
-		if req.UseMCP {
-			mcpHandler := NewMCPHandler()
-			_, mcpRes, err := mcpHandler.CallMCPToolsWithLLM(ctx, req)
-			if err != nil {
-				g.Log().Errorf(ctx, "MCP智能工具调用失败: %v", err)
-				result.err = err
-			} else {
-				result.mcpResults = mcpRes
-				result.mcpMetadata = make([]map[string]interface{}, len(mcpRes))
-				for i, res := range mcpRes {
-					result.mcpMetadata[i] = map[string]interface{}{
-						"type":         "mcp",
-						"service_name": res.ServiceName,
-						"tool_name":    res.ToolName,
-						"content":      res.Content,
-					}
-				}
-			}
-		}
-		mcpChan <- result
-	}()
-
-	// 等待并行任务完成
+	// 等待检索任务完成
 	retrievalRes := <-retrievalChan
-	mcpRes := <-mcpChan
 
 	if retrievalRes.err != nil {
 		return retrievalRes.err
 	}
 
-	// 合并文档
+	// 获取检索文档
 	var documents []*schema.Document
 	documents = retrievalRes.documents
+
+	// 2. 执行MCP工具调用（检索完成后，MCP需要检索结果）
+	// MCP调用是同步的，会等待所有工具调用完成后才返回
+	var mcpRes mcpResult
+	if req.UseMCP {
+		g.Log().Infof(ctx, "开始执行MCP工具调用...")
+		mcpHandler := NewMCPHandler()
+		// 传入检索到的文档，流式处理中没有文件解析内容
+		_, mcpResults, err := mcpHandler.CallMCPToolsWithLLM(ctx, req, documents, "")
+		if err != nil {
+			g.Log().Errorf(ctx, "MCP智能工具调用失败: %v", err)
+			mcpRes.err = err
+		} else {
+			g.Log().Infof(ctx, "MCP工具调用完成，返回 %d 个结果", len(mcpResults))
+			mcpRes.mcpResults = mcpResults
+			mcpRes.mcpMetadata = make([]map[string]interface{}, len(mcpResults))
+			for i, res := range mcpResults {
+				mcpRes.mcpMetadata[i] = map[string]interface{}{
+					"type":         "mcp",
+					"service_name": res.ServiceName,
+					"tool_name":    res.ToolName,
+					"content":      res.Content,
+				}
+			}
+		}
+	}
 
 	// 获取Chat实例
 	chatI := chat.GetChat()
@@ -145,9 +145,9 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 	var err error
 	if len(multimodalFiles) > 0 {
 		g.Log().Infof(ctx, "Using multimodal stream chat with %d files", len(multimodalFiles))
-		streamReader, err = chatI.GetAnswerStreamWithFiles(ctx, req.ModelID, req.ConvID, documents, req.Question, multimodalFiles)
+		streamReader, err = chatI.GetAnswerStreamWithFiles(ctx, req.ModelID, req.ConvID, documents, req.Question, multimodalFiles, req.JsonFormat)
 	} else {
-		streamReader, err = chatI.GetAnswerStream(ctx, req.ModelID, req.ConvID, documents, req.Question)
+		streamReader, err = chatI.GetAnswerStream(ctx, req.ModelID, req.ConvID, documents, req.Question, req.JsonFormat)
 	}
 	if err != nil {
 		g.Log().Error(ctx, err)

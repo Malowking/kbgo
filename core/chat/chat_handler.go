@@ -163,11 +163,11 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 		g.Log().Infof(ctx, "Using file-based chat with %d multimodal files, text content length: %d, %d images",
 			len(fileParseRes.multimodalFiles), len(fileParseRes.fileContent), len(fileParseRes.fileImages))
 		answer, err = chatI.GetAnswerWithParsedFiles(ctx, req.ModelID, req.ConvID, documents, req.Question,
-			fileParseRes.multimodalFiles, fileParseRes.fileContent, fileParseRes.fileImages)
+			fileParseRes.multimodalFiles, fileParseRes.fileContent, fileParseRes.fileImages, req.JsonFormat)
 	} else {
 		// 无文件：普通对话模式
 		g.Log().Infof(ctx, "Using standard chat without files")
-		answer, err = chatI.GetAnswer(ctx, req.ModelID, req.ConvID, documents, req.Question)
+		answer, err = chatI.GetAnswer(ctx, req.ModelID, req.ConvID, documents, req.Question, req.JsonFormat)
 	}
 
 	if err != nil {
@@ -180,7 +180,29 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 	if req.UseMCP {
 		g.Log().Infof(ctx, "Checking if MCP tools are needed...")
 		mcpHandler := NewMCPHandler()
-		mcpDocs, mcpResults, mcpErr := mcpHandler.CallMCPToolsWithLLM(ctx, req)
+
+		// 5.1 检查是否需要进行工具选择
+		// 如果没有传入工具列表，或者工具数量超过20个，则使用LLM进行工具选择
+		if req.MCPServiceTools == nil || len(req.MCPServiceTools) == 0 || h.countTotalTools(req.MCPServiceTools) > 20 {
+			g.Log().Infof(ctx, "工具列表为空或超过20个，使用LLM进行工具选择")
+
+			// 构建用于工具选择的完整问题（包含检索内容和文件内容）
+			toolSelectionQuestion := h.buildToolSelectionQuestion(ctx, req.Question, documents, fileParseRes.fileContent)
+
+			// 使用LLM选择工具
+			selectedTools, selectErr := h.selectToolsWithLLM(ctx, toolSelectionQuestion)
+			if selectErr != nil {
+				g.Log().Errorf(ctx, "工具选择失败: %v", selectErr)
+				// 工具选择失败，使用原有的工具列表（如果为空则调用所有工具）
+			} else {
+				g.Log().Infof(ctx, "LLM选择了 %d 个服务的工具", len(selectedTools))
+				// 更新请求中的工具列表
+				req.MCPServiceTools = selectedTools
+			}
+		}
+
+		// 5.2 执行MCP工具调用，传入知识检索和文件解析的结果
+		mcpDocs, mcpResults, mcpErr := mcpHandler.CallMCPToolsWithLLM(ctx, req, documents, fileParseRes.fileContent)
 		if mcpErr != nil {
 			g.Log().Errorf(ctx, "MCP tool call failed: %v", mcpErr)
 		} else if len(mcpResults) > 0 {

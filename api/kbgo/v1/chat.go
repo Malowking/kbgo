@@ -22,6 +22,7 @@ type ChatReq struct {
 	UseMCP           bool                    `json:"use_mcp"`           // 是否使用MCP
 	MCPServiceTools  map[string][]string     `json:"mcp_service_tools"` // 按服务指定允许调用的MCP工具列表
 	Stream           bool                    `json:"stream"`            // 是否流式返回
+	JsonFormat       bool                    `json:"jsonformat"`        // 是否需要JSON格式化输出
 	Files            []*multipart.FileHeader `json:"files" type:"file"` // 上传的多模态文件（图片、音频、视频）
 }
 

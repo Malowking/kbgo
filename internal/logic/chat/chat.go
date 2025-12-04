@@ -17,6 +17,7 @@ import (
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gctx"
+	"github.com/sashabaranov/go-openai"
 )
 
 var chatInstance *Chat
@@ -83,8 +84,8 @@ func parseModelParams(extra map[string]any) *ModelParams {
 	return &params
 }
 
-// GetAnswer 使用指定模型生成答案（非流式，使用新架构）
-func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string) (answer string, err error) {
+// GetAnswer 使用指定模型生成答案（非流式）
+func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, jsonFormat bool) (answer string, err error) {
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
@@ -136,6 +137,13 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 	// 解析推理参数
 	params := parseModelParams(mc.Extra)
 
+	// 如果需要JSON格式化，设置ResponseFormat
+	if jsonFormat {
+		params.ResponseFormat = &openai.ChatCompletionResponseFormat{
+			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+		}
+	}
+
 	// 构建请求参数
 	chatParams := coreModel.ChatCompletionParams{
 		ModelName:           mc.Name,
@@ -146,6 +154,7 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 		FrequencyPenalty:    getFloat32OrDefault(params.FrequencyPenalty, 0.0),
 		PresencePenalty:     getFloat32OrDefault(params.PresencePenalty, 0.0),
 		N:                   getIntOrDefault(params.N, 1),
+		Stop:                params.Stop,
 		Tools:               params.Tools,
 		ToolChoice:          params.ToolChoice,
 		ResponseFormat:      params.ResponseFormat,
@@ -191,8 +200,8 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 	return answerContent, nil
 }
 
-// GetAnswerStream 使用指定模型流式生成答案（使用新架构）
-func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string) (answer *schema.StreamReader[*schema.Message], err error) {
+// GetAnswerStream 使用指定模型流式生成答案
+func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, jsonFormat bool) (answer *schema.StreamReader[*schema.Message], err error) {
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
@@ -244,6 +253,13 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 	// 解析推理参数
 	params := parseModelParams(mc.Extra)
 
+	// 如果需要JSON格式化，设置ResponseFormat
+	if jsonFormat {
+		params.ResponseFormat = &openai.ChatCompletionResponseFormat{
+			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+		}
+	}
+
 	// 构建请求参数
 	chatParams := coreModel.ChatCompletionParams{
 		ModelName:           mc.Name,
@@ -254,6 +270,7 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 		FrequencyPenalty:    getFloat32OrDefault(params.FrequencyPenalty, 0.0),
 		PresencePenalty:     getFloat32OrDefault(params.PresencePenalty, 0.0),
 		N:                   getIntOrDefault(params.N, 1),
+		Stop:                params.Stop,
 		Tools:               params.Tools,
 		ToolChoice:          params.ToolChoice,
 		ResponseFormat:      params.ResponseFormat,
@@ -624,6 +641,7 @@ func (x *Chat) GenerateWithTools(ctx context.Context, modelID string, messages [
 		FrequencyPenalty:    getFloat32OrDefault(params.FrequencyPenalty, 0.0),
 		PresencePenalty:     getFloat32OrDefault(params.PresencePenalty, 0.0),
 		N:                   getIntOrDefault(params.N, 1),
+		Stop:                params.Stop,
 		ToolChoice:          "auto", // 让模型自动决定是否调用工具
 		ResponseFormat:      params.ResponseFormat,
 	}

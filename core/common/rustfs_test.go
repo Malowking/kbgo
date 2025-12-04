@@ -6,16 +6,38 @@ import (
 	"os"
 	"testing"
 
+	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/gctx"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 func TestRustFSUploadDownload(t *testing.T) {
-	// 配置
-	endpoint := "www.sgxlllm.cn:9000"
-	accessKeyID := "gOlxd2a38wUyAeI1rtKD"
-	secretAccessKey := "7CbIT6yV9mJReQYzkZhdE83Sq2LonGpD051PAa4X"
-	useSSL := false
+	// Skip if RUSTFS_TEST environment variable is not set
+	if os.Getenv("RUSTFS_TEST") != "1" {
+		t.Skip("Skipping RustFS test. Set RUSTFS_TEST=1 to enable.")
+	}
+
+	// Load configuration from config file
+	ctx := gctx.New()
+
+	// Check if rustfs storage is configured
+	storageType := g.Cfg().MustGet(ctx, "storage.type", "local").String()
+	if storageType != "rustfs" {
+		t.Skip("Skipping RustFS test. Storage type is not set to 'rustfs' in config.")
+	}
+
+	// Get RustFS configuration from config file
+	endpoint := g.Cfg().MustGet(ctx, "rustfs.endpoint", "").String()
+	accessKeyID := g.Cfg().MustGet(ctx, "rustfs.accessKey", "").String()
+	secretAccessKey := g.Cfg().MustGet(ctx, "rustfs.secretKey", "").String()
+	bucketName := g.Cfg().MustGet(ctx, "rustfs.bucketName", "kbfiles").String()
+	useSSL := g.Cfg().MustGet(ctx, "rustfs.ssl", false).Bool()
+
+	// Validate required configuration
+	if endpoint == "" || accessKeyID == "" || secretAccessKey == "" {
+		t.Fatal("Missing required RustFS configuration in config file")
+	}
 
 	minioClient, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
@@ -25,8 +47,7 @@ func TestRustFSUploadDownload(t *testing.T) {
 		t.Fatalf("failed to create client: %v", err)
 	}
 
-	ctx := context.Background()
-	bucketName := "kbfiles"
+	ctx = context.Background()
 	//region := ""
 
 	//// 创建 bucket

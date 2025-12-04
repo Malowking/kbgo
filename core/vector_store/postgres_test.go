@@ -233,7 +233,7 @@ func TestPostgresVectorOperations(t *testing.T) {
 		ctx = context.WithValue(ctx, common.DocumentId, documentID)
 		ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
 
-		ids, err := store.InsertVectors(ctx, testTableName, chunks, vectors)
+		ids, err := store.InsertVectors(ctx, testTableName, chunks, convertToFloat32(vectors))
 		assert.NoError(t, err)
 		assert.Equal(t, 2, len(ids))
 		assert.Equal(t, chunks[0].ID, ids[0])
@@ -249,7 +249,7 @@ func TestPostgresVectorOperations(t *testing.T) {
 		ctx = context.WithValue(ctx, common.DocumentId, documentID)
 		ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
 
-		ids, err := store.InsertVectors(ctx, testTableName, chunks, vectors)
+		ids, err := store.InsertVectors(ctx, testTableName, chunks, convertToFloat32(vectors))
 		assert.Error(t, err)
 		assert.Nil(t, ids)
 		assert.Contains(t, err.Error(), "length mismatch")
@@ -264,7 +264,7 @@ func TestPostgresVectorOperations(t *testing.T) {
 		// 不设置 DocumentId
 		ctxWithoutDoc := context.WithValue(context.Background(), common.KnowledgeId, knowledgeID)
 
-		ids, err := store.InsertVectors(ctxWithoutDoc, testTableName, chunks, vectors)
+		ids, err := store.InsertVectors(ctxWithoutDoc, testTableName, chunks, convertToFloat32(vectors))
 		assert.Error(t, err)
 		assert.Nil(t, ids)
 		assert.Contains(t, err.Error(), "document_id not found")
@@ -445,7 +445,7 @@ func TestPostgresTransactionRollback(t *testing.T) {
 		ctx = context.WithValue(ctx, common.DocumentId, documentID)
 		ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
 
-		ids, err := store.InsertVectors(ctx, testTableName, chunks, vectors)
+		ids, err := store.InsertVectors(ctx, testTableName, chunks, convertToFloat32(vectors))
 		assert.Error(t, err)
 		assert.Nil(t, ids)
 
@@ -505,7 +505,7 @@ func BenchmarkPostgresInsertVectors(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		chunks[0].ID = uuid.New().String()
-		_, err := store.InsertVectors(ctx, testTableName, chunks, vectors)
+		_, err := store.InsertVectors(ctx, testTableName, chunks, convertToFloat32(vectors))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -560,7 +560,7 @@ func BenchmarkPostgresVectorSearch(b *testing.B) {
 		for j := range vectors[0] {
 			vectors[0][j] = float64(i*j) * 0.01
 		}
-		store.InsertVectors(ctx, testTableName, chunks, vectors)
+		store.InsertVectors(ctx, testTableName, chunks, convertToFloat32(vectors))
 	}
 
 	// 准备查询向量

@@ -35,6 +35,7 @@ type ChatCompletionParams struct {
 	FrequencyPenalty    float32
 	PresencePenalty     float32
 	N                   int
+	Stop                []string
 	Tools               []openai.Tool
 	ToolChoice          any
 	ResponseFormat      *openai.ChatCompletionResponseFormat
@@ -58,6 +59,7 @@ func (s *ModelService) ChatCompletion(ctx context.Context, params ChatCompletion
 		FrequencyPenalty:    params.FrequencyPenalty,
 		PresencePenalty:     params.PresencePenalty,
 		N:                   params.N,
+		Stop:                params.Stop,
 		Tools:               params.Tools,
 		ToolChoice:          params.ToolChoice,
 		ResponseFormat:      params.ResponseFormat,
@@ -84,6 +86,7 @@ func (s *ModelService) ChatCompletionStream(ctx context.Context, params ChatComp
 		FrequencyPenalty:    params.FrequencyPenalty,
 		PresencePenalty:     params.PresencePenalty,
 		N:                   params.N,
+		Stop:                params.Stop,
 		Tools:               params.Tools,
 		ToolChoice:          params.ToolChoice,
 		ResponseFormat:      params.ResponseFormat,

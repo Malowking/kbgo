@@ -12,6 +12,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// convertToFloat32 converts [][]float64 to [][]float32
+func convertToFloat32(vectors [][]float64) [][]float32 {
+	result := make([][]float32, len(vectors))
+	for i, vec := range vectors {
+		result[i] = make([]float32, len(vec))
+		for j, val := range vec {
+			result[i][j] = float32(val)
+		}
+	}
+	return result
+}
+
 // TestMilvusStoreCreation 测试 Milvus 存储实例创建
 func TestMilvusStoreCreation(t *testing.T) {
 	t.Run("创建成功", func(t *testing.T) {
@@ -190,7 +202,7 @@ func TestMilvusVectorOperations(t *testing.T) {
 		ctx = context.WithValue(ctx, common.DocumentId, documentID)
 		ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
 
-		ids, err := store.InsertVectors(ctx, testCollectionName, chunks, vectors)
+		ids, err := store.InsertVectors(ctx, testCollectionName, chunks, convertToFloat32(vectors))
 		assert.NoError(t, err)
 		assert.Equal(t, 2, len(ids))
 		assert.Equal(t, chunks[0].ID, ids[0])
@@ -206,7 +218,7 @@ func TestMilvusVectorOperations(t *testing.T) {
 		ctx = context.WithValue(ctx, common.DocumentId, documentID)
 		ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
 
-		ids, err := store.InsertVectors(ctx, testCollectionName, chunks, vectors)
+		ids, err := store.InsertVectors(ctx, testCollectionName, chunks, convertToFloat32(vectors))
 		assert.Error(t, err)
 		assert.Nil(t, ids)
 		assert.Contains(t, err.Error(), "length mismatch")
@@ -367,7 +379,7 @@ func BenchmarkMilvusInsertVectors(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		chunks[0].ID = uuid.New().String()
-		_, err := store.InsertVectors(ctx, testCollectionName, chunks, vectors)
+		_, err := store.InsertVectors(ctx, testCollectionName, chunks, convertToFloat32(vectors))
 		if err != nil {
 			b.Fatal(err)
 		}

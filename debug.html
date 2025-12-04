@@ -1079,6 +1079,17 @@
                     <div class="helper-text">启用后将以流式方式返回对话内容</div>
                 </div>
 
+                <div class="form-group">
+                    <label class="form-label">JSON格式化</label>
+                    <div>
+                        <label>
+                            <input type="checkbox" id="chat_jsonformat">
+                            启用JSON格式化
+                        </label>
+                    </div>
+                    <div class="helper-text">启用后模型将以JSON格式返回响应</div>
+                </div>
+
                 <button class="btn btn-primary" onclick="chat()">发送消息</button>
                 <button class="btn btn-secondary" onclick="clearForm('chat')">清空</button>
 
@@ -2313,6 +2324,7 @@
             const mcpServiceToolsStr = document.getElementById('chat_mcp_service_tools').value.trim();
             const fileInput = document.getElementById('chat_file');
             const useStream = document.getElementById('chat_stream').checked;
+            const jsonFormat = document.getElementById('chat_jsonformat').checked;
 
             if (!convId || !question) {
                 alert('请填写会话ID和问题');
@@ -2328,7 +2340,8 @@
                 conv_id: convId,
                 model_id: modelId,
                 question: question,
-                stream: useStream
+                stream: useStream,
+                jsonformat: jsonFormat
             };
 
             // 添加可选参数
@@ -2400,6 +2413,7 @@
                     formData.append('model_id', body.model_id);
                     formData.append('question', body.question);
                     formData.append('stream', body.stream);
+                    formData.append('jsonformat', body.jsonformat);
 
                     if (body.knowledge_id) formData.append('knowledge_id', body.knowledge_id);
                     formData.append('enable_retriever', body.enable_retriever);
