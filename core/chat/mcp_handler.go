@@ -10,7 +10,6 @@ import (
 	"github.com/Malowking/kbgo/internal/mcp"
 	"github.com/Malowking/kbgo/internal/mcp/client"
 	"github.com/Malowking/kbgo/pkg/schema"
-	"github.com/gogf/gf/v2/frame/g"
 )
 
 // MCPHandler MCP tool call handler
@@ -25,8 +24,6 @@ func NewMCPHandler() *MCPHandler {
 // documents: 知识检索的结果
 // fileContent: 文件解析的文本内容
 func (h *MCPHandler) CallMCPToolsWithLLM(ctx context.Context, req *v1.ChatReq, documents []*schema.Document, fileContent string) ([]*schema.Document, []*v1.MCPResult, error) {
-	g.Log().Debugf(ctx, "Starting LLM intelligent tool call, question: %s", req.Question)
-
 	// 创建 MCP 工具调用器
 	toolCaller, err := mcp.NewMCPToolCaller(ctx)
 	if err != nil {
@@ -43,8 +40,6 @@ func (h *MCPHandler) CallMCPToolsWithLLM(ctx context.Context, req *v1.ChatReq, d
 	if err != nil {
 		return nil, nil, fmt.Errorf("LLM intelligent tool call failed: %w", err)
 	}
-
-	g.Log().Debugf(ctx, "LLM intelligent tool call completed, returned document count: %d, MCP result count: %d", len(mcpDocuments), len(mcpResults))
 
 	return mcpDocuments, mcpResults, nil
 }
