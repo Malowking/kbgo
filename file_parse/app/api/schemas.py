@@ -83,7 +83,6 @@ class ChunkData(BaseModel):
 
     chunk_index: int = Field(..., description="文本块索引")
     text: str = Field(..., description="文本内容")
-    image_urls: List[str] = Field(default=[], description="该块包含的图片URL列表")
 
 
 class ParseResponse(BaseModel):
@@ -91,7 +90,7 @@ class ParseResponse(BaseModel):
 
     success: bool = Field(True, description="是否成功")
     result: List[ChunkData] = Field(..., description="解析结果列表")
-    total_image_urls: List[str] = Field(default=[], description="所有图片URL列表")
+    image_urls: List[str] = Field(default=[], description="所有图片URL列表")
     total_chunks: int = Field(..., description="总文本块数量")
     total_images: int = Field(..., description="总图片数量")
     file_info: dict = Field(default={}, description="文件信息")

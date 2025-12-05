@@ -61,6 +61,9 @@ class FileParser:
         if ext not in settings.SUPPORTED_FORMATS:
             logger.warning(f"Unsupported file format: {ext}")
 
+        # 用于追踪需要清理的临时文件
+        temp_files_to_cleanup = []
+
         try:
             logger.info(f"Parsing file: {file_path}")
 
@@ -73,6 +76,9 @@ class FileParser:
             elif ext == '.pdf':
                 # PDF需要先处理：提取图片、替换为路径、生成修改后的PDF
                 image_urls, modified_file_path = self._extract_and_replace_pdf_images(file_path, format_url)
+                # 如果生成了修改后的PDF，添加到清理列表
+                if modified_file_path != file_path:
+                    temp_files_to_cleanup.append(modified_file_path)
             elif ext == '.pptx':
                 image_urls = self._extract_images_from_pptx(file_path, format_url)
 
@@ -94,8 +100,18 @@ class FileParser:
             logger.error(f"Error parsing file {file_path}: {str(e)}")
             raise RuntimeError(f"Error converting file: {str(e)}") from e
 
+        finally:
+            # 清理临时文件
+            for temp_file in temp_files_to_cleanup:
+                try:
+                    if os.path.exists(temp_file):
+                        os.unlink(temp_file)
+                        logger.info(f"Cleaned up temporary file: {temp_file}")
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup temporary file {temp_file}: {str(e)}")
+
     def _extract_images_from_docx(self, file_path: str, format_url: bool = True) -> List[str]:
-        """从DOCX文件中提取图片"""
+        """从DOCX文件中提取图片并统一转换为JPEG格式"""
         image_urls = []
         try:
             with ZipFile(file_path, 'r') as docx:
@@ -106,26 +122,43 @@ class FileParser:
                     # 读取图片数据
                     img_data = docx.read(img_file)
 
-                    # 生成唯一文件名
-                    ext = Path(img_file).suffix or '.png'
-                    file_name = f"{uuid.uuid4().hex}{ext}"
+                    # 生成唯一文件名，统一使用.jpeg扩展名
+                    file_name = f"{uuid.uuid4().hex}.jpeg"
                     save_path = self.image_dir / file_name
 
-                    # 保存图片（可选：压缩）
-                    if ext.lower() in ['.png', '.jpg', '.jpeg', '.webp']:
+                    try:
+                        # 尝试用PIL打开图片（支持多种格式包括EMF、WMF等）
                         img = Image.open(BytesIO(img_data))
+
+                        # 如果是RGBA模式，转换为RGB（JPEG不支持透明度）
+                        if img.mode in ('RGBA', 'LA', 'P'):
+                            # 创建白色背景
+                            rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+                            if img.mode == 'P':
+                                img = img.convert('RGBA')
+                            rgb_img.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+                            img = rgb_img
+                        elif img.mode != 'RGB':
+                            img = img.convert('RGB')
+
+                        # 缩放并保存为JPEG
                         img.thumbnail(settings.MAX_IMAGE_SIZE, Image.Resampling.LANCZOS)
-                        img.save(save_path)
-                    else:
+                        img.save(save_path, 'JPEG', quality=85, optimize=True)
+
+                    except Exception as e:
+                        # 如果PIL无法处理，尝试直接保存原始数据
+                        logger.warning(f"Failed to convert image {img_file} to JPEG: {e}, saving as original")
                         save_path.write_bytes(img_data)
 
                     # 根据 format_url 参数决定返回格式
                     if format_url:
+                        # 返回完整URL：http://127.0.0.1:8002/images/xxx.jpeg
                         url = f"{settings.base_url}/images/{file_name}"
                     else:
-                        url = str(save_path.absolute())
+                        # 返回相对路径：image/xxx.jpeg（用于Go服务拼接）
+                        url = f"image/{file_name}"
                     image_urls.append(url)
-                    logger.info(f"Extracted image from DOCX: {file_name}")
+                    logger.info(f"Extracted and converted image from DOCX: {file_name}")
 
         except Exception as e:
             logger.error(f"Error extracting images from DOCX: {e}")
@@ -134,7 +167,7 @@ class FileParser:
 
     def _extract_and_replace_pdf_images(self, file_path: str, format_url: bool = True) -> Tuple[List[str], str]:
         """
-        从PDF中提取图片，并在原位置用路径文本替换图片，生成修改后的PDF
+        从PDF中提取图片并统一转换为JPEG格式，在原位置用路径文本替换图片，生成修改后的PDF
 
         Args:
             file_path: 原始PDF文件路径
@@ -161,25 +194,42 @@ class FileParser:
                     xref = img[0]
                     base_image = doc.extract_image(xref)
                     img_data = base_image["image"]
-                    img_ext = base_image["ext"]
 
-                    # 生成唯一文件名
-                    file_name = f"{uuid.uuid4().hex}.{img_ext}"
+                    # 生成唯一文件名，统一使用.jpeg扩展名
+                    file_name = f"{uuid.uuid4().hex}.jpeg"
                     save_path = self.image_dir / file_name
 
-                    # 保存图片
-                    if img_ext in ['png', 'jpg', 'jpeg', 'webp']:
+                    try:
+                        # 尝试用PIL打开图片并转换为JPEG
                         img_obj = Image.open(BytesIO(img_data))
+
+                        # 如果是RGBA模式，转换为RGB（JPEG不支持透明度）
+                        if img_obj.mode in ('RGBA', 'LA', 'P'):
+                            # 创建白色背景
+                            rgb_img = Image.new('RGB', img_obj.size, (255, 255, 255))
+                            if img_obj.mode == 'P':
+                                img_obj = img_obj.convert('RGBA')
+                            rgb_img.paste(img_obj, mask=img_obj.split()[-1] if img_obj.mode in ('RGBA', 'LA') else None)
+                            img_obj = rgb_img
+                        elif img_obj.mode != 'RGB':
+                            img_obj = img_obj.convert('RGB')
+
+                        # 缩放并保存为JPEG
                         img_obj.thumbnail(settings.MAX_IMAGE_SIZE, Image.Resampling.LANCZOS)
-                        img_obj.save(save_path)
-                    else:
+                        img_obj.save(save_path, 'JPEG', quality=85, optimize=True)
+
+                    except Exception as e:
+                        # 如果PIL无法处理，尝试直接保存原始数据
+                        logger.warning(f"Failed to convert PDF image to JPEG: {e}, saving as original")
                         save_path.write_bytes(img_data)
 
                     # 根据 format_url 参数决定返回格式
                     if format_url:
+                        # 返回完整URL：http://127.0.0.1:8002/images/xxx.jpeg
                         url = f"{settings.base_url}/images/{file_name}"
                     else:
-                        url = str(save_path.absolute())
+                        # 返回相对路径：image/xxx.jpeg（用于Go服务拼接）
+                        url = f"image/{file_name}"
                     image_urls.append(url)
 
                     # 获取图片在页面上的位置
@@ -202,7 +252,7 @@ class FileParser:
 
                     # 记录要删除的图片
                     images_to_delete[page_num].append(xref)
-                    logger.info(f"Extracted and marked image from PDF: {file_name}")
+                    logger.info(f"Extracted and converted image from PDF: {file_name}")
 
             # 第二步：删除所有图片对象
             for page_num, xrefs in images_to_delete.items():
@@ -225,7 +275,7 @@ class FileParser:
             return [], file_path
 
     def _extract_images_from_pptx(self, file_path: str, format_url: bool = True) -> List[str]:
-        """从PPTX文件中提取图片"""
+        """从PPTX文件中提取图片并统一转换为JPEG格式"""
         image_urls = []
         try:
             with ZipFile(file_path, 'r') as pptx:
@@ -236,26 +286,43 @@ class FileParser:
                     # 读取图片数据
                     img_data = pptx.read(img_file)
 
-                    # 生成唯一文件名
-                    ext = Path(img_file).suffix or '.png'
-                    file_name = f"{uuid.uuid4().hex}{ext}"
+                    # 生成唯一文件名，统一使用.jpeg扩展名
+                    file_name = f"{uuid.uuid4().hex}.jpeg"
                     save_path = self.image_dir / file_name
 
-                    # 保存图片
-                    if ext.lower() in ['.png', '.jpg', '.jpeg', '.webp']:
+                    try:
+                        # 尝试用PIL打开图片并转换为JPEG
                         img = Image.open(BytesIO(img_data))
+
+                        # 如果是RGBA模式，转换为RGB（JPEG不支持透明度）
+                        if img.mode in ('RGBA', 'LA', 'P'):
+                            # 创建白色背景
+                            rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+                            if img.mode == 'P':
+                                img = img.convert('RGBA')
+                            rgb_img.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+                            img = rgb_img
+                        elif img.mode != 'RGB':
+                            img = img.convert('RGB')
+
+                        # 缩放并保存为JPEG
                         img.thumbnail(settings.MAX_IMAGE_SIZE, Image.Resampling.LANCZOS)
-                        img.save(save_path)
-                    else:
+                        img.save(save_path, 'JPEG', quality=85, optimize=True)
+
+                    except Exception as e:
+                        # 如果PIL无法处理，尝试直接保存原始数据
+                        logger.warning(f"Failed to convert PPTX image {img_file} to JPEG: {e}, saving as original")
                         save_path.write_bytes(img_data)
 
                     # 根据 format_url 参数决定返回格式
                     if format_url:
+                        # 返回完整URL：http://127.0.0.1:8002/images/xxx.jpeg
                         url = f"{settings.base_url}/images/{file_name}"
                     else:
-                        url = str(save_path.absolute())
+                        # 返回相对路径：image/xxx.jpeg（用于Go服务拼接）
+                        url = f"image/{file_name}"
                     image_urls.append(url)
-                    logger.info(f"Extracted image from PPTX: {file_name}")
+                    logger.info(f"Extracted and converted image from PPTX: {file_name}")
 
         except Exception as e:
             logger.error(f"Error extracting images from PPTX: {e}")

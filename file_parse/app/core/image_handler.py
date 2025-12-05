@@ -32,10 +32,11 @@ class ImageHandler:
 
         Args:
             base64_str: base64编码的图片字符串
-            format_url: 是否格式化为静态地址URL，False则返回绝对路径
+            format_url: 是否返回完整URL，True返回完整URL（http://host/images/xxx.jpeg），
+                       False返回相对路径（/images/xxx.jpeg）
 
         Returns:
-            图片的URL地址或绝对路径
+            图片的URL地址或相对路径
 
         Raises:
             ValueError: 如果base64字符串格式无效
@@ -76,9 +77,11 @@ class ImageHandler:
 
         # 根据 format_url 参数决定返回格式
         if format_url:
+            # 返回完整URL：http://127.0.0.1:8002/images/xxx.jpeg
             return f"{self.base_url}/images/{file_name}{ext}"
         else:
-            return str(file_path.absolute())
+            # 返回相对路径：/images/xxx.jpeg (更短，不易被切分)
+            return f"/images/{file_name}{ext}"
 
     async def replace_images_with_urls(self, md_text: str, format_url: bool = True) -> Tuple[str, List[str]]:
         """
@@ -86,7 +89,8 @@ class ImageHandler:
 
         Args:
             md_text: 包含base64图片的Markdown文本
-            format_url: 是否格式化为静态地址URL，False则返回绝对路径
+            format_url: 是否返回完整URL，True返回完整URL（http://host/images/xxx.jpeg），
+                       False返回相对路径（/images/xxx.jpeg）
 
         Returns:
             (替换后的文本, 图片URL列表)
@@ -121,38 +125,6 @@ class ImageHandler:
         """
         pattern = r"!\[.*?\]\(([^)]+)\)"
         return re.findall(pattern, text)
-
-    @staticmethod
-    def remove_duplicate_images(chunks: List[str]) -> List[dict]:
-        """
-        去重图片并为每个chunk关联图片URL
-
-        Args:
-            chunks: 文本块列表
-
-        Returns:
-            包含文本和图片URL的字典列表
-        """
-        seen_images = set()
-        result = []
-
-        for idx, chunk in enumerate(chunks):
-            imgs_in_chunk = ImageHandler.extract_image_urls(chunk)
-            new_imgs = [img for img in imgs_in_chunk if img not in seen_images]
-            seen_images.update(new_imgs)
-
-            # 删除重复图片的Markdown语法
-            for img in imgs_in_chunk:
-                if img not in new_imgs:
-                    chunk = chunk.replace(f"![]({img})", "")
-
-            result.append({
-                "chunk_index": idx,
-                "text": chunk,
-                "image_urls": new_imgs
-            })
-
-        return result
 
 
 # 创建全局图片处理器实例

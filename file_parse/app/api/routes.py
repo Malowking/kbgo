@@ -86,27 +86,21 @@ async def parse_file(request: ParseRequest):
         )
         chunks = chunker.chunk(md_text)
 
-        # 4. 处理图片去重并生成结果
-        chunk_results = image_handler.remove_duplicate_images(chunks)
-
-        # 5. 收集所有唯一图片URL
-        unique_images = set(all_image_urls)
-        for chunk_data in chunk_results:
-            unique_images.update(chunk_data["image_urls"])
-
-        # 6. 构建响应数据
+        # 4. 构建响应数据（chunk只包含索引和文本）
         response_chunks = [
             ChunkData(
-                chunk_index=chunk["chunk_index"],
-                text=chunk["text"],
-                image_urls=chunk["image_urls"]
+                chunk_index=idx,
+                text=chunk
             )
-            for chunk in chunk_results
+            for idx, chunk in enumerate(chunks)
         ]
+
+        # 5. 收集所有唯一图片URL
+        unique_images = list(set(all_image_urls))
 
         response = ParseResponse(
             result=response_chunks,
-            total_image_urls=list(unique_images),
+            image_urls=unique_images,
             total_chunks=len(response_chunks),
             total_images=len(unique_images),
             file_info=file_info
