@@ -66,18 +66,24 @@ class FileParser:
 
             # 提取图片
             image_urls = []
+            modified_file_path = file_path  # 用于Markitdown解析的文件路径
+
             if ext == '.docx':
                 image_urls = self._extract_images_from_docx(file_path, format_url)
             elif ext == '.pdf':
-                image_urls = self._extract_images_from_pdf(file_path, format_url)
+                # PDF需要先处理：提取图片、替换为路径、生成修改后的PDF
+                image_urls, modified_file_path = self._extract_and_replace_pdf_images(file_path, format_url)
             elif ext == '.pptx':
                 image_urls = self._extract_images_from_pptx(file_path, format_url)
 
             # 解析为 Markdown
-            result = self.md.convert(file_path)
+            result = self.md.convert(modified_file_path)
             md_text = result.text_content or ""
 
-            # 替换图片占位符为实际URL
+            # 删除base64格式的图片（Markitdown可能生成的）
+            md_text = self._remove_base64_images(md_text)
+
+            # 替换图片占位符为实际URL（如果有的话）
             if image_urls:
                 md_text = self._replace_image_placeholders(md_text, image_urls)
 
@@ -126,14 +132,30 @@ class FileParser:
 
         return image_urls
 
-    def _extract_images_from_pdf(self, file_path: str, format_url: bool = True) -> List[str]:
-        """从PDF文件中提取图片"""
+    def _extract_and_replace_pdf_images(self, file_path: str, format_url: bool = True) -> Tuple[List[str], str]:
+        """
+        从PDF中提取图片，并在原位置用路径文本替换图片，生成修改后的PDF
+
+        Args:
+            file_path: 原始PDF文件路径
+            format_url: 是否格式化为静态地址URL
+
+        Returns:
+            (图片URL列表, 修改后的PDF文件路径)
+        """
         image_urls = []
+        images_to_delete = {}
+
         try:
             doc = fitz.open(file_path)
+
+            # 第一步：提取所有图片并记录位置
             for page_num in range(len(doc)):
                 page = doc[page_num]
                 images = page.get_images()
+
+                if page_num not in images_to_delete:
+                    images_to_delete[page_num] = []
 
                 for img_index, img in enumerate(images):
                     xref = img[0]
@@ -147,9 +169,9 @@ class FileParser:
 
                     # 保存图片
                     if img_ext in ['png', 'jpg', 'jpeg', 'webp']:
-                        img = Image.open(BytesIO(img_data))
-                        img.thumbnail(settings.MAX_IMAGE_SIZE, Image.Resampling.LANCZOS)
-                        img.save(save_path)
+                        img_obj = Image.open(BytesIO(img_data))
+                        img_obj.thumbnail(settings.MAX_IMAGE_SIZE, Image.Resampling.LANCZOS)
+                        img_obj.save(save_path)
                     else:
                         save_path.write_bytes(img_data)
 
@@ -159,13 +181,48 @@ class FileParser:
                     else:
                         url = str(save_path.absolute())
                     image_urls.append(url)
-                    logger.info(f"Extracted image from PDF: {file_name}")
 
+                    # 获取图片在页面上的位置
+                    image_rects = page.get_image_rects(xref)
+
+                    # 在图片位置插入路径文本
+                    for rect in image_rects:
+                        # 先用白色矩形覆盖图片区域
+                        page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1), width=0)
+
+                        # 在原图片位置插入路径文本
+                        page.insert_textbox(
+                            rect,
+                            url,
+                            fontsize=8,
+                            color=(0, 0, 0),
+                            fill=(1, 1, 1),
+                            align=fitz.TEXT_ALIGN_LEFT
+                        )
+
+                    # 记录要删除的图片
+                    images_to_delete[page_num].append(xref)
+                    logger.info(f"Extracted and marked image from PDF: {file_name}")
+
+            # 第二步：删除所有图片对象
+            for page_num, xrefs in images_to_delete.items():
+                page = doc[page_num]
+                for xref in xrefs:
+                    page.delete_image(xref)
+
+            # 第三步：保存修改后的PDF
+            modified_pdf_name = f"modified_{uuid.uuid4().hex}.pdf"
+            modified_pdf_path = self.image_dir / modified_pdf_name
+            doc.save(str(modified_pdf_path))
             doc.close()
-        except Exception as e:
-            logger.error(f"Error extracting images from PDF: {e}")
 
-        return image_urls
+            logger.info(f"Created modified PDF with {len(image_urls)} images replaced: {modified_pdf_path}")
+            return image_urls, str(modified_pdf_path)
+
+        except Exception as e:
+            logger.error(f"Error extracting and replacing PDF images: {e}")
+            # 如果出错，返回原文件路径
+            return [], file_path
 
     def _extract_images_from_pptx(self, file_path: str, format_url: bool = True) -> List[str]:
         """从PPTX文件中提取图片"""
@@ -222,6 +279,24 @@ class FileParser:
 
         md_text = re.sub(pattern, replacer, md_text)
         return md_text
+
+    def _remove_base64_images(self, md_text: str) -> str:
+        """
+        删除Markdown中的base64格式图片
+
+        删除类似 ![](data:image/png;base64,...) 或 ![alt text](data:image/jpeg;base64,...)
+        这种Markitdown可能生成的base64图片标记
+        """
+        # 匹配完整的base64图片语法：![任意文本](data:image/类型;base64,实际数据)
+        pattern = r'!\[.*?\]\(data:image/[^;]+;base64,[^\)]*\)'
+
+        # 删除所有匹配的base64图片
+        cleaned_text = re.sub(pattern, '', md_text)
+
+        # 清理可能产生的多余空行
+        cleaned_text = re.sub(r'\n{3,}', '\n\n', cleaned_text)
+
+        return cleaned_text
 
     def parse_from_bytes(self, content: bytes, file_extension: str) -> Tuple[str, List[str]]:
         """

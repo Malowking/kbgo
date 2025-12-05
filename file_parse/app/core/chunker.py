@@ -39,7 +39,12 @@ class TextChunker:
             raise ValueError("chunk_overlap must be less than chunk_size")
 
         # 编译图片URL的正则表达式
+        # Markdown 格式: ![alt](http://...)
         self.img_pattern = re.compile(r"!\[.*?\]\(http.*?\)")
+        # 普通 URL 格式: http://... 或 https://...
+        self.url_pattern = re.compile(r'https?://[^\s\)]+')
+        # 绝对路径格式: /path/to/file.ext 或 C:\path\to\file.ext
+        self.path_pattern = re.compile(r'(?:^|[\s\(])(/[^\s\)]+\.[a-zA-Z0-9]+|[A-Za-z]:\\[^\s\)]+\.[a-zA-Z0-9]+)')
 
     def chunk(self, text: str) -> List[str]:
         """
@@ -170,7 +175,12 @@ class TextChunker:
         chunk: str
     ) -> tuple:
         """
-        避免切断图片URL
+        避免切断图片URL和路径
+
+        保护以下格式不被切分：
+        1. Markdown 图片格式: ![alt](http://...)
+        2. 普通 URL: http://... 或 https://...
+        3. 绝对路径: /path/to/file.ext 或 C:\path\to\file.ext
 
         Args:
             text: 原始文本
@@ -181,20 +191,13 @@ class TextChunker:
         Returns:
             (调整后的chunk, 调整后的end位置)
         """
-        # 检查是否有图片标记的开始但未结束
+        # 1. 检查 Markdown 格式的图片是否被截断
         # 例如: ![alt](http://...  <-- 这里被截断了
-
-        # 查找所有完整的图片标记
-        complete_imgs = list(self.img_pattern.finditer(chunk))
-
-        # 查找可能被截断的图片标记
-        # 检查 chunk 末尾是否有未闭合的 ![...](
         img_start_pattern = r'!\[[^\]]*\]\([^\)]*$'
         incomplete_match = re.search(img_start_pattern, chunk)
 
         if incomplete_match:
             # 图片 URL 被截断，需要扩展 chunk 直到找到完整的图片
-            # 在剩余文本中查找图片的结束位置
             remaining_text = text[end:]
             # 查找下一个 ) 来闭合图片
             close_paren = remaining_text.find(')')
@@ -205,7 +208,66 @@ class TextChunker:
                 new_end = min(end + extend_length, len(text))
                 chunk = text[start:new_end]
                 end = new_end
-                logger.debug(f"Extended chunk to include complete image URL: end={end}")
+                logger.debug(f"Extended chunk to include complete Markdown image: end={end}")
+                return chunk, end
+
+        # 2. 检查普通 URL 是否被截断
+        # 在 chunk 末尾查找可能被截断的 URL
+        # 向后查看最多100个字符，看是否有URL开始
+        check_length = min(100, len(chunk))
+        chunk_tail = chunk[-check_length:] if check_length > 0 else chunk
+
+        # 查找所有 URL 匹配
+        url_matches = list(self.url_pattern.finditer(chunk_tail))
+
+        if url_matches:
+            # 获取最后一个匹配的 URL
+            last_url_match = url_matches[-1]
+            url_start_in_tail = last_url_match.start()
+            url_end_in_tail = last_url_match.end()
+
+            # 检查这个 URL 是否在 chunk 的末尾（可能被截断）
+            # 如果 URL 在chunk末尾的5个字符内，可能被截断
+            if url_end_in_tail >= len(chunk_tail) - 5:
+                # URL 可能被截断，尝试扩展
+                remaining_text = text[end:]
+                # 继续匹配URL的剩余部分（非空白字符且不是括号）
+                extended_match = re.match(r'[^\s\)]+', remaining_text)
+
+                if extended_match:
+                    extend_length = extended_match.end()
+                    new_end = min(end + extend_length, len(text))
+                    chunk = text[start:new_end]
+                    end = new_end
+                    logger.debug(f"Extended chunk to include complete URL: end={end}")
+                    return chunk, end
+
+        # 3. 检查绝对路径是否被截断
+        # 查找可能被截断的路径
+        # 路径模式: /path/to/file 或 C:\path\to\file
+        path_patterns = [
+            r'(/[^\s\)]+)$',  # Unix路径在末尾
+            r'([A-Za-z]:\\[^\s\)]+)$'  # Windows路径在末尾
+        ]
+
+        for pattern in path_patterns:
+            path_match = re.search(pattern, chunk)
+            if path_match:
+                # 找到了可能被截断的路径
+                path_start = path_match.start(1)
+                remaining_text = text[end:]
+
+                # 继续匹配路径的剩余部分
+                # 路径可能包含: 字母、数字、下划线、连字符、点、斜杠
+                extended_match = re.match(r'[a-zA-Z0-9_\-\./\\]+', remaining_text)
+
+                if extended_match:
+                    extend_length = extended_match.end()
+                    new_end = min(end + extend_length, len(text))
+                    chunk = text[start:new_end]
+                    end = new_end
+                    logger.debug(f"Extended chunk to include complete path: end={end}")
+                    return chunk, end
 
         return chunk, end
 

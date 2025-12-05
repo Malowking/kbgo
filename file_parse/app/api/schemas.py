@@ -30,6 +30,30 @@ class ParseRequest(BaseModel):
         description="是否格式化图片URL为静态地址，False则返回图片绝对路径"
     )
 
+    @validator("separators")
+    def decode_separators(cls, v):
+        """解码分隔符中的转义字符"""
+        if not v:
+            return v
+
+        # 转义字符映射
+        escape_map = {
+            '\\n': '\n',   # 换行符
+            '\\r': '\r',   # 回车符
+            '\\t': '\t',   # 制表符
+            '\\\\': '\\',  # 反斜杠
+        }
+
+        decoded = []
+        for sep in v:
+            # 替换常见的转义序列
+            decoded_sep = sep
+            for escape_seq, real_char in escape_map.items():
+                decoded_sep = decoded_sep.replace(escape_seq, real_char)
+            decoded.append(decoded_sep)
+
+        return decoded
+
     @validator("chunk_size")
     def validate_chunk_size(cls, v):
         """验证chunk_size，允许-1（不切分）或正常范围内的值"""
