@@ -1,7 +1,8 @@
 待办事项
 
 openai接口传入图片有问题，可能是调用的模型平台的问题
-dockerfile
+docker服务部署
+更新模型可以更新模型参数，max_completion_tokens要写在extra里面
 
 1. text2sql实现，python独立服务
 2. mcp调用日志精简

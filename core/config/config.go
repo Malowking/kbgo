@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/Malowking/kbgo/core/vector_store"
-	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -134,17 +133,6 @@ func (c *RetrieverConfig) GetRetrieveMode() string { return c.RetrieveMode }
 func (c *IndexerConfig) GetAPIKey() string         { return c.APIKey }
 func (c *IndexerConfig) GetBaseURL() string        { return c.BaseURL }
 func (c *IndexerConfig) GetEmbeddingModel() string { return c.EmbeddingModel }
-
-func (x *Config) GetChatModelConfig() *openai.ChatModelConfig {
-	if x == nil {
-		return nil
-	}
-	return &openai.ChatModelConfig{
-		APIKey:  x.APIKey,
-		BaseURL: x.BaseURL,
-		Model:   x.ChatModel,
-	}
-}
 
 func (x *Config) Copy() *Config {
 	return &Config{

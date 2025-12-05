@@ -668,18 +668,14 @@ func parseDocumentFiles(ctx context.Context, files []*common.MultimodalFile) (st
 			continue
 		}
 
-		// 提取文本内容和图片URLs（现在是绝对路径）
+		// 提取文本内容和图片URLs
 		for _, doc := range docs {
 			allContent.WriteString(doc.Content)
 			allContent.WriteString("\n\n")
 
-			// 从metadata中提取图片URLs（已经是绝对路径）
-			if imageURLs, ok := doc.MetaData["image_urls"].([]interface{}); ok {
-				for _, img := range imageURLs {
-					if imgStr, ok := img.(string); ok {
-						allImages = append(allImages, imgStr)
-					}
-				}
+			// 从metadata中提取图片URLs
+			if imageURLs, ok := doc.MetaData["image_urls"].([]string); ok {
+				allImages = append(allImages, imageURLs...)
 			}
 		}
 	}
@@ -716,9 +712,11 @@ func buildSystemPrompt(modelType coreModel.ModelType, docs []*schema.Document, f
 		if modelType == coreModel.ModelTypeMultimodal {
 			// 多模态模型：提醒有图片需要解析
 			builder.WriteString(fmt.Sprintf("\n注意：该文档包含 %d 张图片，这些图片已按照文档中出现的顺序传入用户消息的图片部分。请结合图片内容进行回答。\n", len(imageURLs)))
+			builder.WriteString("重要提示：在回答问题时，请直接引用和描述图片内容，不要提及任何图片路径、文件路径或占位符信息。用户看不到这些技术细节，只需要你对图片内容的理解和描述。\n")
 		} else {
 			// 普通LLM：说明有图片但无法解析
 			builder.WriteString(fmt.Sprintf("\n注意：该文档包含 %d 张图片，但当前模型无法解析图片内容。请基于文本内容回答。\n", len(imageURLs)))
+			builder.WriteString("重要提示：文档中可能包含图片占位符（如路径信息），这些只是技术标记，不要在回答中提及这些路径或占位符。\n")
 		}
 	}
 

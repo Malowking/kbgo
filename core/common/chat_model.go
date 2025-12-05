@@ -6,59 +6,59 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/Malowking/kbgo/core/client"
 	"github.com/Malowking/kbgo/core/model"
 	modelRegistry "github.com/Malowking/kbgo/core/model"
-	"github.com/cloudwego/eino-ext/components/model/openai"
-	einoModel "github.com/cloudwego/eino/components/model"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
+// ChatModelConfig OpenAI 聊天模型配置
+type ChatModelConfig struct {
+	APIKey  string
+	BaseURL string
+	Model   string
+}
+
 var (
-	embeddingModel einoModel.BaseChatModel
-	rerankModel    einoModel.BaseChatModel
-	rewriteModel   einoModel.BaseChatModel
-	chatModel      einoModel.BaseChatModel
+	chatClient      *client.OpenAIClient
+	embeddingClient *client.OpenAIClient
+	rerankClient    *client.OpenAIClient
 )
 
-func GetChatModel(ctx context.Context, cfg *openai.ChatModelConfig) (einoModel.BaseChatModel, error) {
-	if chatModel != nil {
-		return chatModel, nil
+// GetChatClient 获取聊天客户端
+func GetChatClient(ctx context.Context, cfg *ChatModelConfig) (*client.OpenAIClient, error) {
+	if chatClient != nil {
+		return chatClient, nil
 	}
 	if cfg == nil {
-		cfg = &openai.ChatModelConfig{}
+		cfg = &ChatModelConfig{}
 		err := g.Cfg().MustGet(ctx, "chat").Scan(cfg)
 		if err != nil {
 			return nil, err
 		}
 	}
-	cm, err := openai.NewChatModel(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	chatModel = cm
-	return cm, nil
+	chatClient = client.NewOpenAIClient(cfg.APIKey, cfg.BaseURL)
+	return chatClient, nil
 }
 
-func GetEmbeddingModel(ctx context.Context, cfg *openai.ChatModelConfig) (einoModel.BaseChatModel, error) {
-	if embeddingModel != nil {
-		return embeddingModel, nil
+// GetEmbeddingClient 获取 embedding 客户端
+func GetEmbeddingClient(ctx context.Context, cfg *ChatModelConfig) (*client.OpenAIClient, error) {
+	if embeddingClient != nil {
+		return embeddingClient, nil
 	}
 	if cfg == nil {
-		cfg = &openai.ChatModelConfig{}
+		cfg = &ChatModelConfig{}
 		err := g.Cfg().MustGet(ctx, "embedding").Scan(cfg)
 		if err != nil {
 			return nil, err
 		}
 	}
-	cm, err := openai.NewChatModel(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	embeddingModel = cm
-	return cm, nil
+	embeddingClient = client.NewOpenAIClient(cfg.APIKey, cfg.BaseURL)
+	return embeddingClient, nil
 }
 
-func GetRewriteModel(ctx context.Context) (einoModel.BaseChatModel, error) {
+// GetRewriteClient 获取重写客户端（从模型注册表中随机选择）
+func GetRewriteClient(ctx context.Context) (*client.OpenAIClient, error) {
 	// 每次都从注册表中重新获取，确保使用的是最新的模型配置
 	// 从注册表中获取所有 LLM 类型的模型
 	llmModels := modelRegistry.Registry.GetByType(model.ModelTypeLLM)
@@ -75,36 +75,22 @@ func GetRewriteModel(ctx context.Context) (einoModel.BaseChatModel, error) {
 	g.Log().Infof(ctx, "Randomly selected LLM model for rewrite: %s (ID: %s, Provider: %s)",
 		selectedModel.Name, selectedModel.ModelID, selectedModel.Provider)
 
-	// 使用选中的模型创建 ChatModel
-	modelCfg := &openai.ChatModelConfig{
-		BaseURL: selectedModel.BaseURL,
-		APIKey:  selectedModel.APIKey,
-		Model:   selectedModel.Name,
-	}
-
-	cm, err := openai.NewChatModel(ctx, modelCfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create chat model with selected LLM: %w", err)
-	}
-
-	return cm, nil
+	// 使用选中的模型创建 OpenAI 客户端
+	return client.NewOpenAIClient(selectedModel.APIKey, selectedModel.BaseURL), nil
 }
 
-func GetRerankModel(ctx context.Context, cfg *openai.ChatModelConfig) (einoModel.BaseChatModel, error) {
-	if rerankModel != nil {
-		return rerankModel, nil
+// GetRerankClient 获取 rerank 客户端
+func GetRerankClient(ctx context.Context, cfg *ChatModelConfig) (*client.OpenAIClient, error) {
+	if rerankClient != nil {
+		return rerankClient, nil
 	}
 	if cfg == nil {
-		cfg = &openai.ChatModelConfig{}
+		cfg = &ChatModelConfig{}
 		err := g.Cfg().MustGet(ctx, "rerank").Scan(cfg)
 		if err != nil {
 			return nil, err
 		}
 	}
-	cm, err := openai.NewChatModel(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	rerankModel = cm
-	return cm, nil
+	rerankClient = client.NewOpenAIClient(cfg.APIKey, cfg.BaseURL)
+	return rerankClient, nil
 }

@@ -1509,30 +1509,22 @@
                     <div class="helper-text">API密钥（可选）</div>
                 </div>
 
-                <div class="inline-group">
-                    <div class="form-group">
-                        <label class="form-label">上下文窗口</label>
-                        <input type="number" class="form-input" id="model_register_context_window" placeholder="8192">
-                        <div class="helper-text">最大上下文长度</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">最大Token数</label>
-                        <input type="number" class="form-input" id="model_register_max_tokens" placeholder="4096">
-                        <div class="helper-text">单次生成最大token数</div>
-                    </div>
+                <div class="form-group">
+                    <label class="form-label">最大输出Token数</label>
+                    <input type="number" class="form-input" id="model_register_max_completion_tokens" placeholder="4096">
+                    <div class="helper-text">单次生成最大token数（可选）</div>
                 </div>
 
                 <div class="form-group">
                     <label class="form-label">向量维度</label>
                     <input type="number" class="form-input" id="model_register_dimension" placeholder="1536">
-                    <div class="helper-text">仅用于Embedding模型，向量的维度大小</div>
+                    <div class="helper-text">仅用于Embedding模型，向量的维度大小（可选）</div>
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">模型其他参数 (Config)</label>
+                    <label class="form-label">其他配置参数 (Config)</label>
                     <textarea class="form-textarea" id="model_register_config" rows="3" placeholder='{"temperature": 0.7, "top_p": 0.9}'></textarea>
-                    <div class="helper-text">JSON格式的模型配置参数（可选）</div>
+                    <div class="helper-text">JSON格式的其他配置参数（可选）</div>
                 </div>
 
                 <div class="form-group">
@@ -1556,19 +1548,75 @@
                     <span class="api-method method-put">PUT</span>
                     更新模型
                 </h2>
-                <p class="api-description">更新模型配置</p>
+                <p class="api-description">更新模型配置，所有字段（除了模型ID）都是可选的，只更新传入的字段</p>
+
                 <div class="form-group">
                     <label class="form-label">模型ID <span class="required">*</span></label>
-                    <input type="text" class="form-input" id="model_update_id">
+                    <input type="text" class="form-input" id="model_update_id" placeholder="输入模型ID（必填）">
+                    <div class="helper-text">必填，要更新的模型ID</div>
                 </div>
+
                 <div class="form-group">
                     <label class="form-label">模型名称</label>
-                    <input type="text" class="form-input" id="model_update_name">
+                    <input type="text" class="form-input" id="model_update_name" placeholder="新的模型名称">
+                    <div class="helper-text">可选，不填则不修改</div>
                 </div>
+
+                <div class="form-group">
+                    <label class="form-label">模型类型</label>
+                    <select class="form-select" id="model_update_type">
+                        <option value="">不修改</option>
+                        <option value="llm">LLM (大语言模型)</option>
+                        <option value="embedding">Embedding (向量化模型)</option>
+                        <option value="reranker">Reranker (重排序模型)</option>
+                        <option value="multimodal">Multimodal (多模态模型)</option>
+                        <option value="image">Image (图像模型)</option>
+                        <option value="video">Video (视频模型)</option>
+                        <option value="audio">Audio (音频模型)</option>
+                    </select>
+                    <div class="helper-text">可选，不选则不修改</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">提供商</label>
+                    <input type="text" class="form-input" id="model_update_provider" placeholder="例如: openai, ollama">
+                    <div class="helper-text">可选，不填则不修改</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">版本</label>
+                    <input type="text" class="form-input" id="model_update_version" placeholder="例如: v1.0">
+                    <div class="helper-text">可选，不填则不修改</div>
+                </div>
+
                 <div class="form-group">
                     <label class="form-label">Base URL</label>
-                    <input type="text" class="form-input" id="model_update_base_url">
+                    <input type="text" class="form-input" id="model_update_base_url" placeholder="https://api.openai.com/v1">
+                    <div class="helper-text">可选，不填则不修改</div>
                 </div>
+
+                <div class="form-group">
+                    <label class="form-label">API Key</label>
+                    <input type="password" class="form-input" id="model_update_api_key" placeholder="sk-...">
+                    <div class="helper-text">可选，不填则不修改</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">启用状态</label>
+                    <select class="form-select" id="model_update_enabled">
+                        <option value="">不修改</option>
+                        <option value="true">启用</option>
+                        <option value="false">禁用</option>
+                    </select>
+                    <div class="helper-text">可选，不选则不修改</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Extra 配置 (JSON字符串)</label>
+                    <textarea class="form-textarea" id="model_update_extra" placeholder='{"context_window": 8192, "max_tokens": 4096, "dimension": 1536}'></textarea>
+                    <div class="helper-text">可选，JSON格式的额外配置参数，不填则不修改</div>
+                </div>
+
                 <button class="btn btn-primary" onclick="updateModel()">更新</button>
                 <button class="btn btn-secondary" onclick="clearForm('model-update')">清除</button>
                 <div class="loading" id="model_update_loading">请求中...</div>
@@ -2805,8 +2853,7 @@
             const provider = document.getElementById('model_register_provider').value.trim();
             const baseUrl = document.getElementById('model_register_base_url').value.trim();
             const apiKey = document.getElementById('model_register_api_key').value.trim();
-            const contextWindow = document.getElementById('model_register_context_window').value;
-            const maxTokens = document.getElementById('model_register_max_tokens').value;
+            const maxCompletionTokens = document.getElementById('model_register_max_completion_tokens').value;
             const dimension = document.getElementById('model_register_dimension').value;
             const configStr = document.getElementById('model_register_config').value.trim();
             const enabled = document.getElementById('model_register_enabled').checked;
@@ -2825,8 +2872,7 @@
             if (provider) body.provider = provider;
             if (baseUrl) body.base_url = baseUrl;
             if (apiKey) body.api_key = apiKey;
-            if (contextWindow) body.context_window = parseInt(contextWindow);
-            if (maxTokens) body.max_tokens = parseInt(maxTokens);
+            if (maxCompletionTokens) body.max_completion_tokens = parseInt(maxCompletionTokens);
             if (dimension) body.dimension = parseInt(dimension);
 
             // 验证并解析 config JSON
@@ -2835,7 +2881,7 @@
                     const config = JSON.parse(configStr);
                     body.config = config;
                 } catch (e) {
-                    alert('模型其他参数格式错误，请输入有效的 JSON 格式');
+                    alert('其他配置参数格式错误，请输入有效的 JSON 格式');
                     return;
                 }
             }
@@ -2861,14 +2907,52 @@
                 alert('请输入模型ID');
                 return;
             }
-            const body = {model_id: modelId};
+
+            const body = {};
+
+            // 获取所有可选字段
             const modelName = document.getElementById('model_update_name').value.trim();
+            const modelType = document.getElementById('model_update_type').value;
+            const provider = document.getElementById('model_update_provider').value.trim();
+            const version = document.getElementById('model_update_version').value.trim();
             const baseUrl = document.getElementById('model_update_base_url').value.trim();
+            const apiKey = document.getElementById('model_update_api_key').value.trim();
+            const enabled = document.getElementById('model_update_enabled').value;
+            const extraStr = document.getElementById('model_update_extra').value.trim();
+
+            // 只添加用户填写了的字段
             if (modelName) body.model_name = modelName;
+            if (modelType) body.model_type = modelType;
+            if (provider) body.provider = provider;
+            if (version) body.version = version;
             if (baseUrl) body.base_url = baseUrl;
+            if (apiKey) body.api_key = apiKey;
+            if (enabled) body.enabled = enabled === 'true';
+
+            // 验证并添加 Extra 字段
+            if (extraStr) {
+                try {
+                    // 验证是否为有效的 JSON
+                    JSON.parse(extraStr);
+                    body.extra = extraStr;
+                } catch (e) {
+                    alert('Extra配置格式错误，请输入有效的 JSON 字符串');
+                    return;
+                }
+            }
+
+            if (Object.keys(body).length === 0) {
+                alert('请至少填写一个要更新的字段');
+                return;
+            }
+
             showLoading('model_update');
             try {
-                const response = await fetch(getBaseUrl() + '/api/v1/model/' + modelId, {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+                const response = await fetch(getBaseUrl() + '/api/v1/model/' + modelId, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)
+                });
                 const data = await response.json();
                 showResponse('model_update', response.ok, data);
             } catch (error) {

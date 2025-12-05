@@ -71,20 +71,11 @@ func (c *ControllerV1) RegisterModel(ctx context.Context, req *v1.RegisterModelR
 
 	// 构建 Extra JSON 字段
 	extra := make(map[string]interface{})
-	if len(req.Capabilities) > 0 {
-		extra["capabilities"] = req.Capabilities
-	}
-	if req.ContextWindow > 0 {
-		extra["context_window"] = req.ContextWindow
-	}
 	if req.MaxCompletionTokens > 0 {
 		extra["max_completion_tokens"] = req.MaxCompletionTokens
 	}
 	if req.Dimension > 0 {
 		extra["dimension"] = req.Dimension
-	}
-	if req.Description != "" {
-		extra["description"] = req.Description
 	}
 	if req.Config != nil {
 		for k, v := range req.Config {
@@ -156,61 +147,36 @@ func (c *ControllerV1) UpdateModel(ctx context.Context, req *v1.UpdateModelReq) 
 		return nil, gerror.Newf("Model not found: %s", req.ModelID)
 	}
 
-	// 更新字段（只更新非空值）
-	if req.ModelName != "" {
-		existingModel.ModelName = req.ModelName
+	// 只更新传入的字段（使用指针判断是否传值）
+	if req.ModelName != nil {
+		existingModel.ModelName = *req.ModelName
 	}
-	if req.BaseURL != "" {
-		existingModel.BaseURL = req.BaseURL
+	if req.ModelType != nil {
+		existingModel.ModelType = *req.ModelType
 	}
-	if req.APIKey != "" {
-		existingModel.APIKey = req.APIKey
+	if req.Provider != nil {
+		existingModel.Provider = *req.Provider
+	}
+	if req.Version != nil {
+		existingModel.Version = *req.Version
+	}
+	if req.BaseURL != nil {
+		existingModel.BaseURL = *req.BaseURL
+	}
+	if req.APIKey != nil {
+		existingModel.APIKey = *req.APIKey
 	}
 	if req.Enabled != nil {
 		existingModel.Enabled = *req.Enabled
 	}
-
-	// 更新 Extra 字段
-	var extra map[string]interface{}
-	if existingModel.Extra != "" {
-		if err := gjson.Unmarshal([]byte(existingModel.Extra), &extra); err != nil {
-			g.Log().Errorf(ctx, "Failed to unmarshal existing extra: %v", err)
-			extra = make(map[string]interface{})
+	if req.Extra != nil {
+		// 验证 Extra 字段是否为有效的 JSON
+		var extraTest interface{}
+		if err := gjson.Unmarshal([]byte(*req.Extra), &extraTest); err != nil {
+			g.Log().Errorf(ctx, "Invalid JSON format for extra field: %v", err)
+			return nil, gerror.Newf("Invalid JSON format for extra field: %v", err)
 		}
-	} else {
-		extra = make(map[string]interface{})
-	}
-
-	// 合并更新的配置
-	if len(req.Capabilities) > 0 {
-		extra["capabilities"] = req.Capabilities
-	}
-	if req.ContextWindow > 0 {
-		extra["context_window"] = req.ContextWindow
-	}
-	if req.MaxTokens > 0 {
-		extra["max_tokens"] = req.MaxTokens
-	}
-	if req.Dimension > 0 {
-		extra["dimension"] = req.Dimension
-	}
-	if req.Description != "" {
-		extra["description"] = req.Description
-	}
-	if req.Config != nil {
-		for k, v := range req.Config {
-			extra[k] = v
-		}
-	}
-
-	// 序列化回 JSON
-	if len(extra) > 0 {
-		extraBytes, err := gjson.Marshal(extra)
-		if err != nil {
-			g.Log().Errorf(ctx, "Failed to marshal extra config: %v", err)
-			return nil, gerror.Newf("Failed to marshal extra config: %v", err)
-		}
-		existingModel.Extra = string(extraBytes)
+		existingModel.Extra = *req.Extra
 	}
 
 	// 保存更新

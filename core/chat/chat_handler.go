@@ -206,7 +206,7 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 		if mcpErr != nil {
 			g.Log().Errorf(ctx, "MCP tool call failed: %v", mcpErr)
 		} else if len(mcpResults) > 0 {
-			// 如果MCP返回了结果，需要整合到答案中
+			// MCP返回了结果（已包含基于工具结果生成的最终答案）
 			g.Log().Infof(ctx, "MCP tools returned %d results, integrating into answer", len(mcpResults))
 			res.MCPResults = mcpResults
 
@@ -214,9 +214,6 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 			if len(mcpDocs) > 0 {
 				res.References = append(res.References, mcpDocs...)
 			}
-
-			// TODO: 可以选择是否用MCP结果重新生成答案
-			// 这里保持简单，只返回MCP结果供前端展示
 		}
 	}
 
