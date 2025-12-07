@@ -14,30 +14,10 @@
 
 ## 项目结构
 
-```
-file_parse/
-├── app/                     # 应用代码
-│   ├── api/                 # API 路由层
-│   │   ├── routes.py        # 路由定义
-│   │   └── schemas.py       # 数据模型
-│   ├── core/                # 核心业务逻辑
-│   │   ├── parser.py        # 文件解析器
-│   │   ├── chunker.py       # 文本分块器
-│   │   └── image_handler.py # 图片处理器
-│   ├── config/              # 配置管理
-│   │   └── settings.py      # 配置类
-│   ├── utils/               # 工具函数
-│   │   └── logger.py        # 日志配置
-│   └── main.py              # 应用入口
-├── logs/                    # 日志目录
-├── tests/                   # 测试文件
-├── .env.example             # 环境变量配置示例
-├── .gitignore               # Git 忽略文件
-├── pyproject.toml           # Poetry 项目配置
-├── start.sh                 # 启动脚本
-├── stop.sh                  # 停止脚本
-└── README.md                # 项目文档
-```
+- `app/` - 应用代码（API 路由、核心业务逻辑、配置管理）
+- `logs/` - 日志目录
+- `tests/` - 测试文件
+- `start.sh` / `stop.sh` - 启动/停止脚本
 
 ## 快速开始
 
@@ -45,30 +25,20 @@ file_parse/
 
 - Python 3.9+
 - Poetry（依赖管理工具）
+- LibreOffice（可选，用于处理 EMF/WMF 格式图片）
 
-### 安装 Poetry
+### 安装 LibreOffice（可选）
 
-如果你还没有安装 Poetry，运行以下命令：
+LibreOffice 用于将 Word 文档中的 EMF/WMF 矢量图片转换为 JPEG 格式。如果你需要处理包含这类图片的文档，建议安装。
 
-```bash
-curl -sSL https://install.python-poetry.org | python3 -
-```
+- **macOS**: `brew install --cask libreoffice`
+- **Ubuntu/Debian**: `sudo apt-get install libreoffice`
+- **CentOS/RHEL**: `sudo yum install libreoffice`
 
-或者访问 [Poetry 官方文档](https://python-poetry.org/docs/#installation) 查看其他安装方式。
+### 安装 Poetry 和依赖
 
-### 安装依赖
-
-使用 Poetry 安装项目依赖：
-
-```bash
-poetry install
-```
-
-如果只想安装生产环境依赖（不包括开发工具）：
-
-```bash
-poetry install --only main
-```
+1. 安装 Poetry: `curl -sSL https://install.python-poetry.org | python3 -`（或访问 [Poetry 官方文档](https://python-poetry.org/docs/#installation)）
+2. 安装依赖: `poetry install` （生产环境: `poetry install --only main`）
 
 ### 配置
 
@@ -107,51 +77,17 @@ MAX_IMAGE_SIZE=(1024, 1024)
 
 ### 启动服务
 
-#### 方式 1: 使用启动脚本（推荐）
+**开发模式**（支持热重载）: `./start.sh dev`
 
-**开发模式**（前台运行，支持热重载）：
+**生产模式**（后台运行）: `./start.sh prod`
 
-```bash
-./start.sh dev
-```
+**停止服务**: `./stop.sh`
 
-**生产模式**（后台运行）：
+或使用 Poetry 直接运行:
+- 开发: `poetry run uvicorn app.main:app --reload`
+- 生产: `poetry run uvicorn app.main:app`
 
-```bash
-./start.sh production
-# 或简写
-./start.sh prod
-```
-
-**停止服务**：
-
-```bash
-./stop.sh
-```
-
-#### 方式 2: 使用 Poetry 直接运行
-
-**开发模式**：
-
-```bash
-poetry run uvicorn app.main:app --host 127.0.0.1 --port 8002 --reload
-```
-
-**生产模式**：
-
-```bash
-poetry run uvicorn app.main:app --host 127.0.0.1 --port 8002
-```
-
-#### 方式 3: 进入虚拟环境后运行
-
-```bash
-poetry shell
-python -m app.main
-```
-
-服务启动后，访问以下地址：
-
+服务启动后访问:
 - API 文档: http://127.0.0.1:8002/docs
 - 健康检查: http://127.0.0.1:8002/health
 
@@ -253,71 +189,18 @@ python -m app.main
 
 ## 使用示例
 
-### Python
+服务支持通过 HTTP API 调用，可以使用任何支持 HTTP 请求的语言或工具。
 
-```python
-import requests
+**基本调用方式:**
+- POST `/parse` - 解析文件（需提供 file_path, chunk_size, chunk_overlap 等参数）
+- 返回分块的 Markdown 文本和图片 URL 列表
 
-# 解析文件
-response = requests.post(
-    "http://127.0.0.1:8002/parse",
-    json={
-        "file_path": "/path/to/document.pdf",
-        "chunk_size": 1000,
-        "chunk_overlap": 100
-    }
-)
+**支持的客户端:**
+- Python: 使用 `requests` 库发送 POST 请求
+- cURL: 使用 `curl -X POST` 命令
+- Go: 使用 `http.Post` 方法与 kbgo 项目集成
 
-result = response.json()
-print(f"Total chunks: {result['total_chunks']}")
-print(f"Total images: {result['total_images']}")
-
-for chunk in result['result']:
-    print(f"\nChunk {chunk['chunk_index']}:")
-    print(chunk['text'][:100] + "...")
-```
-
-### cURL
-
-```bash
-curl -X POST "http://127.0.0.1:8002/parse" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "file_path": "/path/to/document.pdf",
-    "chunk_size": 1000,
-    "chunk_overlap": 100
-  }'
-```
-
-### Go (与 kbgo 项目集成)
-
-```go
-type ParseRequest struct {
-    FilePath     string   `json:"file_path"`
-    ChunkSize    int      `json:"chunk_size"`
-    ChunkOverlap int      `json:"chunk_overlap"`
-    Separators   []string `json:"separators"`
-}
-
-// 调用 Python 服务解析文件
-func parseFile(filePath string) (string, error) {
-    reqBody := ParseRequest{
-        FilePath:     filePath,
-        ChunkSize:    100000,
-        ChunkOverlap: 0,
-        Separators:   []string{"\n\n", " "},
-    }
-
-    jsonData, _ := json.Marshal(reqBody)
-    resp, err := http.Post(
-        "http://127.0.0.1:8002/parse",
-        "application/json",
-        bytes.NewReader(jsonData),
-    )
-
-    // 处理响应...
-}
-```
+详细的 API 接口说明请访问 http://127.0.0.1:8002/docs
 
 ## 配置说明
 
@@ -346,23 +229,9 @@ func parseFile(filePath string) (string, error) {
 
 ## 开发
 
-### 运行测试
-
-```bash
-pytest tests/
-```
-
-### 代码格式化
-
-```bash
-black app/
-```
-
-### 类型检查
-
-```bash
-mypy app/
-```
+- **运行测试**: `pytest tests/`
+- **代码格式化**: `black app/`
+- **类型检查**: `mypy app/`
 
 ## 日志
 

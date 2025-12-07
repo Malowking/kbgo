@@ -39,7 +39,12 @@ class TextChunker:
             raise ValueError("chunk_overlap must be less than chunk_size")
 
         # 编译图片URL的正则表达式
+        # Markdown 格式: ![alt](http://...)
         self.img_pattern = re.compile(r"!\[.*?\]\(http.*?\)")
+        # 普通 URL 格式: http://... 或 https://...
+        self.url_pattern = re.compile(r'https?://[^\s\)]+')
+        # 绝对路径格式: /path/to/file.ext 或 C:\path\to\file.ext
+        self.path_pattern = re.compile(r'(?:^|[\s\(])(/[^\s\)]+\.[a-zA-Z0-9]+|[A-Za-z]:\\[^\s\)]+\.[a-zA-Z0-9]+)')
 
     def chunk(self, text: str) -> List[str]:
         """
@@ -170,7 +175,12 @@ class TextChunker:
         chunk: str
     ) -> tuple:
         """
-        避免切断图片URL
+        避免切断图片URL和路径
+
+        保护以下格式不被切分：
+        1. Markdown 图片格式: ![alt](http://...) 或 ![alt](/images/...)
+        2. 完整 URL: http://... 或 https://...
+        3. 相对路径: /images/xxx.jpeg
 
         Args:
             text: 原始文本
@@ -181,20 +191,13 @@ class TextChunker:
         Returns:
             (调整后的chunk, 调整后的end位置)
         """
-        # 检查是否有图片标记的开始但未结束
-        # 例如: ![alt](http://...  <-- 这里被截断了
-
-        # 查找所有完整的图片标记
-        complete_imgs = list(self.img_pattern.finditer(chunk))
-
-        # 查找可能被截断的图片标记
-        # 检查 chunk 末尾是否有未闭合的 ![...](
+        # 1. 检查 Markdown 格式的图片是否被截断
+        # 例如: ![alt](http://...  或  ![alt](/images/xxx.jpeg
         img_start_pattern = r'!\[[^\]]*\]\([^\)]*$'
         incomplete_match = re.search(img_start_pattern, chunk)
 
         if incomplete_match:
             # 图片 URL 被截断，需要扩展 chunk 直到找到完整的图片
-            # 在剩余文本中查找图片的结束位置
             remaining_text = text[end:]
             # 查找下一个 ) 来闭合图片
             close_paren = remaining_text.find(')')
@@ -205,7 +208,68 @@ class TextChunker:
                 new_end = min(end + extend_length, len(text))
                 chunk = text[start:new_end]
                 end = new_end
-                logger.debug(f"Extended chunk to include complete image URL: end={end}")
+                logger.debug(f"Extended chunk to include complete Markdown image: end={end}")
+                return chunk, end
+
+        # 2. 检查 HTTP/HTTPS URL 是否被截断
+        check_length = min(150, len(chunk))
+        chunk_tail = chunk[-check_length:] if check_length > 0 else chunk
+
+        url_matches = list(self.url_pattern.finditer(chunk_tail))
+
+        if url_matches:
+            last_url_match = url_matches[-1]
+            url_end_in_tail = last_url_match.end()
+
+            # 检查 URL 是否在 chunk 末尾（可能被截断）
+            if url_end_in_tail >= len(chunk_tail) - 10:
+                remaining_text = text[end:]
+                extended_match = re.match(r'[^\s\)]+', remaining_text)
+
+                if extended_match:
+                    extend_length = extended_match.end()
+                    new_end = min(end + extend_length, len(text))
+                    chunk = text[start:new_end]
+                    end = new_end
+                    logger.debug(f"Extended chunk to include complete URL: end={end}")
+                    return chunk, end
+
+        # 3. 检查相对路径是否被截断（/images/xxx.jpeg 格式）
+        # 匹配常见的图片路径格式
+        relative_path_pattern = r'/(?:images|img|assets|media)/[a-f0-9]{5,}\.(?:jpeg|jpg|png|gif|svg|webp|pdf|docx|xlsx|pptx)$'
+        relative_path_match = re.search(relative_path_pattern, chunk, re.IGNORECASE)
+
+        if relative_path_match:
+            # 可能是不完整的相对路径，尝试扩展
+            remaining_text = text[end:]
+            # 继续匹配剩余部分（文件名或扩展名）
+            extended_match = re.match(r'[a-f0-9]+\.(?:jpeg|jpg|png|gif|svg|webp|pdf|docx|xlsx|pptx)', remaining_text, re.IGNORECASE)
+
+            if extended_match:
+                extend_length = extended_match.end()
+                new_end = min(end + extend_length, len(text))
+                chunk = text[start:new_end]
+                end = new_end
+                logger.debug(f"Extended chunk to include complete relative path: end={end}")
+                return chunk, end
+
+        # 4. 检查一般的相对路径是否在末尾被截断
+        # 匹配任何以 /xxx/ 开头的路径模式
+        path_pattern = r'/(?:images|img|assets|media|files|uploads|static)/[^\s\)]{3,}$'
+        path_match = re.search(path_pattern, chunk, re.IGNORECASE)
+
+        if path_match:
+            remaining_text = text[end:]
+            # 继续匹配路径的剩余部分（直到空格、换行或括号）
+            extended_match = re.match(r'[^\s\)\n]+', remaining_text)
+
+            if extended_match:
+                extend_length = extended_match.end()
+                new_end = min(end + extend_length, len(text))
+                chunk = text[start:new_end]
+                end = new_end
+                logger.debug(f"Extended chunk to include complete path: end={end}")
+                return chunk, end
 
         return chunk, end
 

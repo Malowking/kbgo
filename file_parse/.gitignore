@@ -69,3 +69,5 @@ dmypy.json
 *.tmp
 *.bak
 .temp/
+/output/
+/test/

@@ -36,19 +36,18 @@ type ParseRequest struct {
 
 // ChunkData file_parse 服务返回的分片数据
 type ChunkData struct {
-	ChunkIndex int      `json:"chunk_index"`
-	Text       string   `json:"text"`
-	ImageURLs  []string `json:"image_urls"`
+	ChunkIndex int    `json:"chunk_index"`
+	Text       string `json:"text"`
 }
 
 // ParseResponse file_parse 服务的响应结构
 type ParseResponse struct {
-	Success        bool        `json:"success"`
-	Result         []ChunkData `json:"result"`
-	TotalImageURLs []string    `json:"total_image_urls"`
-	TotalChunks    int         `json:"total_chunks"`
-	TotalImages    int         `json:"total_images"`
-	FileInfo       interface{} `json:"file_info"`
+	Success     bool        `json:"success"`
+	Result      []ChunkData `json:"result"`
+	ImageURLs   []string    `json:"image_urls"` // 顶层统一返回所有图片URL
+	TotalChunks int         `json:"total_chunks"`
+	TotalImages int         `json:"total_images"`
+	FileInfo    interface{} `json:"file_info"`
 }
 
 // HealthResponse file_parse 服务健康检查响应结构
@@ -220,10 +219,14 @@ func (l *FileParseLoader) Load(ctx context.Context, filePath string) ([]*schema.
 	// 转换为 schema.Document
 	documents := make([]*schema.Document, len(parseResp.Result))
 	for i, chunk := range parseResp.Result {
-		// 将 chunk_index 存储到 metadata 中
 		metadata := map[string]interface{}{
 			"chunk_index": chunk.ChunkIndex,
-			"image_urls":  chunk.ImageURLs,
+		}
+
+		// 如果是chunk_size=-1的情况，所有图片在顶层ImageURLs中
+		// 将顶层的ImageURLs添加到第一个document的metadata中
+		if l.chunkSize == -1 && i == 0 && len(parseResp.ImageURLs) > 0 {
+			metadata["image_urls"] = parseResp.ImageURLs
 		}
 
 		documents[i] = &schema.Document{

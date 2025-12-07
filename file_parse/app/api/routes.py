@@ -13,9 +13,13 @@ from app.api.schemas import (
     ParseResponse,
     ChunkData,
     HealthResponse,
-    ErrorResponse
+    ErrorResponse,
+    OCRRequest,
+    OCRResponse,
+    OCRResult
 )
 from app.core import create_parser, create_chunker, image_handler
+from app.core.ocr_service import ocr_service
 from app.config import settings
 from app.utils import get_logger
 
@@ -86,27 +90,21 @@ async def parse_file(request: ParseRequest):
         )
         chunks = chunker.chunk(md_text)
 
-        # 4. 处理图片去重并生成结果
-        chunk_results = image_handler.remove_duplicate_images(chunks)
-
-        # 5. 收集所有唯一图片URL
-        unique_images = set(all_image_urls)
-        for chunk_data in chunk_results:
-            unique_images.update(chunk_data["image_urls"])
-
-        # 6. 构建响应数据
+        # 4. 构建响应数据（chunk只包含索引和文本）
         response_chunks = [
             ChunkData(
-                chunk_index=chunk["chunk_index"],
-                text=chunk["text"],
-                image_urls=chunk["image_urls"]
+                chunk_index=idx,
+                text=chunk
             )
-            for chunk in chunk_results
+            for idx, chunk in enumerate(chunks)
         ]
+
+        # 5. 收集所有唯一图片URL
+        unique_images = list(set(all_image_urls))
 
         response = ParseResponse(
             result=response_chunks,
-            total_image_urls=list(unique_images),
+            image_urls=unique_images,
             total_chunks=len(response_chunks),
             total_images=len(unique_images),
             file_info=file_info
@@ -148,6 +146,13 @@ async def get_supported_formats():
 @router.get("/config")
 async def get_config():
     """获取当前配置信息"""
+    # 获取OCR引擎信息
+    try:
+        engine_info = ocr_service.get_engine_info()
+    except Exception as e:
+        logger.warning(f"Failed to get OCR engine info: {e}")
+        engine_info = {"error": str(e)}
+
     return {
         "chunk_size_range": {
             "min": settings.MIN_CHUNK_SIZE,
@@ -159,5 +164,96 @@ async def get_config():
         "default_chunk_overlap": settings.DEFAULT_CHUNK_OVERLAP,
         "default_separators": settings.DEFAULT_SEPARATORS,
         "max_image_size": settings.MAX_IMAGE_SIZE,
-        "supported_formats": settings.SUPPORTED_FORMATS
+        "supported_formats": settings.SUPPORTED_FORMATS,
+        "ocr_engine": engine_info
     }
+
+
+@router.post("/ocr", response_model=OCRResponse)
+async def ocr_recognize(request: OCRRequest):
+    """
+    OCR图片识别接口
+
+    识别图片中的文字并返回Markdown格式的结果
+    支持自动检测简繁体，并使用对应的模型
+    """
+    try:
+        # 验证图片路径
+        image_path = request.image_path
+        if not os.path.isabs(image_path):
+            image_path = os.path.abspath(image_path)
+
+        if not os.path.exists(image_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Image file not found: {image_path}"
+            )
+
+        # 验证是否为图片文件
+        valid_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp']
+        file_ext = Path(image_path).suffix.lower()
+        if file_ext not in valid_extensions:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid image format: {file_ext}. Supported formats: {', '.join(valid_extensions)}"
+            )
+
+        # 获取图片信息
+        file_stat = os.stat(image_path)
+        image_info = {
+            "name": Path(image_path).name,
+            "size": file_stat.st_size,
+            "extension": file_ext,
+            "path": image_path
+        }
+
+        logger.info(
+            f"Processing OCR request: {image_info['name']} "
+            f"(auto_detect: {request.auto_detect_lang}, lang: {request.lang})"
+        )
+
+        # 执行OCR识别
+        result = ocr_service.recognize_and_format(
+            image_path=image_path,
+            auto_detect_lang=request.auto_detect_lang,
+            lang=request.lang
+        )
+
+        # 构建响应
+        response = OCRResponse(
+            markdown=result['markdown'],
+            language=result['language'],
+            total_lines=result['total_lines'],
+            raw_results=[
+                OCRResult(
+                    text=r['text'],
+                    confidence=r['confidence'],
+                    box=r['box']
+                )
+                for r in result['raw_results']
+            ],
+            image_info=image_info
+        )
+
+        logger.info(
+            f"Successfully recognized {image_info['name']}: "
+            f"{response.total_lines} lines, language: {response.language}"
+        )
+
+        return response
+
+    except HTTPException:
+        # 重新抛出HTTP异常
+        raise
+    except ValueError as e:
+        logger.error(f"Validation error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"OCR error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"OCR processing error: {str(e)}"
+        )

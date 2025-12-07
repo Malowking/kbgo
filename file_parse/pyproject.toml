@@ -17,6 +17,16 @@ pillow = "^11.0.0"
 python-multipart = "^0.0.9"
 python-dotenv = "^1.0.1"
 pymupdf = "^1.24.0"
+# OCR引擎 - 根据平台自动选择
+# macOS: 使用EasyOCR (更好支持Apple Silicon和Python 3.13+)
+# Linux: 优先PaddleOCR，Python 3.13+降级为EasyOCR
+# Windows: 使用EasyOCR
+easyocr = [
+    {version = "^1.7.0", markers = "sys_platform == 'darwin'"},
+    {version = "^1.7.0", markers = "sys_platform == 'win32'"},
+    {version = "^1.7.0", markers = "sys_platform == 'linux' and python_version >= '3.13'"}
+]
+paddleocr = {version = "^2.8.0", markers = "sys_platform == 'linux' and python_version < '3.13'"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"

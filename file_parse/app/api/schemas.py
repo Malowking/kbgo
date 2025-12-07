@@ -30,6 +30,30 @@ class ParseRequest(BaseModel):
         description="是否格式化图片URL为静态地址，False则返回图片绝对路径"
     )
 
+    @validator("separators")
+    def decode_separators(cls, v):
+        """解码分隔符中的转义字符"""
+        if not v:
+            return v
+
+        # 转义字符映射
+        escape_map = {
+            '\\n': '\n',   # 换行符
+            '\\r': '\r',   # 回车符
+            '\\t': '\t',   # 制表符
+            '\\\\': '\\',  # 反斜杠
+        }
+
+        decoded = []
+        for sep in v:
+            # 替换常见的转义序列
+            decoded_sep = sep
+            for escape_seq, real_char in escape_map.items():
+                decoded_sep = decoded_sep.replace(escape_seq, real_char)
+            decoded.append(decoded_sep)
+
+        return decoded
+
     @validator("chunk_size")
     def validate_chunk_size(cls, v):
         """验证chunk_size，允许-1（不切分）或正常范围内的值"""
@@ -59,7 +83,6 @@ class ChunkData(BaseModel):
 
     chunk_index: int = Field(..., description="文本块索引")
     text: str = Field(..., description="文本内容")
-    image_urls: List[str] = Field(default=[], description="该块包含的图片URL列表")
 
 
 class ParseResponse(BaseModel):
@@ -67,7 +90,7 @@ class ParseResponse(BaseModel):
 
     success: bool = Field(True, description="是否成功")
     result: List[ChunkData] = Field(..., description="解析结果列表")
-    total_image_urls: List[str] = Field(default=[], description="所有图片URL列表")
+    image_urls: List[str] = Field(default=[], description="所有图片URL列表")
     total_chunks: int = Field(..., description="总文本块数量")
     total_images: int = Field(..., description="总图片数量")
     file_info: dict = Field(default={}, description="文件信息")
@@ -88,3 +111,43 @@ class ErrorResponse(BaseModel):
     error: str = Field(..., description="错误类型")
     detail: str = Field(..., description="错误详情")
     code: int = Field(..., description="错误代码")
+
+
+class OCRRequest(BaseModel):
+    """OCR识别请求模型"""
+
+    image_path: str = Field(..., description="要识别的图片路径")
+    auto_detect_lang: bool = Field(
+        default=True,
+        description="是否自动检测简繁体，True则自动检测，False则使用lang参数"
+    )
+    lang: Optional[str] = Field(
+        default=None,
+        description="指定语言模型。支持多种格式：'ch'/'ch_sim'(简体), 'chinese_cht'/'ch_tra'(繁体)，会自动转换为对应引擎的格式"
+    )
+
+    @validator("lang")
+    def validate_lang(cls, v):
+        """验证语言参数"""
+        if v is not None and v not in ['ch', 'ch_sim', 'chinese_cht', 'ch_tra', 'simplified', 'traditional']:
+            raise ValueError("lang must be one of: 'ch', 'ch_sim', 'chinese_cht', 'ch_tra', 'simplified', 'traditional'")
+        return v
+
+
+class OCRResult(BaseModel):
+    """OCR识别结果"""
+
+    text: str = Field(..., description="识别的文本")
+    confidence: float = Field(..., description="置信度")
+    box: List[List[float]] = Field(..., description="文字框坐标")
+
+
+class OCRResponse(BaseModel):
+    """OCR识别响应模型"""
+
+    success: bool = Field(True, description="是否成功")
+    markdown: str = Field(..., description="Markdown格式的识别结果")
+    language: str = Field(..., description="使用的语言模型")
+    total_lines: int = Field(..., description="识别的文本行数")
+    raw_results: List[OCRResult] = Field(default=[], description="原始OCR识别结果")
+    image_info: dict = Field(default={}, description="图片信息")

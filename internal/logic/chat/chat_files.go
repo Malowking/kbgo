@@ -652,31 +652,64 @@ func parseDocumentFiles(ctx context.Context, files []*common.MultimodalFile) (st
 	var allContent strings.Builder
 	var allImages []string
 
-	// 创建文件解析加载器，chunk_size=-1表示不切分，imageURLFormat=false表示返回绝对路径
+	// 创建文件解析加载器，chunk_size=-1表示不切分，imageURLFormat=false表示返回相对路径
 	loader, err := indexer.NewFileParseLoaderForChat(ctx, -1, 0, "")
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to create file parse loader: %w", err)
 	}
 
+	// 获取项目根目录（用于拼接图片路径）
+	projectRoot, err := os.Getwd()
+	if err != nil {
+		g.Log().Warningf(ctx, "Failed to get working directory: %v", err)
+		projectRoot = ""
+	}
+
 	for _, file := range files {
 		g.Log().Infof(ctx, "Parsing document file: %s (type: %s)", file.FileName, file.FileType)
 
-		// 调用Python服务解析文件，chunk_size=-1表示不切分，imageURLFormat=false返回绝对路径
+		// 调用Python服务解析文件，chunk_size=-1表示不切分，imageURLFormat=false返回相对路径
 		docs, err := loader.Load(ctx, file.FilePath)
 		if err != nil {
 			g.Log().Errorf(ctx, "Failed to parse file %s: %v", file.FileName, err)
 			continue
 		}
 
-		// 提取文本内容和图片URLs（现在是绝对路径）
+		// 提取文本内容
 		for _, doc := range docs {
 			allContent.WriteString(doc.Content)
 			allContent.WriteString("\n\n")
 
-			// 从metadata中提取图片URLs（已经是绝对路径）
+			// 从metadata中提取图片URLs（只在第一个document中有）
 			if imageURLs, ok := doc.MetaData["image_urls"].([]interface{}); ok {
-				for _, img := range imageURLs {
-					if imgStr, ok := img.(string); ok {
+				for _, imgURL := range imageURLs {
+					if imgStr, ok := imgURL.(string); ok {
+						// 如果返回的是相对路径（从image/开始），需要拼接为绝对路径
+						if strings.HasPrefix(imgStr, "image/") && projectRoot != "" {
+							// 拼接完整路径：projectRoot/upload/image/xxx.png
+							// 从 "image/xxx.png" 提取 "xxx.png" 部分
+							imageName := strings.TrimPrefix(imgStr, "image/")
+							fullPath := filepath.Join(projectRoot, "upload", "image", imageName)
+							allImages = append(allImages, fullPath)
+							g.Log().Infof(ctx, "Converted relative image path '%s' to absolute path '%s'", imgStr, fullPath)
+						} else {
+							// 已经是绝对路径，直接使用
+							allImages = append(allImages, imgStr)
+						}
+					}
+				}
+			} else if imageURLs, ok := doc.MetaData["image_urls"].([]string); ok {
+				// 兼容直接是字符串数组的情况
+				for _, imgStr := range imageURLs {
+					// 如果返回的是相对路径（从image/开始），需要拼接为绝对路径
+					if strings.HasPrefix(imgStr, "image/") && projectRoot != "" {
+						// 拼接完整路径：projectRoot/upload/image/xxx.png
+						imageName := strings.TrimPrefix(imgStr, "image/")
+						fullPath := filepath.Join(projectRoot, "upload", "image", imageName)
+						allImages = append(allImages, fullPath)
+						g.Log().Infof(ctx, "Converted relative image path '%s' to absolute path '%s'", imgStr, fullPath)
+					} else {
+						// 已经是绝对路径，直接使用
 						allImages = append(allImages, imgStr)
 					}
 				}
@@ -716,9 +749,11 @@ func buildSystemPrompt(modelType coreModel.ModelType, docs []*schema.Document, f
 		if modelType == coreModel.ModelTypeMultimodal {
 			// 多模态模型：提醒有图片需要解析
 			builder.WriteString(fmt.Sprintf("\n注意：该文档包含 %d 张图片，这些图片已按照文档中出现的顺序传入用户消息的图片部分。请结合图片内容进行回答。\n", len(imageURLs)))
+			builder.WriteString("重要提示：在回答问题时，请直接引用和描述图片内容，不要提及任何图片路径、文件路径或占位符信息。用户看不到这些技术细节，只需要你对图片内容的理解和描述。\n")
 		} else {
 			// 普通LLM：说明有图片但无法解析
 			builder.WriteString(fmt.Sprintf("\n注意：该文档包含 %d 张图片，但当前模型无法解析图片内容。请基于文本内容回答。\n", len(imageURLs)))
+			builder.WriteString("重要提示：文档中可能包含图片占位符（如路径信息），这些只是技术标记，不要在回答中提及这些路径或占位符。\n")
 		}
 	}
 

@@ -2,6 +2,10 @@ package formatter
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
@@ -96,17 +100,80 @@ func (f *OpenAIFormatter) convertUserInputMultiContent(parts []schema.MessageInp
 			})
 
 		case schema.ChatMessagePartTypeImageURL:
-			if part.Image != nil && part.Image.URL != nil {
-				contentParts = append(contentParts, openai.ChatMessagePart{
-					Type: openai.ChatMessagePartTypeImageURL,
-					ImageURL: &openai.ChatMessageImageURL{
-						URL:    *part.Image.URL,
-						Detail: openai.ImageURLDetailAuto,
-					},
-				})
+			if part.Image != nil {
+				imageURL := f.buildImageURL(part.Image)
+				if imageURL != "" {
+					contentParts = append(contentParts, openai.ChatMessagePart{
+						Type: openai.ChatMessagePartTypeImageURL,
+						ImageURL: &openai.ChatMessageImageURL{
+							URL:    imageURL,
+							Detail: openai.ImageURLDetailAuto,
+						},
+					})
+				}
 			}
 		}
 	}
 
 	return contentParts
+}
+
+// buildImageURL 构建图片URL
+// 优先使用Base64Data，其次使用URL
+func (f *OpenAIFormatter) buildImageURL(image *schema.MessageInputImage) string {
+	// 优先使用Base64Data
+	if image.Base64Data != nil && *image.Base64Data != "" {
+		mimeType := image.MIMEType
+		if mimeType == "" {
+			mimeType = "image/jpeg"
+		}
+		return fmt.Sprintf("data:%s;base64,%s", mimeType, *image.Base64Data)
+	}
+
+	// 使用URL
+	if image.URL != nil && *image.URL != "" {
+		urlStr := *image.URL
+		// 如果是本地文件路径，需要读取文件并转换为base64
+		if len(urlStr) > 0 && (urlStr[0] == '/' || urlStr[0] == '.') {
+			return f.filePathToDataURI(urlStr, image.MIMEType)
+		}
+		// HTTP URL或已经是data URI
+		return urlStr
+	}
+
+	return ""
+}
+
+// filePathToDataURI 将文件路径转换为data URI
+func (f *OpenAIFormatter) filePathToDataURI(filePath, mimeType string) string {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		g.Log().Warningf(context.Background(), "Failed to read image file %s: %v, skipping", filePath, err)
+		return ""
+	}
+
+	if mimeType == "" {
+		ext := filepath.Ext(filePath)
+		mimeType = getOpenAIMimeType(ext)
+	}
+
+	base64Data := base64.StdEncoding.EncodeToString(data)
+	return fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
+}
+
+// getOpenAIMimeType 获取MIME类型
+func getOpenAIMimeType(ext string) string {
+	mimeTypes := map[string]string{
+		".jpg":  "image/jpeg",
+		".jpeg": "image/jpeg",
+		".png":  "image/png",
+		".gif":  "image/gif",
+		".bmp":  "image/bmp",
+		".webp": "image/webp",
+	}
+
+	if mime, ok := mimeTypes[ext]; ok {
+		return mime
+	}
+	return "image/jpeg"
 }

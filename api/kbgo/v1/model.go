@@ -155,13 +155,10 @@ type RegisterModelReq struct {
 	Provider            string                 `json:"provider"`                                                                       // 提供商（openai, ollama等）（可选）
 	BaseURL             string                 `json:"base_url"`                                                                       // API基础URL（可选）
 	APIKey              string                 `json:"api_key"`                                                                        // API密钥（可选）
-	Capabilities        []string               `json:"capabilities"`                                                                   // 能力列表（可选）
-	ContextWindow       int                    `json:"context_window"`                                                                 // 上下文窗口大小（可选）
 	MaxCompletionTokens int                    `json:"max_completion_tokens"`                                                          // 最大输出token数（可选）
 	Dimension           int                    `json:"dimension"`                                                                      // 向量维度（embedding模型专用）
 	Config              map[string]interface{} `json:"config"`                                                                         // 其他配置（可选）
 	Enabled             bool                   `json:"enabled"`                                                                        // 是否启用（默认true）
-	Description         string                 `json:"description"`                                                                    // 描述（可选）
 }
 
 // RegisterModelRes 注册模型响应
@@ -174,18 +171,16 @@ type RegisterModelRes struct {
 
 // UpdateModelReq 更新模型请求
 type UpdateModelReq struct {
-	g.Meta        `path:"/v1/model/:model_id" method:"put" tags:"model" summary:"Update model configuration"`
-	ModelID       string                 `json:"model_id" v:"required"` // 模型ID（路径参数）
-	ModelName     string                 `json:"model_name"`            // 模型名称
-	BaseURL       string                 `json:"base_url"`              // API基础URL
-	APIKey        string                 `json:"api_key"`               // API密钥
-	Capabilities  []string               `json:"capabilities"`          // 能力列表
-	ContextWindow int                    `json:"context_window"`        // 上下文窗口大小
-	MaxTokens     int                    `json:"max_tokens"`            // 最大输出token数
-	Dimension     int                    `json:"dimension"`             // 向量维度
-	Config        map[string]interface{} `json:"config"`                // 其他配置
-	Enabled       *bool                  `json:"enabled"`               // 是否启用（使用指针以区分未设置和false）
-	Description   string                 `json:"description"`           // 描述
+	g.Meta    `path:"/v1/model/:model_id" method:"put" tags:"model" summary:"Update model configuration"`
+	ModelID   string  `json:"model_id" v:"required"` // 模型ID（路径参数，必传）
+	ModelName *string `json:"model_name"`            // 模型名称（可选）
+	ModelType *string `json:"model_type"`            // 模型类型（可选）
+	Provider  *string `json:"provider"`              // 提供商（可选）
+	Version   *string `json:"version"`               // 版本（可选）
+	BaseURL   *string `json:"base_url"`              // API基础URL（可选）
+	APIKey    *string `json:"api_key"`               // API密钥（可选）
+	Enabled   *bool   `json:"enabled"`               // 是否启用（可选）
+	Extra     *string `json:"extra"`                 // 额外配置参数，JSON字符串（可选）
 }
 
 // UpdateModelRes 更新模型响应
