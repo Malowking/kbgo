@@ -45,6 +45,28 @@ file_parse/
 
 - Python 3.9+
 - Poetry（依赖管理工具）
+- LibreOffice（可选，用于处理 EMF/WMF 格式图片）
+
+### 安装 LibreOffice（可选）
+
+LibreOffice 用于将 Word 文档中的 EMF/WMF 矢量图片转换为 JPEG 格式。如果你需要处理包含这类图片的文档，建议安装。
+
+**macOS:**
+```bash
+brew install --cask libreoffice
+```
+
+**Ubuntu/Debian:**
+```bash
+sudo apt-get install libreoffice
+```
+
+**其他 Linux:**
+```bash
+sudo yum install libreoffice  # CentOS/RHEL
+```
+
+如果不安装 LibreOffice，EMF/WMF 图片会保存为原始格式。
 
 ### 安装 Poetry
 

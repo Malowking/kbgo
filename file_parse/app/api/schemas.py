@@ -111,3 +111,43 @@ class ErrorResponse(BaseModel):
     error: str = Field(..., description="错误类型")
     detail: str = Field(..., description="错误详情")
     code: int = Field(..., description="错误代码")
+
+
+class OCRRequest(BaseModel):
+    """OCR识别请求模型"""
+
+    image_path: str = Field(..., description="要识别的图片路径")
+    auto_detect_lang: bool = Field(
+        default=True,
+        description="是否自动检测简繁体，True则自动检测，False则使用lang参数"
+    )
+    lang: Optional[str] = Field(
+        default=None,
+        description="指定语言模型。支持多种格式：'ch'/'ch_sim'(简体), 'chinese_cht'/'ch_tra'(繁体)，会自动转换为对应引擎的格式"
+    )
+
+    @validator("lang")
+    def validate_lang(cls, v):
+        """验证语言参数"""
+        if v is not None and v not in ['ch', 'ch_sim', 'chinese_cht', 'ch_tra', 'simplified', 'traditional']:
+            raise ValueError("lang must be one of: 'ch', 'ch_sim', 'chinese_cht', 'ch_tra', 'simplified', 'traditional'")
+        return v
+
+
+class OCRResult(BaseModel):
+    """OCR识别结果"""
+
+    text: str = Field(..., description="识别的文本")
+    confidence: float = Field(..., description="置信度")
+    box: List[List[float]] = Field(..., description="文字框坐标")
+
+
+class OCRResponse(BaseModel):
+    """OCR识别响应模型"""
+
+    success: bool = Field(True, description="是否成功")
+    markdown: str = Field(..., description="Markdown格式的识别结果")
+    language: str = Field(..., description="使用的语言模型")
+    total_lines: int = Field(..., description="识别的文本行数")
+    raw_results: List[OCRResult] = Field(default=[], description="原始OCR识别结果")
+    image_info: dict = Field(default={}, description="图片信息")

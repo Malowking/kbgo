@@ -5,8 +5,10 @@
 import os
 import uuid
 import re
+import subprocess
+import tempfile
 from pathlib import Path
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 from zipfile import ZipFile
 from io import BytesIO
 
@@ -110,6 +112,120 @@ class FileParser:
                 except Exception as e:
                     logger.warning(f"Failed to cleanup temporary file {temp_file}: {str(e)}")
 
+    def _save_image_as_jpeg(self, img: Image.Image, save_path: Path) -> None:
+        """
+        将PIL Image对象转换并保存为JPEG格式
+
+        Args:
+            img: PIL Image对象
+            save_path: 保存路径
+        """
+        # 如果是RGBA模式，转换为RGB（JPEG不支持透明度）
+        if img.mode in ('RGBA', 'LA', 'P'):
+            # 创建白色背景
+            rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            rgb_img.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+            img = rgb_img
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
+
+        # 缩放并保存为JPEG
+        img.thumbnail(settings.MAX_IMAGE_SIZE, Image.Resampling.LANCZOS)
+        img.save(save_path, 'JPEG', quality=85, optimize=True)
+
+    def _convert_emf_wmf_to_jpeg(self, img_data: bytes, img_file: str) -> Optional[Image.Image]:
+        """
+        尝试将EMF/WMF格式图片转换为PIL Image对象
+
+        Args:
+            img_data: 图片数据
+            img_file: 图片文件名（用于检测格式）
+
+        Returns:
+            PIL Image对象，如果转换失败则返回None
+        """
+        # 检查是否是EMF/WMF格式
+        is_emf_wmf = img_file.lower().endswith(('.emf', '.wmf'))
+
+        if not is_emf_wmf:
+            return None
+
+        try:
+            # 方法1: 尝试使用LibreOffice转换（如果安装了的话）
+            import shutil
+            soffice_path = shutil.which('soffice') or shutil.which('libreoffice')
+
+            if soffice_path:
+                logger.info(f"Found LibreOffice at: {soffice_path}, attempting to convert {img_file}")
+
+                # 创建输出目录（不使用with，手动管理）
+                tmp_out_dir = tempfile.mkdtemp()
+                tmp_in = None
+
+                try:
+                    # 保存临时输入文件，使用正确的扩展名
+                    suffix = '.emf' if img_file.lower().endswith('.emf') else '.wmf'
+                    tmp_in = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+                    tmp_in.write(img_data)
+                    tmp_in.close()
+                    tmp_in_path = tmp_in.name
+
+                    logger.info(f"Saved temp EMF/WMF file to: {tmp_in_path}")
+
+                    # 使用LibreOffice转换为PNG
+                    cmd = [
+                        soffice_path,
+                        '--headless',
+                        '--convert-to', 'png',
+                        '--outdir', tmp_out_dir,
+                        tmp_in_path
+                    ]
+
+                    logger.info(f"Running LibreOffice command: {' '.join(cmd)}")
+                    result = subprocess.run(cmd, capture_output=True, timeout=30, text=True)
+
+                    logger.info(f"LibreOffice exit code: {result.returncode}")
+                    if result.stdout:
+                        logger.info(f"LibreOffice stdout: {result.stdout}")
+                    if result.stderr:
+                        logger.warning(f"LibreOffice stderr: {result.stderr}")
+
+                    # 查找转换后的PNG文件
+                    png_file = Path(tmp_out_dir) / f"{Path(tmp_in_path).stem}.png"
+                    logger.info(f"Looking for converted PNG at: {png_file}")
+
+                    # 列出输出目录中的所有文件
+                    output_files = list(Path(tmp_out_dir).glob('*'))
+                    logger.info(f"Files in output directory: {output_files}")
+
+                    if png_file.exists():
+                        img = Image.open(png_file)
+                        logger.info(f"Successfully converted {img_file} using LibreOffice")
+                        result_img = img.copy()  # 复制一份，因为临时文件会被删除
+                        return result_img
+                    else:
+                        logger.warning(f"PNG file not found after LibreOffice conversion: {png_file}")
+
+                except Exception as e:
+                    logger.error(f"LibreOffice conversion error: {e}", exc_info=True)
+                finally:
+                    # 清理临时文件
+                    try:
+                        if tmp_in and os.path.exists(tmp_in.name):
+                            os.unlink(tmp_in.name)
+                        import shutil as shutil_clean
+                        if os.path.exists(tmp_out_dir):
+                            shutil_clean.rmtree(tmp_out_dir)
+                    except Exception as cleanup_error:
+                        logger.warning(f"Cleanup error: {cleanup_error}")
+
+        except Exception as e:
+            logger.debug(f"EMF/WMF conversion attempt failed: {e}")
+
+        return None
+
     def _extract_images_from_docx(self, file_path: str, format_url: bool = True) -> List[str]:
         """从DOCX文件中提取图片并统一转换为JPEG格式"""
         image_urls = []
@@ -127,27 +243,50 @@ class FileParser:
                     save_path = self.image_dir / file_name
 
                     try:
-                        # 尝试用PIL打开图片（支持多种格式包括EMF、WMF等）
-                        img = Image.open(BytesIO(img_data))
+                        # 先检查是否是EMF/WMF格式，如果是则直接转换
+                        if img_file.lower().endswith(('.emf', '.wmf')):
+                            logger.warning(f"Detected EMF/WMF format image: {img_file}")
 
-                        # 如果是RGBA模式，转换为RGB（JPEG不支持透明度）
-                        if img.mode in ('RGBA', 'LA', 'P'):
-                            # 创建白色背景
-                            rgb_img = Image.new('RGB', img.size, (255, 255, 255))
-                            if img.mode == 'P':
-                                img = img.convert('RGBA')
-                            rgb_img.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
-                            img = rgb_img
-                        elif img.mode != 'RGB':
-                            img = img.convert('RGB')
+                            # 直接使用LibreOffice转换
+                            img = self._convert_emf_wmf_to_jpeg(img_data, img_file)
 
-                        # 缩放并保存为JPEG
-                        img.thumbnail(settings.MAX_IMAGE_SIZE, Image.Resampling.LANCZOS)
-                        img.save(save_path, 'JPEG', quality=85, optimize=True)
+                            if img is None:
+                                # 转换失败，保存原始格式
+                                logger.warning(f"Failed to convert {img_file}: LibreOffice not found or conversion failed. "
+                                             f"Install LibreOffice to enable EMF/WMF conversion: "
+                                             f"'brew install --cask libreoffice' (macOS) or "
+                                             f"'sudo apt-get install libreoffice' (Ubuntu/Debian)")
+                                # 保存原始格式
+                                original_ext = Path(img_file).suffix or '.dat'
+                                file_name = f"{uuid.uuid4().hex}{original_ext}"
+                                save_path = self.image_dir / file_name
+                                save_path.write_bytes(img_data)
+
+                                # 跳过后续处理，直接记录URL
+                                if format_url:
+                                    url = f"{settings.base_url}/images/{file_name}"
+                                else:
+                                    url = f"image/{file_name}"
+                                image_urls.append(url)
+                                logger.info(f"Extracted EMF/WMF image (original format): {file_name}")
+                                continue
+                            else:
+                                logger.info(f"Successfully converted {img_file} using LibreOffice")
+                        else:
+                            # 非EMF/WMF格式，使用PIL正常打开
+                            img = Image.open(BytesIO(img_data))
+
+                        # 使用统一的方法转换并保存为JPEG
+                        self._save_image_as_jpeg(img, save_path)
+                        logger.info(f"Successfully converted {img_file} to JPEG")
 
                     except Exception as e:
-                        # 如果PIL无法处理，尝试直接保存原始数据
+                        # 如果所有方法都失败，保存原始数据并使用原始扩展名
                         logger.warning(f"Failed to convert image {img_file} to JPEG: {e}, saving as original")
+                        # 使用原始扩展名
+                        original_ext = Path(img_file).suffix or '.dat'
+                        file_name = f"{uuid.uuid4().hex}{original_ext}"
+                        save_path = self.image_dir / file_name
                         save_path.write_bytes(img_data)
 
                     # 根据 format_url 参数决定返回格式
@@ -158,7 +297,7 @@ class FileParser:
                         # 返回相对路径：image/xxx.jpeg（用于Go服务拼接）
                         url = f"image/{file_name}"
                     image_urls.append(url)
-                    logger.info(f"Extracted and converted image from DOCX: {file_name}")
+                    logger.info(f"Extracted image from DOCX: {file_name}")
 
         except Exception as e:
             logger.error(f"Error extracting images from DOCX: {e}")
@@ -203,20 +342,8 @@ class FileParser:
                         # 尝试用PIL打开图片并转换为JPEG
                         img_obj = Image.open(BytesIO(img_data))
 
-                        # 如果是RGBA模式，转换为RGB（JPEG不支持透明度）
-                        if img_obj.mode in ('RGBA', 'LA', 'P'):
-                            # 创建白色背景
-                            rgb_img = Image.new('RGB', img_obj.size, (255, 255, 255))
-                            if img_obj.mode == 'P':
-                                img_obj = img_obj.convert('RGBA')
-                            rgb_img.paste(img_obj, mask=img_obj.split()[-1] if img_obj.mode in ('RGBA', 'LA') else None)
-                            img_obj = rgb_img
-                        elif img_obj.mode != 'RGB':
-                            img_obj = img_obj.convert('RGB')
-
-                        # 缩放并保存为JPEG
-                        img_obj.thumbnail(settings.MAX_IMAGE_SIZE, Image.Resampling.LANCZOS)
-                        img_obj.save(save_path, 'JPEG', quality=85, optimize=True)
+                        # 使用统一的方法转换并保存为JPEG
+                        self._save_image_as_jpeg(img_obj, save_path)
 
                     except Exception as e:
                         # 如果PIL无法处理，尝试直接保存原始数据
@@ -294,20 +421,8 @@ class FileParser:
                         # 尝试用PIL打开图片并转换为JPEG
                         img = Image.open(BytesIO(img_data))
 
-                        # 如果是RGBA模式，转换为RGB（JPEG不支持透明度）
-                        if img.mode in ('RGBA', 'LA', 'P'):
-                            # 创建白色背景
-                            rgb_img = Image.new('RGB', img.size, (255, 255, 255))
-                            if img.mode == 'P':
-                                img = img.convert('RGBA')
-                            rgb_img.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
-                            img = rgb_img
-                        elif img.mode != 'RGB':
-                            img = img.convert('RGB')
-
-                        # 缩放并保存为JPEG
-                        img.thumbnail(settings.MAX_IMAGE_SIZE, Image.Resampling.LANCZOS)
-                        img.save(save_path, 'JPEG', quality=85, optimize=True)
+                        # 使用统一的方法转换并保存为JPEG
+                        self._save_image_as_jpeg(img, save_path)
 
                     except Exception as e:
                         # 如果PIL无法处理，尝试直接保存原始数据
