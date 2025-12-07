@@ -2498,52 +2498,19 @@
                     });
                 }
 
-                // 处理流式响应
-                if (useStream && response.ok) {
-                    hideLoading('chat');
-                    const statusEl = document.getElementById('chat_status');
-                    const bodyEl = document.getElementById('chat_body');
+                // 直接读取并显示原始响应文本
+                const text = await response.text();
 
-                    statusEl.textContent = '流式接收中...';
-                    statusEl.className = 'response-status success';
-                    bodyEl.textContent = '';
-
-                    const reader = response.body.getReader();
-                    const decoder = new TextDecoder();
-                    let streamedContent = '';
-
-                    while (true) {
-                        const { done, value } = await reader.read();
-                        if (done) break;
-
-                        const chunk = decoder.decode(value, { stream: true });
-                        const lines = chunk.split('\n');
-
-                        for (const line of lines) {
-                            if (line.startsWith('data: ')) {
-                                const data = line.substring(6).trim();
-                                if (data === '[DONE]') {
-                                    statusEl.textContent = '完成';
-                                    continue;
-                                }
-
-                                try {
-                                    const json = JSON.parse(data);
-                                    if (json.content) {
-                                        streamedContent += json.content;
-                                        bodyEl.textContent = streamedContent;
-                                    }
-                                } catch (e) {
-                                    // 忽略解析错误
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    // 非流式响应
-                    const data = await response.json();
-                    showResponse('chat', response.ok, data);
+                // 尝试格式化JSON，如果失败就直接显示原文本
+                let displayData;
+                try {
+                    displayData = JSON.parse(text);
+                } catch (e) {
+                    // 不是JSON格式，直接显示原文本（包括流式的data:格式）
+                    displayData = text;
                 }
+
+                showResponse('chat', response.ok, displayData);
             } catch (error) {
                 showResponse('chat', false, {error: error.message});
             }
