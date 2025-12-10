@@ -21,9 +21,6 @@ func NewMCPHandler() *MCPHandler {
 }
 
 // CallMCPToolsWithLLM 使用 LLM 智能选择并调用 MCP 工具
-// documents: 知识检索的结果
-// fileContent: 文件解析的文本内容
-// 返回值：mcpDocuments（工具调用结果文档）, mcpResults（MCP结果）, finalAnswer（LLM最终答案）, error
 func (h *MCPHandler) CallMCPToolsWithLLM(ctx context.Context, req *v1.ChatReq, documents []*schema.Document, fileContent string) ([]*schema.Document, []*v1.MCPResult, string, error) {
 	// 创建 MCP 工具调用器
 	toolCaller, err := mcp.NewMCPToolCaller(ctx)
@@ -36,7 +33,6 @@ func (h *MCPHandler) CallMCPToolsWithLLM(ctx context.Context, req *v1.ChatReq, d
 	fullQuestion := h.buildFullQuestion(ctx, req.Question, documents, fileContent)
 
 	// 使用 LLM 智能选择并调用工具
-	// 传递 MCPServiceTools 作为过滤器，限制 LLM 只能选择指定的工具
 	mcpDocuments, mcpResults, finalAnswer, err := toolCaller.CallToolsWithLLM(ctx, req.ModelID, fullQuestion, req.ConvID, req.MCPServiceTools)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("LLM intelligent tool call failed: %w", err)
@@ -73,7 +69,7 @@ func (h *MCPHandler) CallSingleTool(ctx context.Context, serviceName string, too
 	// Get MCP service
 	registry, err := dao.MCPRegistry.GetByName(ctx, serviceName)
 	if err != nil {
-		return nil, nil, fmt.Errorf("Failed to get MCP service: %w", err)
+		return nil, nil, fmt.Errorf("failed to get MCP service: %w", err)
 	}
 
 	// 创建客户端
@@ -85,13 +81,13 @@ func (h *MCPHandler) CallSingleTool(ctx context.Context, serviceName string, too
 		"version": "1.0.0",
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("Failed to initialize MCP connection: %w", err)
+		return nil, nil, fmt.Errorf("failed to initialize MCP connection: %w", err)
 	}
 
 	// 调用工具
 	result, err := mcpClient.CallTool(ctx, toolName, args)
 	if err != nil {
-		return nil, nil, fmt.Errorf("Failed to call tool: %w", err)
+		return nil, nil, fmt.Errorf("failed to call tool: %w", err)
 	}
 
 	// 提取文本内容

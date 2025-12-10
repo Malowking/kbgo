@@ -1738,6 +1738,12 @@
                     <div class="helper-text">JSON格式的消息数组</div>
                 </div>
 
+                <div class="form-group">
+                    <label class="form-label">工具定义 (Tools)</label>
+                    <textarea class="form-textarea" id="model_chat_tools" placeholder='[{"type": "function", "function": {"name": "get_weather", "description": "获取天气信息", "parameters": {"type": "object", "properties": {"location": {"type": "string"}}, "required": ["location"]}}}]' rows="6"></textarea>
+                    <div class="helper-text">可选，JSON格式的工具定义数组，用于Function Calling</div>
+                </div>
+
                 <div class="inline-group">
                     <div class="form-group">
                         <label class="form-label">Temperature</label>
@@ -2997,6 +3003,7 @@
         async function callModelChat() {
             const modelId = document.getElementById('model_chat_id').value.trim();
             const messagesStr = document.getElementById('model_chat_messages').value.trim();
+            const toolsStr = document.getElementById('model_chat_tools').value.trim();
             const temperature = document.getElementById('model_chat_temperature').value;
             const maxTokens = document.getElementById('model_chat_max_tokens').value;
 
@@ -3019,6 +3026,17 @@
                 temperature: parseFloat(temperature),
                 max_tokens: parseInt(maxTokens)
             };
+
+            // 添加可选的 tools 字段
+            if (toolsStr) {
+                try {
+                    const tools = JSON.parse(toolsStr);
+                    body.tools = tools;
+                } catch (e) {
+                    alert('工具定义格式错误，请输入有效的 JSON 数组');
+                    return;
+                }
+            }
 
             showLoading('model_chat');
             try {

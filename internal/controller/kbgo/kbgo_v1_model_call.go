@@ -21,17 +21,6 @@ func (c *ControllerV1) ChatCompletion(ctx context.Context, req *v1.ChatCompletio
 		return nil, gerror.Newf("Model not found: %s", req.ModelID)
 	}
 
-	// 设置默认值
-	if req.MaxTokens == 0 {
-		req.MaxTokens = 4096
-	}
-	if req.Temperature == 0 {
-		req.Temperature = 0.7
-	}
-	if req.TopP == 0 {
-		req.TopP = 0.9
-	}
-
 	// 转换消息格式
 	messages := make([]openai.ChatCompletionMessage, len(req.Messages))
 	for i, msg := range req.Messages {
@@ -62,17 +51,84 @@ func (c *ControllerV1) ChatCompletion(ctx context.Context, req *v1.ChatCompletio
 		}
 	}
 
+	// 从模型配置中获取默认参数
+	defaultMaxCompletionTokens := 4096
+	defaultTemperature := float32(0.7)
+	defaultTopP := float32(0.9)
+	defaultFrequencyPenalty := float32(0.0)
+	defaultPresencePenalty := float32(0.0)
+	var defaultStop []string
+
+	// 解析模型配置中的默认参数
+	if mc.Extra != nil {
+		if maxCompletionTokens, ok := mc.Extra["maxCompletionTokens"].(float64); ok {
+			defaultMaxCompletionTokens = int(maxCompletionTokens)
+		}
+		if temp, ok := mc.Extra["temperature"].(float64); ok {
+			defaultTemperature = float32(temp)
+		}
+		if topP, ok := mc.Extra["topP"].(float64); ok {
+			defaultTopP = float32(topP)
+		}
+		if freqPenalty, ok := mc.Extra["frequencyPenalty"].(float64); ok {
+			defaultFrequencyPenalty = float32(freqPenalty)
+		}
+		if presPenalty, ok := mc.Extra["presencePenalty"].(float64); ok {
+			defaultPresencePenalty = float32(presPenalty)
+		}
+		if stop, ok := mc.Extra["stop"].([]interface{}); ok {
+			stopWords := make([]string, 0, len(stop))
+			for _, s := range stop {
+				if str, ok := s.(string); ok {
+					stopWords = append(stopWords, str)
+				}
+			}
+			defaultStop = stopWords
+		}
+	}
+
+	// 使用请求参数覆盖默认值（如果提供）
+	maxCompletionTokens := defaultMaxCompletionTokens
+	if req.MaxTokens > 0 {
+		maxCompletionTokens = req.MaxTokens
+	}
+
+	temperature := defaultTemperature
+	if req.Temperature > 0 {
+		temperature = req.Temperature
+	}
+
+	topP := defaultTopP
+	if req.TopP > 0 {
+		topP = req.TopP
+	}
+
+	frequencyPenalty := defaultFrequencyPenalty
+	if req.FrequencyPenalty != 0 {
+		frequencyPenalty = req.FrequencyPenalty
+	}
+
+	presencePenalty := defaultPresencePenalty
+	if req.PresencePenalty != 0 {
+		presencePenalty = req.PresencePenalty
+	}
+
+	stop := defaultStop
+	if len(req.Stop) > 0 {
+		stop = req.Stop
+	}
+
 	// 构建请求
 	chatReq := openai.ChatCompletionRequest{
-		Model:            mc.Name, // 使用模型名称而非UUID
-		Messages:         messages,
-		MaxTokens:        req.MaxTokens,
-		Temperature:      req.Temperature,
-		TopP:             req.TopP,
-		FrequencyPenalty: req.FrequencyPenalty,
-		PresencePenalty:  req.PresencePenalty,
-		Stop:             req.Stop,
-		Stream:           req.Stream,
+		Model:               mc.Name, // 使用模型名称而非UUID
+		Messages:            messages,
+		MaxCompletionTokens: maxCompletionTokens,
+		Temperature:         temperature,
+		TopP:                topP,
+		FrequencyPenalty:    frequencyPenalty,
+		PresencePenalty:     presencePenalty,
+		Stop:                stop,
+		Stream:              req.Stream,
 	}
 
 	// 转换工具定义
@@ -89,6 +145,14 @@ func (c *ControllerV1) ChatCompletion(ctx context.Context, req *v1.ChatCompletio
 			}
 		}
 		chatReq.Tools = tools
+
+		if req.ToolChoice != nil {
+			chatReq.ToolChoice = req.ToolChoice
+			g.Log().Infof(ctx, "Tools enabled - Count: %d, ToolChoice: %v (user specified)", len(tools), req.ToolChoice)
+		} else {
+			chatReq.ToolChoice = "auto"
+			g.Log().Infof(ctx, "Tools enabled - Count: %d, ToolChoice: auto (default)", len(tools))
+		}
 	}
 
 	// 调用模型
