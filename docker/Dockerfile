@@ -41,7 +41,7 @@ WORKDIR /app
 # 从构建阶段复制二进制文件
 COPY --from=builder /build/kbgo /app/kbgo
 
-# 复制 config_demo.yaml 作为默认配置
+# 复制配置文件作为默认配置
 COPY --chown=app:app config/config_demo.yaml /app/config/config.yaml
 
 # 切换到非 root 用户

@@ -26,16 +26,30 @@ type DBConfig struct {
 }
 
 // getDBConfig 从配置文件中获取数据库配置
+// 支持通过环境变量覆盖配置文件中的值
 func getDBConfig() *DBConfig {
-	cfg := g.DB().GetConfig()
+	ctx := context.Background()
+
+	// 先从配置文件读取
+	dbType := g.Cfg().MustGet(ctx, "database.default.type").String()
+	dbHost := g.Cfg().MustGet(ctx, "database.default.host").String()
+	dbPort := g.Cfg().MustGet(ctx, "database.default.port").String()
+	dbUser := g.Cfg().MustGet(ctx, "database.default.user").String()
+	dbPass := g.Cfg().MustGet(ctx, "database.default.pass").String()
+	dbName := g.Cfg().MustGet(ctx, "database.default.name").String()
+	dbCharset := g.Cfg().MustGet(ctx, "database.default.charset", "utf8mb4").String()
+
+	g.Log().Infof(ctx, "Config from file - type:%s, host:%s, port:%s, user:%s, name:%s",
+		dbType, dbHost, dbPort, dbUser, dbName)
+
 	return &DBConfig{
-		Type:    cfg.Type,
-		Host:    cfg.Host,
-		Port:    cfg.Port,
-		User:    cfg.User,
-		Pass:    cfg.Pass,
-		Name:    cfg.Name,
-		Charset: cfg.Charset,
+		Type:    dbType,
+		Host:    dbHost,
+		Port:    dbPort,
+		User:    dbUser,
+		Pass:    dbPass,
+		Name:    dbName,
+		Charset: dbCharset,
 	}
 }
 
@@ -65,10 +79,6 @@ func buildDSN(config *DBConfig) (string, error) {
 // initDatabase 根据配置初始化数据库连接
 func initDatabase() (*gorm.DB, error) {
 	config := getDBConfig()
-
-	// 打印数据库配置用于调试
-	g.Log().Infof(context.Background(), "Database config: type=%s, host=%s:%s, user=%s, dbname=%s",
-		config.Type, config.Host, config.Port, config.User, config.Name)
 
 	// 构建 DSN
 	dsn, err := buildDSN(config)

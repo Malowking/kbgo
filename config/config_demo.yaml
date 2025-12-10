@@ -15,34 +15,34 @@ logger:
 
 # 主数据库配置（用于存储知识库元数据、文档信息等）
 # 支持 MySQL 和 PostgreSQL
-database:
-  default:
-    host: "localhost" # 地址
-    port: "3306" # MySQL端口: 3306, PostgreSQL端口: 5432
-    user: "root" # MySQL默认用户: root, PostgreSQL默认用户: postgres
-    pass: "your_password" # 密码
-    name: "kbgo" # 数据库名称
-    type: "mysql" # 数据库类型: mysql 或 pgsql
-    charset: "utf8mb4" # 数据库编码
-    maxLifeTime: 3600 # 连接最大生命周期(秒)
-
-# === 使用 PostgreSQL 作为主数据库的示例配置 ===
 #database:
 #  default:
-#     host: "localhost"
-#     port: "5432"
-#     user: "postgres"
-#     pass: "your_password"
-#     name: "kbgo"
-#     type: "pgsql"
-#     charset: "utf8mb4"
-#     maxLifeTime: 3600
+#    host: "localhost" # 地址
+#    port: "3306" # MySQL端口: 3306, PostgreSQL端口: 5432
+#    user: "root" # MySQL默认用户: root, PostgreSQL默认用户: postgres
+#    pass: "your_password" # 密码
+#    name: "kbgo" # 数据库名称
+#    type: "mysql" # 数据库类型: mysql 或 pgsql
+#    charset: "utf8mb4" # 数据库编码
+#    maxLifeTime: 3600 # 连接最大生命周期(秒)
+
+# === 使用 PostgreSQL 作为主数据库的示例配置 ===
+database:
+  default:
+     host: "kbgo-postgres"
+     port: "5432"
+     user: "kbgo"
+     pass: "kbgo123"
+     name: "kbgo"
+     type: "pgsql"
+     charset: "utf8mb4"
+     maxLifeTime: 3600
 
 # 向量数据库配置
 # 支持的类型: "milvus" 或 "pgvector"
 # 注意：向量数据库可以独立于主数据库选择
 vectorStore:
-  type: "milvus"  # 默认使用 Milvus，切换到 PostgreSQL 请改为 "pgvector"
+  type: "pgvector"
 
 # Milvus 向量数据库配置
 milvus:
@@ -53,11 +53,11 @@ milvus:
 # PostgreSQL 向量数据库配置 (pgvector)
 # 使用前需要先安装 pgvector 扩展: CREATE EXTENSION vector;
 postgres:
-  host: "localhost"            # PostgreSQL 主机地址
+  host: "kbgo-postgres"        # PostgreSQL 主机地址
   port: "5432"                 # PostgreSQL 端口
-  user: "postgres"             # PostgreSQL 用户名
-  password: "your_password"    # PostgreSQL 密码
-  database: "kbgo"      # PostgreSQL 数据库名称
+  user: "kbgo"                 # PostgreSQL 用户名
+  password: "kbgo123"          # PostgreSQL 密码
+  database: "kbgo"             # PostgreSQL 数据库名称
   sslmode: "disable"           # SSL 模式: disable, require, verify-ca, verify-full
 
 # 文件存储配置
@@ -81,5 +81,5 @@ retriever:
 
 # 文档解析服务配置（Python file_parse 服务）
 fileParse:
-  url: "http://localhost:8002"  # file_parse 服务地址
-  timeout: 120                   # 请求超时时间（秒），默认 120 秒
+  url: "http://kbgo-file-parse:8002"  # file_parse 服务地址
+  timeout: 120                         # 请求超时时间（秒），默认 120 秒
