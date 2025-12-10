@@ -31,7 +31,16 @@ RUN poetry install --no-dev --no-root
 
 # 复制应用代码
 COPY app/ ./app/
-COPY .env.example ./.env
+
+# 创建图片存储目录
+RUN mkdir -p /app/upload/image
+
+# 设置环境变量（Docker 环境配置）
+ENV IMAGE_DIR=/app/upload/image \
+    HOST=0.0.0.0 \
+    PORT=8002 \
+    DEBUG=False \
+    LOG_LEVEL=INFO
 
 # 暴露端口
 EXPOSE 8002

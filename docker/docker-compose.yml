@@ -1,18 +1,10 @@
-version: '3.8'
-
 # 使用说明：
-# 1. 完整启动（包含所有服务）：
-#    docker-compose --profile full up -d
-#    包含：PostgreSQL + file-parse + kbgo
-#
-# 2. 默认启动（使用本地数据库）：
+# 启动所有服务（PostgreSQL + file-parse + kbgo）：
 #    docker-compose up -d
-#    包含：file-parse + kbgo（连接本地 PostgreSQL）
 
 services:
   # PostgreSQL 数据库（主数据库 + pgvector 向量存储）
   postgres:
-    profiles: ["full"]  # 只在 full profile 时启动
     image: pgvector/pgvector:pg16
     container_name: kbgo-postgres
     environment:
@@ -31,14 +23,16 @@ services:
     networks:
       - kbgo-network
 
-  # Python 文档解析服务（默认启动）
+  # Python 文档解析服务
   file-parse:
     build:
-      context: ./file_parse
+      context: ../file_parse
       dockerfile: Dockerfile
     container_name: kbgo-file-parse
     ports:
       - "8002:8002"
+    volumes:
+      - ../upload:/app/upload
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
@@ -47,19 +41,24 @@ services:
     networks:
       - kbgo-network
 
-  # kbgo 主应用（默认启动）
+  # kbgo 主应用
   kbgo:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: kbgo-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      file-parse:
+        condition: service_started
     ports:
       - "8000:8000"
     volumes:
-      - ./logs:/app/logs
-      - ./upload:/app/upload
+      - ../logs:/app/logs
+      - ../upload:/app/upload
       # 可选：挂载本地配置文件覆盖容器内的默认配置
-      # - ./config/config.yaml:/app/config/config.yaml:ro
+      # - ../config/config.yaml:/app/config/config.yaml:ro
     extra_hosts:
       # 允许容器访问宿主机的服务（使用 host.docker.internal 访问本地服务）
       - "host.docker.internal:host-gateway"
