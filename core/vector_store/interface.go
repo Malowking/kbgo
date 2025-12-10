@@ -6,6 +6,15 @@ import (
 	"github.com/Malowking/kbgo/pkg/schema"
 )
 
+// 向量存储字段名常量
+const (
+	FieldContent       = "text"
+	FieldContentVector = "vector"
+	FieldMetadata      = "metadata"
+	KnowledgeId        = "knowledge_id"
+	DocumentId         = "document_id"
+)
+
 // Retriever interface for vector search and retrieval operations
 type Retriever interface {
 	// Retrieve performs vector search and returns matching documents

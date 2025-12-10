@@ -63,7 +63,7 @@ func InitializeMilvusStore(ctx context.Context) (VectorStore, error) {
 		Database: database,
 	}
 
-	milvusStore, err := NewMilvusStore(config)
+	milvusStore, err := NewVectorStore(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create milvus store: %w", err)
 	}
@@ -179,13 +179,13 @@ func (m *MilvusStore) InsertVectors(ctx context.Context, collectionName string, 
 
 	// 从上下文中提取knowledge_id
 	var knowledgeId string
-	if value, ok := ctx.Value(common.KnowledgeId).(string); ok {
+	if value, ok := ctx.Value(KnowledgeId).(string); ok {
 		knowledgeId = value
 	}
 
 	// 从上下文中提取document_id
 	var contextDocumentId string
-	if value, ok := ctx.Value(common.DocumentId).(string); ok {
+	if value, ok := ctx.Value(DocumentId).(string); ok {
 		contextDocumentId = value
 	}
 
@@ -218,7 +218,7 @@ func (m *MilvusStore) InsertVectors(ctx context.Context, collectionName string, 
 
 		// 添加knowledge_id到metadata
 		if knowledgeId != "" {
-			metaCopy[common.KnowledgeId] = knowledgeId
+			metaCopy[KnowledgeId] = knowledgeId
 		}
 
 		// 序列化metadata
@@ -687,7 +687,7 @@ func (m *MilvusStore) ConvertSearchResultsToDocuments(ctx context.Context, colum
 					result[i].ID = str
 				}
 			}
-		case common.FieldContent: // "text"
+		case FieldContent: // "text"
 			for i := 0; i < col.Len(); i++ {
 				val, err := col.Get(i)
 				if err != nil {
@@ -697,7 +697,7 @@ func (m *MilvusStore) ConvertSearchResultsToDocuments(ctx context.Context, colum
 					result[i].Content = str
 				}
 			}
-		case common.FieldContentVector:
+		case FieldContentVector:
 			for i := 0; i < col.Len(); i++ {
 				_, err := col.Get(i)
 				if err != nil {
@@ -706,7 +706,7 @@ func (m *MilvusStore) ConvertSearchResultsToDocuments(ctx context.Context, colum
 				// Milvus returns vectors as []float32 or []byte - we don't need to store them in the document
 				// The vectors are only used for similarity search, not for retrieval
 			}
-		case common.FieldMetadata: // "metadata" - consolidate JSON parsing logic
+		case FieldMetadata: // "metadata" - consolidate JSON parsing logic
 			for i := 0; i < col.Len(); i++ {
 				val, err := col.Get(i)
 				if err != nil {
@@ -735,14 +735,14 @@ func (m *MilvusStore) ConvertSearchResultsToDocuments(ctx context.Context, colum
 					}
 				}
 			}
-		case common.DocumentId: // "document_id"
+		case DocumentId: // "document_id"
 			for i := 0; i < col.Len(); i++ {
 				val, err := col.Get(i)
 				if err != nil {
 					continue
 				}
 				if str, ok := val.(string); ok {
-					result[i].MetaData[common.DocumentId] = str
+					result[i].MetaData[DocumentId] = str
 				}
 			}
 		default:

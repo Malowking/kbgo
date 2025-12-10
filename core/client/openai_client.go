@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/http"
+	"time"
 
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/sashabaranov/go-openai"
@@ -17,10 +20,28 @@ type OpenAIClient struct {
 
 // NewOpenAIClient 创建OpenAI客户端
 func NewOpenAIClient(apiKey, baseURL string) *OpenAIClient {
+	// 创建带超时的 HTTP 客户端
+	httpClient := &http.Client{
+		Timeout: 300 * time.Second, // 总超时时间 5 分钟（适合流式响应）
+		Transport: &http.Transport{
+			DialContext: (&net.Dialer{
+				Timeout:   10 * time.Second, // 连接超时 10 秒
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			TLSHandshakeTimeout:   10 * time.Second, // TLS 握手超时
+			ResponseHeaderTimeout: 30 * time.Second, // 响应头超时（流式响应必须在 30 秒内开始返回数据）
+			IdleConnTimeout:       90 * time.Second,
+			MaxIdleConns:          100,
+			MaxIdleConnsPerHost:   10,
+		},
+	}
+
 	config := openai.DefaultConfig(apiKey)
 	if baseURL != "" {
 		config.BaseURL = baseURL
 	}
+	config.HTTPClient = httpClient // 设置自定义 HTTP 客户端
+
 	return &OpenAIClient{
 		client: openai.NewClientWithConfig(config),
 	}

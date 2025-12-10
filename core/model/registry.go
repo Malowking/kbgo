@@ -3,7 +3,10 @@ package model
 import (
 	"context"
 	"encoding/json"
+	"net"
+	"net/http"
 	"sync"
+	"time"
 
 	"github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
@@ -113,10 +116,26 @@ func (r *ModelRegistry) Reload(ctx context.Context, db *gormdb.DB) error {
 			}
 		}
 
+		// 创建带超时的 HTTP 客户端
+		httpClient := &http.Client{
+			Timeout: 300 * time.Second, // 总超时时间 5 分钟
+			Transport: &http.Transport{
+				DialContext: (&net.Dialer{
+					Timeout:   10 * time.Second, // 连接超时 10 秒
+					KeepAlive: 30 * time.Second,
+				}).DialContext,
+				TLSHandshakeTimeout:   10 * time.Second, // TLS 握手超时
+				ResponseHeaderTimeout: 30 * time.Second, // 响应头超时（必须在 30 秒内开始返回数据）
+				IdleConnTimeout:       90 * time.Second,
+				MaxIdleConns:          100,
+				MaxIdleConnsPerHost:   10,
+			},
+		}
+
 		// 创建 OpenAI 客户端
 		config := openai.DefaultConfig(m.APIKey)
 		config.BaseURL = m.BaseURL
-		// Note: HTTPClient timeout should be set through the http.Client directly if needed
+		config.HTTPClient = httpClient // 设置自定义 HTTP 客户端
 		mc.Client = openai.NewClientWithConfig(config)
 
 		newMap[m.ModelID] = mc

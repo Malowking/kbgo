@@ -9,7 +9,6 @@ import (
 	"time"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
-	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/pkg/schema"
@@ -156,10 +155,10 @@ func (h *ChatHandler) selectToolsWithLLM(ctx context.Context, question string) (
 	g.Log().Infof(ctx, "加载了 %d 个MCP服务的工具", len(allTools))
 
 	// 2. 使用重试机制调用LLM
-	retryConfig := common.DefaultLLMRetryConfig()
+	retryConfig := model.DefaultLLMRetryConfig()
 	retryConfig.MaxRetries = 3 // 最多尝试3个不同的模型
 
-	result, err := common.RetryWithDifferentLLM(ctx, retryConfig, func(ctx context.Context, modelID string) (interface{}, error) {
+	result, err := model.RetryWithDifferentLLM(ctx, retryConfig, func(ctx context.Context, modelID string) (interface{}, error) {
 		return h.callLLMForToolSelection(ctx, modelID, question, allTools)
 	})
 

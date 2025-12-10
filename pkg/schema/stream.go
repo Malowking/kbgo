@@ -65,49 +65,39 @@ func (r *StreamReader[T]) Close() error {
 }
 
 // Copy creates n copies of the StreamReader
+// 从原始流中读取数据，并广播到所有副本流
 func (r *StreamReader[T]) Copy(n int) []*StreamReader[T] {
 	readers := make([]*StreamReader[T], n)
 	channels := make([]chan streamItem[T], n)
 
+	// 为每个副本创建独立的 channel
 	for i := 0; i < n; i++ {
 		channels[i] = make(chan streamItem[T], cap(r.ch))
 		readers[i] = &StreamReader[T]{ch: channels[i]}
 	}
 
+	// 启动 goroutine 从原始流读取并广播到所有副本
 	go func() {
 		defer func() {
+			// 关闭所有副本的 channel
 			for i := 0; i < n; i++ {
 				close(channels[i])
 			}
 		}()
 
 		for {
-			r.mu.Lock()
-			if r.closed {
-				r.mu.Unlock()
-				return
-			}
-			r.mu.Unlock()
-
+			// 从原始流读取数据
 			item, ok := <-r.ch
 			if !ok {
+				// 原始流已关闭
 				r.mu.Lock()
 				r.closed = true
 				r.mu.Unlock()
 				return
 			}
 
-			// Send to all channels
-			for i := 0; i < n; i++ {
-				select {
-				case channels[i] <- item:
-				default:
-					// If channel is full, we still need to send to remaining channels
-					// This maintains consistency across all copies
-				}
-			}
-
-			// Ensure all channels receive the item
+			// 广播到所有副本流（每个副本只发送一次）
+			// 必须确保所有副本都收到数据，所以使用阻塞发送
 			for i := 0; i < n; i++ {
 				channels[i] <- item
 			}

@@ -360,9 +360,9 @@ func (s *DocumentIndexer) stepVectorizeAndStore(idxCtx *indexContext) error {
 	}
 
 	// Set context, pass necessary information
-	ctx := context.WithValue(idxCtx.ctx, common.DocumentId, idxCtx.documentId)
+	ctx := context.WithValue(idxCtx.ctx, vector_store.DocumentId, idxCtx.documentId)
 	if idxCtx.doc.KnowledgeId != "" {
-		ctx = context.WithValue(ctx, common.KnowledgeId, idxCtx.doc.KnowledgeId)
+		ctx = context.WithValue(ctx, vector_store.KnowledgeId, idxCtx.doc.KnowledgeId)
 	}
 
 	// Use embedder to vectorize and store to vector database

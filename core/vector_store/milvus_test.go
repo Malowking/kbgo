@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/google/uuid"
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
@@ -199,8 +198,8 @@ func TestMilvusVectorOperations(t *testing.T) {
 		}
 
 		// 设置上下文
-		ctx = context.WithValue(ctx, common.DocumentId, documentID)
-		ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
+		ctx = context.WithValue(ctx, DocumentId, documentID)
+		ctx = context.WithValue(ctx, KnowledgeId, knowledgeID)
 
 		ids, err := store.InsertVectors(ctx, testCollectionName, chunks, convertToFloat32(vectors))
 		assert.NoError(t, err)
@@ -215,8 +214,8 @@ func TestMilvusVectorOperations(t *testing.T) {
 		}
 		vectors := [][]float64{{1.0}, {2.0}} // 数量不匹配
 
-		ctx = context.WithValue(ctx, common.DocumentId, documentID)
-		ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
+		ctx = context.WithValue(ctx, DocumentId, documentID)
+		ctx = context.WithValue(ctx, KnowledgeId, knowledgeID)
 
 		ids, err := store.InsertVectors(ctx, testCollectionName, chunks, convertToFloat32(vectors))
 		assert.Error(t, err)
@@ -373,8 +372,8 @@ func BenchmarkMilvusInsertVectors(b *testing.B) {
 
 	documentID := uuid.New().String()
 	knowledgeID := uuid.New().String()
-	ctx = context.WithValue(ctx, common.DocumentId, documentID)
-	ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
+	ctx = context.WithValue(ctx, DocumentId, documentID)
+	ctx = context.WithValue(ctx, KnowledgeId, knowledgeID)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

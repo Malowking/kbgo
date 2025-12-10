@@ -53,7 +53,6 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 			}
 
 			// chat接口默认开启查询重写，重写次数为3
-			enableRewrite := true
 			rewriteAttempts := 3
 
 			retrieverRes, err := retriever.ProcessRetrieval(ctx, &v1.RetrieverReq{
@@ -63,7 +62,7 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 				TopK:             req.TopK,
 				Score:            req.Score,
 				KnowledgeId:      req.KnowledgeId,
-				EnableRewrite:    enableRewrite,
+				EnableRewrite:    true,
 				RewriteAttempts:  rewriteAttempts,
 				RetrieveMode:     retrieveMode,
 			})
@@ -119,11 +118,8 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 					"content":      res.Content,
 				}
 			}
-			// 如果MCP返回了最终答案，记录下来（流式处理中可能需要特殊处理）
 			if mcpFinalAnswer != "" {
 				g.Log().Infof(ctx, "MCP returned final answer (length: %d)", len(mcpFinalAnswer))
-				// 注意：在流式处理中，我们仍然需要调用LLM来生成流式输出
-				// 可以考虑将mcpFinalAnswer作为系统提示或直接流式输出
 			}
 		}
 	}

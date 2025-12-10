@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -230,8 +229,8 @@ func TestPostgresVectorOperations(t *testing.T) {
 		}
 
 		// 设置上下文
-		ctx = context.WithValue(ctx, common.DocumentId, documentID)
-		ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
+		ctx = context.WithValue(ctx, DocumentId, documentID)
+		ctx = context.WithValue(ctx, KnowledgeId, knowledgeID)
 
 		ids, err := store.InsertVectors(ctx, testTableName, chunks, convertToFloat32(vectors))
 		assert.NoError(t, err)
@@ -246,8 +245,8 @@ func TestPostgresVectorOperations(t *testing.T) {
 		}
 		vectors := [][]float64{{1.0}, {2.0}} // 数量不匹配
 
-		ctx = context.WithValue(ctx, common.DocumentId, documentID)
-		ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
+		ctx = context.WithValue(ctx, DocumentId, documentID)
+		ctx = context.WithValue(ctx, KnowledgeId, knowledgeID)
 
 		ids, err := store.InsertVectors(ctx, testTableName, chunks, convertToFloat32(vectors))
 		assert.Error(t, err)
@@ -262,7 +261,7 @@ func TestPostgresVectorOperations(t *testing.T) {
 		vectors := [][]float64{make([]float64, 1024)}
 
 		// 不设置 DocumentId
-		ctxWithoutDoc := context.WithValue(context.Background(), common.KnowledgeId, knowledgeID)
+		ctxWithoutDoc := context.WithValue(context.Background(), KnowledgeId, knowledgeID)
 
 		ids, err := store.InsertVectors(ctxWithoutDoc, testTableName, chunks, convertToFloat32(vectors))
 		assert.Error(t, err)
@@ -442,8 +441,8 @@ func TestPostgresTransactionRollback(t *testing.T) {
 			make([]float64, 100),
 		}
 
-		ctx = context.WithValue(ctx, common.DocumentId, documentID)
-		ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
+		ctx = context.WithValue(ctx, DocumentId, documentID)
+		ctx = context.WithValue(ctx, KnowledgeId, knowledgeID)
 
 		ids, err := store.InsertVectors(ctx, testTableName, chunks, convertToFloat32(vectors))
 		assert.Error(t, err)
@@ -499,8 +498,8 @@ func BenchmarkPostgresInsertVectors(b *testing.B) {
 
 	documentID := uuid.New().String()
 	knowledgeID := uuid.New().String()
-	ctx = context.WithValue(ctx, common.DocumentId, documentID)
-	ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
+	ctx = context.WithValue(ctx, DocumentId, documentID)
+	ctx = context.WithValue(ctx, KnowledgeId, knowledgeID)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -549,8 +548,8 @@ func BenchmarkPostgresVectorSearch(b *testing.B) {
 	// 插入100个测试向量
 	documentID := uuid.New().String()
 	knowledgeID := uuid.New().String()
-	ctx = context.WithValue(ctx, common.DocumentId, documentID)
-	ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
+	ctx = context.WithValue(ctx, DocumentId, documentID)
+	ctx = context.WithValue(ctx, KnowledgeId, knowledgeID)
 
 	for i := 0; i < 100; i++ {
 		chunks := []*schema.Document{

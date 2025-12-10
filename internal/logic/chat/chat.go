@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/formatter"
 	coreModel "github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/internal/history"
@@ -165,8 +164,8 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 	start := time.Now()
 
 	// 使用重试机制调用模型服务
-	retryConfig := common.DefaultSingleModelRetryConfig()
-	result, err := common.RetryWithSameModel(ctx, mc.Name, retryConfig, func(ctx context.Context) (interface{}, error) {
+	retryConfig := coreModel.DefaultSingleModelRetryConfig()
+	result, err := coreModel.RetryWithSameModel(ctx, mc.Name, retryConfig, func(ctx context.Context) (interface{}, error) {
 		resp, err := modelService.ChatCompletion(ctx, chatParams)
 		if err != nil {
 			return nil, err

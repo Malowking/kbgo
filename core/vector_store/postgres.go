@@ -68,7 +68,7 @@ func InitializePostgresStore(ctx context.Context) (VectorStore, error) {
 		Database: database,
 	}
 
-	postgresStore, err := NewPostgresStore(config)
+	postgresStore, err := NewVectorStore(config)
 	if err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("failed to create postgres store: %w", err)
@@ -201,12 +201,12 @@ func (p *PostgresStore) InsertVectors(ctx context.Context, collectionName string
 
 	// 从上下文中提取knowledge_id和document_id
 	var knowledgeId string
-	if value, ok := ctx.Value(common.KnowledgeId).(string); ok {
+	if value, ok := ctx.Value(KnowledgeId).(string); ok {
 		knowledgeId = value
 	}
 
 	var contextDocumentId string
-	if value, ok := ctx.Value(common.DocumentId).(string); ok {
+	if value, ok := ctx.Value(DocumentId).(string); ok {
 		contextDocumentId = value
 	}
 
@@ -255,7 +255,7 @@ func (p *PostgresStore) InsertVectors(ctx context.Context, collectionName string
 
 		// 添加knowledge_id到metadata
 		if knowledgeId != "" {
-			metaCopy[common.KnowledgeId] = knowledgeId
+			metaCopy[KnowledgeId] = knowledgeId
 		}
 
 		// 序列化metadata
@@ -579,7 +579,7 @@ func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query
 		}
 
 		// 添加document_id到metadata
-		doc.MetaData[common.DocumentId] = documentId
+		doc.MetaData[DocumentId] = documentId
 
 		results = append(results, doc)
 	}

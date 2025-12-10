@@ -71,7 +71,7 @@ func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 	optimizedQueries := make([]string, 0, rewriteAttempts)
 
 	// 配置重试机制
-	retryConfig := &common.LLMRetryConfig{
+	retryConfig := &model.LLMRetryConfig{
 		MaxRetries:    3,                      // 每次重写最多尝试3个不同的模型
 		RetryDelay:    300 * time.Millisecond, // 重试延迟300ms
 		ModelType:     model.ModelTypeLLM,
@@ -87,7 +87,7 @@ func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 		}
 
 		// 使用重试机制调用LLM进行查询重写
-		result, err := common.RetryWithDifferentLLM(ctx, retryConfig, func(ctx context.Context, modelID string) (interface{}, error) {
+		result, err := model.RetryWithDifferentLLM(ctx, retryConfig, func(ctx context.Context, modelID string) (interface{}, error) {
 			// 获取模型配置
 			mc := model.Registry.Get(modelID)
 			if mc == nil {
