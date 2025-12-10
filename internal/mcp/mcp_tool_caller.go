@@ -213,12 +213,13 @@ func (tc *MCPToolCaller) convertMCPToolToLLMTool(serviceName string, mcpTool cli
 
 // CallToolsWithLLM 使用 LLM 智能选择并调用工具
 // serviceToolsFilter: 如果不为 nil，则只允许 LLM 调用指定服务的指定工具
-func (tc *MCPToolCaller) CallToolsWithLLM(ctx context.Context, modelID string, question string, convID string, serviceToolsFilter map[string][]string) ([]*schema.Document, []*v1.MCPResult, error) {
+// 返回值：documents（工具调用结果）, mcpResults（MCP结果）, finalAnswer（LLM最终答案）, error
+func (tc *MCPToolCaller) CallToolsWithLLM(ctx context.Context, modelID string, question string, convID string, serviceToolsFilter map[string][]string) ([]*schema.Document, []*v1.MCPResult, string, error) {
 	// 1. 准备工具列表（根据过滤器）
 	llmTools := tc.GetAllLLMTools(serviceToolsFilter)
 	if len(llmTools) == 0 {
 		g.Log().Info(ctx, "没有可用的MCP工具")
-		return nil, nil, nil
+		return nil, nil, "", nil
 	}
 
 	g.Log().Infof(ctx, "准备 %d 个 MCP 工具", len(llmTools))
@@ -251,11 +252,17 @@ func (tc *MCPToolCaller) CallToolsWithLLM(ctx context.Context, modelID string, q
 	var toolCallLogs []map[string]interface{} // 记录工具调用日志
 
 	for iteration := 0; iteration < maxIterations; iteration++ {
+		g.Log().Infof(ctx, "[MCP工具调用] 第 %d/%d 轮迭代开始，当前消息数: %d", iteration+1, maxIterations, len(messages))
+
 		// 调用 LLM
 		response, err := chatInstance.GenerateWithTools(ctx, modelID, messages, llmTools)
 		if err != nil {
-			return nil, nil, fmt.Errorf("LLM 调用失败: %w", err)
+			g.Log().Errorf(ctx, "[MCP工具调用] 第 %d 轮LLM调用失败: %v", iteration+1, err)
+			return nil, nil, "", fmt.Errorf("LLM 调用失败: %w", err)
 		}
+
+		g.Log().Infof(ctx, "[MCP工具调用] 第 %d 轮LLM响应 - Content长度: %d, ToolCalls数: %d",
+			iteration+1, len(response.Content), len(response.ToolCalls))
 
 		// 将 LLM 响应添加到消息历史
 		messages = append(messages, response)
@@ -333,8 +340,8 @@ func (tc *MCPToolCaller) CallToolsWithLLM(ctx context.Context, modelID string, q
 		if iteration == maxIterations-1 {
 			g.Log().Warning(ctx, "达到最大工具调用迭代次数，尝试获取最终答案")
 
-			// 最后一次调用 LLM，不再提供工具（强制它给出最终答案）
-			finalResponse, err := chatInstance.GenerateWithTools(ctx, modelID, messages, nil)
+			// 最后一次调用 LLM（不提供工具，强制它给出最终答案）
+			finalResponse, err := chatInstance.GenerateWithTools(ctx, modelID, messages, []*schema.ToolInfo{})
 			if err != nil {
 				g.Log().Errorf(ctx, "获取最终答案失败: %v", err)
 			} else {
@@ -345,36 +352,20 @@ func (tc *MCPToolCaller) CallToolsWithLLM(ctx context.Context, modelID string, q
 		}
 	}
 
-	// 6. 如果有最终答案,将其作为一个特殊的文档返回
-	if finalAnswer != "" {
-		finalDoc := &schema.Document{
-			ID:      "llm_final_answer",
-			Content: finalAnswer,
-			MetaData: map[string]interface{}{
-				"source": "llm",
-				"type":   "final_answer",
-			},
-		}
-		allDocuments = append(allDocuments, finalDoc)
-	}
-
-	// 7. 添加工具调用日志到 MCP 结果中
+	// 6. 记录工具调用日志（仅用于调试，不返回给用户）
 	if len(toolCallLogs) > 0 {
-		toolCallLogDoc := &schema.Document{
-			ID:      "tool_call_logs",
-			Content: fmt.Sprintf("%v", toolCallLogs),
-			MetaData: map[string]interface{}{
-				"source":     "mcp",
-				"type":       "tool_call_logs",
-				"tool_calls": toolCallLogs,
-			},
-		}
-		allDocuments = append(allDocuments, toolCallLogDoc)
+		toolCallLogsJSON, _ := json.Marshal(toolCallLogs)
+		g.Log().Debugf(ctx, "MCP 工具调用日志: %s", string(toolCallLogsJSON))
 	}
 
-	g.Log().Infof(ctx, "MCP 工具调用完成: %d 个文档, %d 个结果", len(allDocuments), len(allMCPResults))
+	// 7. 记录完成日志
+	if len(allMCPResults) > 0 {
+		g.Log().Infof(ctx, "MCP 工具调用完成: %d 个工具调用", len(allMCPResults))
+	} else {
+		g.Log().Infof(ctx, "MCP 流程完成: LLM 未调用工具")
+	}
 
-	return allDocuments, allMCPResults, nil
+	return allDocuments, allMCPResults, finalAnswer, nil
 }
 
 // callSingleTool 调用单个工具

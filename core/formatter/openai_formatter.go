@@ -43,6 +43,30 @@ func (f *OpenAIFormatter) formatSingleMessage(msg *schema.Message) (openai.ChatC
 		Role: string(msg.Role),
 	}
 
+	// 如果是 Tool 角色的消息，必须设置 ToolCallID
+	if msg.Role == schema.Tool {
+		openaiMsg.ToolCallID = msg.ToolCallID
+		openaiMsg.Content = msg.Content
+		return openaiMsg, nil
+	}
+
+	// 如果是 Assistant 角色且有 ToolCalls，需要转换
+	if msg.Role == schema.Assistant && len(msg.ToolCalls) > 0 {
+		openaiMsg.Content = msg.Content
+		openaiMsg.ToolCalls = make([]openai.ToolCall, len(msg.ToolCalls))
+		for i, tc := range msg.ToolCalls {
+			openaiMsg.ToolCalls[i] = openai.ToolCall{
+				ID:   tc.ID,
+				Type: openai.ToolType(tc.Type),
+				Function: openai.FunctionCall{
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				},
+			}
+		}
+		return openaiMsg, nil
+	}
+
 	// 检查是否有多模态内容
 	if len(msg.MultiContent) > 0 {
 		contentParts := f.convertMultiContent(msg.MultiContent)

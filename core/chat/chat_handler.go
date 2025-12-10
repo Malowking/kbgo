@@ -151,7 +151,69 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 		res.References = retrievalRes.documents
 	}
 
-	// 4. 调用Chat逻辑生成答案
+	// 4. 如果启用MCP，先进行MCP工具调用（在LLM生成答案之前）
+	var mcpDocs []*schema.Document
+	if req.UseMCP {
+		g.Log().Infof(ctx, "Checking if MCP tools are needed...")
+		mcpHandler := NewMCPHandler()
+
+		// 4.1 检查是否需要进行工具选择
+		// 如果没有传入工具列表，或者工具数量超过12个，则使用LLM进行工具选择
+		if req.MCPServiceTools == nil || len(req.MCPServiceTools) == 0 || h.countTotalTools(req.MCPServiceTools) > 12 {
+			g.Log().Infof(ctx, "工具列表为空或超过20个，使用LLM进行工具选择")
+
+			// 构建用于工具选择的完整问题（包含检索内容和文件内容）
+			toolSelectionQuestion := h.buildToolSelectionQuestion(ctx, req.Question, documents, fileParseRes.fileContent)
+
+			// 使用LLM选择工具
+			selectedTools, selectErr := h.selectToolsWithLLM(ctx, toolSelectionQuestion)
+			if selectErr != nil {
+				g.Log().Errorf(ctx, "工具选择失败: %v", selectErr)
+				// 工具选择失败，使用原有的工具列表（如果为空则调用所有工具）
+			} else {
+				g.Log().Infof(ctx, "LLM选择了 %d 个服务的工具", len(selectedTools))
+				// 更新请求中的工具列表
+				req.MCPServiceTools = selectedTools
+			}
+		}
+
+		// 4.2 执行MCP工具调用，传入知识检索和文件解析的结果
+		var mcpResults []*v1.MCPResult
+		var mcpFinalAnswer string
+		var mcpErr error
+		mcpDocs, mcpResults, mcpFinalAnswer, mcpErr = mcpHandler.CallMCPToolsWithLLM(ctx, req, documents, fileParseRes.fileContent)
+		if mcpErr != nil {
+			g.Log().Errorf(ctx, "MCP tool call failed: %v", mcpErr)
+		} else {
+			// 如果 MCP 返回了最终答案，直接使用它
+			if mcpFinalAnswer != "" {
+				g.Log().Infof(ctx, "MCP returned final answer, skipping additional LLM call")
+				res.Answer = mcpFinalAnswer
+				res.MCPResults = mcpResults
+
+				// 将MCP返回的文档添加到references中（仅用于展示工具调用结果）
+				if len(mcpDocs) > 0 {
+					res.References = append(res.References, mcpDocs...)
+				}
+
+				return res, nil
+			}
+
+			// 如果没有最终答案但有工具调用结果，添加到documents中供后续LLM使用
+			if len(mcpResults) > 0 {
+				g.Log().Infof(ctx, "MCP tools returned %d results", len(mcpResults))
+				res.MCPResults = mcpResults
+
+				// 将MCP返回的文档添加到documents中，供后续LLM调用使用
+				if len(mcpDocs) > 0 {
+					documents = append(documents, mcpDocs...)
+					res.References = append(res.References, mcpDocs...)
+				}
+			}
+		}
+	}
+
+	// 5. 调用Chat逻辑生成最终答案（仅在MCP未返回最终答案时）
 	chatI := chat.GetChat()
 
 	var answer string
@@ -175,47 +237,6 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 	}
 
 	res.Answer = answer
-
-	// 5. 如果启用MCP，进行MCP工具调用（单次调用）
-	if req.UseMCP {
-		g.Log().Infof(ctx, "Checking if MCP tools are needed...")
-		mcpHandler := NewMCPHandler()
-
-		// 5.1 检查是否需要进行工具选择
-		// 如果没有传入工具列表，或者工具数量超过20个，则使用LLM进行工具选择
-		if req.MCPServiceTools == nil || len(req.MCPServiceTools) == 0 || h.countTotalTools(req.MCPServiceTools) > 20 {
-			g.Log().Infof(ctx, "工具列表为空或超过20个，使用LLM进行工具选择")
-
-			// 构建用于工具选择的完整问题（包含检索内容和文件内容）
-			toolSelectionQuestion := h.buildToolSelectionQuestion(ctx, req.Question, documents, fileParseRes.fileContent)
-
-			// 使用LLM选择工具
-			selectedTools, selectErr := h.selectToolsWithLLM(ctx, toolSelectionQuestion)
-			if selectErr != nil {
-				g.Log().Errorf(ctx, "工具选择失败: %v", selectErr)
-				// 工具选择失败，使用原有的工具列表（如果为空则调用所有工具）
-			} else {
-				g.Log().Infof(ctx, "LLM选择了 %d 个服务的工具", len(selectedTools))
-				// 更新请求中的工具列表
-				req.MCPServiceTools = selectedTools
-			}
-		}
-
-		// 5.2 执行MCP工具调用，传入知识检索和文件解析的结果
-		mcpDocs, mcpResults, mcpErr := mcpHandler.CallMCPToolsWithLLM(ctx, req, documents, fileParseRes.fileContent)
-		if mcpErr != nil {
-			g.Log().Errorf(ctx, "MCP tool call failed: %v", mcpErr)
-		} else if len(mcpResults) > 0 {
-			// MCP返回了结果（已包含基于工具结果生成的最终答案）
-			g.Log().Infof(ctx, "MCP tools returned %d results, integrating into answer", len(mcpResults))
-			res.MCPResults = mcpResults
-
-			// 将MCP返回的文档也添加到references中
-			if len(mcpDocs) > 0 {
-				res.References = append(res.References, mcpDocs...)
-			}
-		}
-	}
 
 	return res, nil
 }

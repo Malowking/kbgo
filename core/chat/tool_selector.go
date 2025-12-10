@@ -9,6 +9,7 @@ import (
 	"time"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/pkg/schema"
@@ -139,7 +140,7 @@ func (h *ChatHandler) buildToolSelectionPrompt(ctx context.Context, question str
 	return builder.String()
 }
 
-// selectToolsWithLLM 使用LLM选择工具
+// selectToolsWithLLM 使用LLM选择工具（带重试机制）
 func (h *ChatHandler) selectToolsWithLLM(ctx context.Context, question string) (map[string][]string, error) {
 	// 1. 获取所有可用的MCP工具
 	allTools, err := h.getAllMCPTools(ctx)
@@ -154,23 +155,33 @@ func (h *ChatHandler) selectToolsWithLLM(ctx context.Context, question string) (
 
 	g.Log().Infof(ctx, "加载了 %d 个MCP服务的工具", len(allTools))
 
-	// 2. 随机选择一个LLM模型
-	modelID, err := h.selectRandomLLMModel(ctx)
+	// 2. 使用重试机制调用LLM
+	retryConfig := common.DefaultLLMRetryConfig()
+	retryConfig.MaxRetries = 3 // 最多尝试3个不同的模型
+
+	result, err := common.RetryWithDifferentLLM(ctx, retryConfig, func(ctx context.Context, modelID string) (interface{}, error) {
+		return h.callLLMForToolSelection(ctx, modelID, question, allTools)
+	})
+
 	if err != nil {
-		return nil, fmt.Errorf("选择LLM模型失败: %w", err)
+		return nil, fmt.Errorf("工具选择失败: %w", err)
 	}
 
+	return result.(map[string][]string), nil
+}
+
+// callLLMForToolSelection 调用单个LLM进行工具选择
+func (h *ChatHandler) callLLMForToolSelection(ctx context.Context, modelID string, question string, allTools map[string][]v1.MCPToolInfo) (map[string][]string, error) {
 	// 获取模型配置
 	mc := model.Registry.Get(modelID)
 	if mc == nil {
 		return nil, fmt.Errorf("模型不存在: %s", modelID)
 	}
 
-	// 3. 构建工具选择的prompt
+	// 构建工具选择的prompt
 	prompt := h.buildToolSelectionPrompt(ctx, question, allTools)
-	g.Log().Debugf(ctx, "工具选择prompt长度: %d", len(prompt))
 
-	// 4. 构建请求消息
+	// 构建请求消息
 	messages := []openai.ChatCompletionMessage{
 		{
 			Role:    openai.ChatMessageRoleUser,
@@ -178,7 +189,7 @@ func (h *ChatHandler) selectToolsWithLLM(ctx context.Context, question string) (
 		},
 	}
 
-	// 5. 调用LLM，使用 ResponseFormat 强制返回 JSON
+	// 调用LLM，使用 ResponseFormat 强制返回 JSON
 	chatReq := openai.ChatCompletionRequest{
 		Model:    mc.Name,
 		Messages: messages,
@@ -200,7 +211,7 @@ func (h *ChatHandler) selectToolsWithLLM(ctx context.Context, question string) (
 	responseContent := resp.Choices[0].Message.Content
 	g.Log().Debugf(ctx, "LLM工具选择响应: %s", responseContent)
 
-	// 6. 解析LLM的输出（使用 ResponseFormat 后应该直接是 JSON）
+	// 解析LLM的输出
 	selectedTools, err := h.parseToolSelectionResponse(ctx, responseContent)
 	if err != nil {
 		return nil, fmt.Errorf("解析工具选择响应失败: %w", err)

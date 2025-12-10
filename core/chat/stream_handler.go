@@ -103,7 +103,7 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 		g.Log().Infof(ctx, "开始执行MCP工具调用...")
 		mcpHandler := NewMCPHandler()
 		// 传入检索到的文档，流式处理中没有文件解析内容
-		_, mcpResults, err := mcpHandler.CallMCPToolsWithLLM(ctx, req, documents, "")
+		_, mcpResults, mcpFinalAnswer, err := mcpHandler.CallMCPToolsWithLLM(ctx, req, documents, "")
 		if err != nil {
 			g.Log().Errorf(ctx, "MCP智能工具调用失败: %v", err)
 			mcpRes.err = err
@@ -118,6 +118,12 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 					"tool_name":    res.ToolName,
 					"content":      res.Content,
 				}
+			}
+			// 如果MCP返回了最终答案，记录下来（流式处理中可能需要特殊处理）
+			if mcpFinalAnswer != "" {
+				g.Log().Infof(ctx, "MCP returned final answer (length: %d)", len(mcpFinalAnswer))
+				// 注意：在流式处理中，我们仍然需要调用LLM来生成流式输出
+				// 可以考虑将mcpFinalAnswer作为系统提示或直接流式输出
 			}
 		}
 	}

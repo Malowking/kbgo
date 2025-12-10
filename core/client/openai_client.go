@@ -2,8 +2,10 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
+	"github.com/gogf/gf/v2/frame/g"
 	"github.com/sashabaranov/go-openai"
 )
 
@@ -58,10 +60,23 @@ func (c *OpenAIClient) ChatCompletion(ctx context.Context, req ChatCompletionReq
 		ResponseFormat:      req.ResponseFormat,
 	}
 
+	// 记录请求详情
+	g.Log().Infof(ctx, "[OpenAI Client] 发送请求 - Model: %s, Messages: %d, Tools: %d, Temp: %.2f, MaxTokens: %d",
+		req.Model, len(req.Messages), len(req.Tools), req.Temperature, req.MaxCompletionTokens)
+
 	resp, err := c.client.CreateChatCompletion(ctx, openaiReq)
 	if err != nil {
+		// 添加调试信息
+		g.Log().Errorf(ctx, "[OpenAI Client] API调用失败 - Model: %s, Error: %v", req.Model, err)
+		if debugJSON, jsonErr := json.MarshalIndent(req.Messages, "", "  "); jsonErr == nil {
+			g.Log().Debugf(ctx, "[OpenAI Client] 失败请求的消息:\n%s", string(debugJSON))
+		}
 		return nil, fmt.Errorf("failed to create chat completion: %w", err)
 	}
+
+	// 记录响应详情
+	g.Log().Infof(ctx, "[OpenAI Client] 收到响应 - ID: %s, Model: %s, Choices: %d, Usage: %+v",
+		resp.ID, resp.Model, len(resp.Choices), resp.Usage)
 
 	return &resp, nil
 }

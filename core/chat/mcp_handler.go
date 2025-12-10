@@ -23,11 +23,12 @@ func NewMCPHandler() *MCPHandler {
 // CallMCPToolsWithLLM 使用 LLM 智能选择并调用 MCP 工具
 // documents: 知识检索的结果
 // fileContent: 文件解析的文本内容
-func (h *MCPHandler) CallMCPToolsWithLLM(ctx context.Context, req *v1.ChatReq, documents []*schema.Document, fileContent string) ([]*schema.Document, []*v1.MCPResult, error) {
+// 返回值：mcpDocuments（工具调用结果文档）, mcpResults（MCP结果）, finalAnswer（LLM最终答案）, error
+func (h *MCPHandler) CallMCPToolsWithLLM(ctx context.Context, req *v1.ChatReq, documents []*schema.Document, fileContent string) ([]*schema.Document, []*v1.MCPResult, string, error) {
 	// 创建 MCP 工具调用器
 	toolCaller, err := mcp.NewMCPToolCaller(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("创建MCP工具调用器失败: %w", err)
+		return nil, nil, "", fmt.Errorf("创建MCP工具调用器失败: %w", err)
 	}
 	defer toolCaller.Close()
 
@@ -36,12 +37,12 @@ func (h *MCPHandler) CallMCPToolsWithLLM(ctx context.Context, req *v1.ChatReq, d
 
 	// 使用 LLM 智能选择并调用工具
 	// 传递 MCPServiceTools 作为过滤器，限制 LLM 只能选择指定的工具
-	mcpDocuments, mcpResults, err := toolCaller.CallToolsWithLLM(ctx, req.ModelID, fullQuestion, req.ConvID, req.MCPServiceTools)
+	mcpDocuments, mcpResults, finalAnswer, err := toolCaller.CallToolsWithLLM(ctx, req.ModelID, fullQuestion, req.ConvID, req.MCPServiceTools)
 	if err != nil {
-		return nil, nil, fmt.Errorf("LLM intelligent tool call failed: %w", err)
+		return nil, nil, "", fmt.Errorf("LLM intelligent tool call failed: %w", err)
 	}
 
-	return mcpDocuments, mcpResults, nil
+	return mcpDocuments, mcpResults, finalAnswer, nil
 }
 
 // buildFullQuestion 构建包含知识检索和文件解析结果的完整问题

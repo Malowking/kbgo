@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/formatter"
 	coreModel "github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/internal/history"
@@ -163,16 +164,26 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 	// 记录开始时间
 	start := time.Now()
 
-	// 调用模型服务
-	resp, err := modelService.ChatCompletion(ctx, chatParams)
+	// 使用重试机制调用模型服务
+	retryConfig := common.DefaultSingleModelRetryConfig()
+	result, err := common.RetryWithSameModel(ctx, mc.Name, retryConfig, func(ctx context.Context) (interface{}, error) {
+		resp, err := modelService.ChatCompletion(ctx, chatParams)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(resp.Choices) == 0 {
+			return nil, fmt.Errorf("received empty choices from API")
+		}
+
+		return resp, nil
+	})
+
 	if err != nil {
 		return "", fmt.Errorf("API调用失败: %w", err)
 	}
 
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("received empty choices from API")
-	}
-
+	resp := result.(*openai.ChatCompletionResponse)
 	answerContent := resp.Choices[0].Message.Content
 
 	// 计算延迟
@@ -606,26 +617,26 @@ func (x *Chat) GenerateWithTools(ctx context.Context, modelID string, messages [
 	params := parseModelParams(mc.Extra)
 
 	// 转换 schema.ToolInfo 到 openai.Tool
-	var openaiTools []interface{}
+	var openaiTools []openai.Tool
 	if len(tools) > 0 {
 		for _, tool := range tools {
 			// 将ParamsOneOf转换为OpenAPIV3格式
-			var params interface{}
+			var toolParams interface{}
 			if tool.ParamsOneOf != nil {
 				openAPIV3Schema, err := tool.ParamsOneOf.ToOpenAPIV3()
 				if err != nil {
 					g.Log().Warningf(ctx, "Failed to convert tool params to OpenAPIV3: %v", err)
 					continue
 				}
-				params = openAPIV3Schema
+				toolParams = openAPIV3Schema
 			}
 
-			openaiTools = append(openaiTools, map[string]interface{}{
-				"type": "function",
-				"function": map[string]interface{}{
-					"name":        tool.Name,
-					"description": tool.Desc,
-					"parameters":  params,
+			openaiTools = append(openaiTools, openai.Tool{
+				Type: openai.ToolTypeFunction,
+				Function: &openai.FunctionDefinition{
+					Name:        tool.Name,
+					Description: tool.Desc,
+					Parameters:  toolParams,
 				},
 			})
 		}
@@ -642,20 +653,44 @@ func (x *Chat) GenerateWithTools(ctx context.Context, modelID string, messages [
 		PresencePenalty:     getFloat32OrDefault(params.PresencePenalty, 0.0),
 		N:                   getIntOrDefault(params.N, 1),
 		Stop:                params.Stop,
-		ToolChoice:          "auto", // 让模型自动决定是否调用工具
+		Tools:               openaiTools, // 添加工具列表
 		ResponseFormat:      params.ResponseFormat,
+	}
+
+	// 只有在有工具时才设置 ToolChoice
+	if len(openaiTools) > 0 {
+		chatParams.ToolChoice = "auto" // 让模型自动决定是否调用工具
 	}
 
 	// 记录开始时间
 	start := time.Now()
 
+	// 记录请求信息
+	g.Log().Infof(ctx, "[GenerateWithTools] 调用模型: %s, 消息数: %d, 工具数: %d",
+		mc.Name, len(messages), len(openaiTools))
+
+	// 打印最后一条消息的内容（用于调试）
+	if len(messages) > 0 {
+		lastMsg := messages[len(messages)-1]
+		g.Log().Debugf(ctx, "[GenerateWithTools] 最后一条消息 - Role: %s, Content长度: %d, ToolCalls数: %d",
+			lastMsg.Role, len(lastMsg.Content), len(lastMsg.ToolCalls))
+	}
+
 	// 调用模型服务
 	resp, err := modelService.ChatCompletion(ctx, chatParams)
 	if err != nil {
+		g.Log().Errorf(ctx, "[GenerateWithTools] API调用失败: %v", err)
 		return nil, fmt.Errorf("API调用失败: %w", err)
 	}
 
+	// 记录响应信息
+	g.Log().Infof(ctx, "[GenerateWithTools] API响应 - Choices数: %d, Usage: %+v",
+		len(resp.Choices), resp.Usage)
+
 	if len(resp.Choices) == 0 {
+		// 打印完整的响应以便调试
+		g.Log().Errorf(ctx, "[GenerateWithTools] 收到空的Choices! 完整响应: ID=%s, Model=%s, Object=%s",
+			resp.ID, resp.Model, resp.Object)
 		return nil, fmt.Errorf("received empty choices from API")
 	}
 

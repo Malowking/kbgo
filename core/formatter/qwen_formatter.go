@@ -25,12 +25,17 @@ func NewQwenFormatter() *QwenFormatter {
 func (f *QwenFormatter) FormatMessages(messages []*schema.Message) ([]openai.ChatCompletionMessage, error) {
 	result := make([]openai.ChatCompletionMessage, 0, len(messages))
 
-	for _, msg := range messages {
+	for idx, msg := range messages {
 		openaiMsg, err := f.formatSingleMessage(msg)
 		if err != nil {
 			g.Log().Errorf(context.Background(), "Failed to convert message: %v", err)
 			continue
 		}
+
+		// 调试日志：打印消息格式
+		g.Log().Debugf(context.Background(), "[Qwen Formatter] Message[%d] Role=%s, HasContent=%v, HasMultiContent=%v, ToolCallID=%s",
+			idx, openaiMsg.Role, openaiMsg.Content != "", len(openaiMsg.MultiContent) > 0, openaiMsg.ToolCallID)
+
 		result = append(result, openaiMsg)
 	}
 
@@ -41,6 +46,30 @@ func (f *QwenFormatter) FormatMessages(messages []*schema.Message) ([]openai.Cha
 func (f *QwenFormatter) formatSingleMessage(msg *schema.Message) (openai.ChatCompletionMessage, error) {
 	openaiMsg := openai.ChatCompletionMessage{
 		Role: string(msg.Role),
+	}
+
+	// 如果是 Tool 角色的消息，必须设置 ToolCallID
+	if msg.Role == schema.Tool {
+		openaiMsg.ToolCallID = msg.ToolCallID
+		openaiMsg.Content = msg.Content
+		return openaiMsg, nil
+	}
+
+	// 如果是 Assistant 角色且有 ToolCalls，需要转换
+	if msg.Role == schema.Assistant && len(msg.ToolCalls) > 0 {
+		openaiMsg.Content = msg.Content
+		openaiMsg.ToolCalls = make([]openai.ToolCall, len(msg.ToolCalls))
+		for i, tc := range msg.ToolCalls {
+			openaiMsg.ToolCalls[i] = openai.ToolCall{
+				ID:   tc.ID,
+				Type: openai.ToolType(tc.Type),
+				Function: openai.FunctionCall{
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				},
+			}
+		}
+		return openaiMsg, nil
 	}
 
 	// 检查是否有多模态内容

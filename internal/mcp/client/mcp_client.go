@@ -30,8 +30,10 @@ type MCPClient struct {
 	sseReader       *bufio.Scanner
 	responses       map[interface{}]chan *MCPResponse // 响应通道
 	responsesMutex  sync.RWMutex
-	connClosed      chan struct{}
+	connClosed      chan struct{} // 通知连接已关闭
+	readerDone      chan struct{} // 标记 reader goroutine 已完成
 	connMutex       sync.Mutex
+	closeOnce       sync.Once // 确保 Close 只执行一次
 }
 
 // NewMCPClient 创建MCP客户端
@@ -372,6 +374,7 @@ func (c *MCPClient) ensureSSEConnection(ctx context.Context) error {
 
 	c.sseConn = resp
 	c.sseReader = bufio.NewScanner(resp.Body)
+	c.readerDone = make(chan struct{}) // 初始化 readerDone channel
 
 	// 读取第一个事件以获取消息端点
 	if err := c.readSSEEndpoint(ctx); err != nil {
@@ -420,6 +423,9 @@ func (c *MCPClient) handleSSEResponses(ctx context.Context) {
 			c.sseConn = nil
 		}
 		close(c.connClosed)
+		if c.readerDone != nil {
+			close(c.readerDone) // 通知 reader goroutine 已完成
+		}
 		g.Log().Debugf(ctx, "SSE response handler stopped")
 	}()
 
@@ -454,7 +460,12 @@ func (c *MCPClient) handleSSEResponses(ctx context.Context) {
 	}
 
 	if err := c.sseReader.Err(); err != nil {
-		g.Log().Errorf(ctx, "SSE reader error: %v", err)
+		// 只有在不是由于连接关闭导致的错误时才记录
+		if !strings.Contains(err.Error(), "use of closed network connection") {
+			g.Log().Errorf(ctx, "SSE reader error: %v", err)
+		} else {
+			g.Log().Debugf(ctx, "SSE connection closed gracefully")
+		}
 	}
 }
 
@@ -488,11 +499,25 @@ func (c *MCPClient) processSSEMessage(ctx context.Context, data []byte) {
 
 // Close 关闭MCP客户端连接
 func (c *MCPClient) Close() error {
-	if c.transportMode == "sse" && c.sseConn != nil {
-		c.sseConn.Body.Close()
-		<-c.connClosed // 等待连接关闭
-	}
-	return nil
+	var closeErr error
+
+	c.closeOnce.Do(func() {
+		if c.transportMode == "sse" && c.sseConn != nil {
+			// 先关闭连接，触发 reader goroutine 退出
+			c.sseConn.Body.Close()
+
+			// 等待 reader goroutine 完全退出（最多等待5秒）
+			timeout := time.After(5 * time.Second)
+			select {
+			case <-c.connClosed:
+				// Reader goroutine 已完成
+			case <-timeout:
+				closeErr = fmt.Errorf("timeout waiting for SSE reader to close")
+			}
+		}
+	})
+
+	return closeErr
 }
 
 // readSSEResponse 读取SSE格式的响应
