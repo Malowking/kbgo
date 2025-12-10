@@ -60,49 +60,6 @@
 cp config/config_demo.yaml config/config.yaml
 ```
 
-关键配置项：
-
-```yaml
-# 主数据库（MySQL 或 PostgreSQL）
-database:
-  default:
-    host: "localhost"
-    port: "3306"          # MySQL: 3306, PostgreSQL: 5432
-    user: "root"
-    pass: "your_password"
-    name: "kbgo"
-    type: "mysql"         # mysql 或 pgsql
-
-# 向量数据库（Milvus 或 pgvector）
-vectorStore:
-  type: "milvus"          # milvus 或 pgvector
-
-# Milvus 配置
-milvus:
-  address: "localhost:19530"
-  database: "kbgo"
-
-# PostgreSQL 向量库配置（使用 pgvector 时）
-postgres:
-  host: "localhost"
-  port: "5432"
-  user: "postgres"
-  password: "your_password"
-  database: "kbgo"
-
-# 文件存储
-storage:
-  type: "rustfs"          # rustfs 或 local
-
-# RustFS/MinIO 配置（使用 rustfs 时）
-rustfs:
-  endpoint: "localhost:9000"
-  accessKey: "your_access_key"
-  secretKey: "your_secret_key"
-  bucketName: "kbgo"
-  ssl: false
-```
-
 ### 3. 运行项目
 
 ```bash
