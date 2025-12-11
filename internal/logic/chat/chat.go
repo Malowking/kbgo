@@ -85,11 +85,11 @@ func parseModelParams(extra map[string]any) *ModelParams {
 }
 
 // GetAnswer 使用指定模型生成答案（非流式）
-func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, jsonFormat bool) (answer string, err error) {
+func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, jsonFormat bool) (answer string, reasoningContent string, err error) {
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
-		return "", fmt.Errorf("model not found: %s", modelID)
+		return "", "", fmt.Errorf("model not found: %s", modelID)
 	}
 
 	// 根据模型类型选择格式适配器
@@ -106,7 +106,7 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 	// 获取聊天历史
 	chatHistory, err := x.eh.GetHistory(convID, 100)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// 保存用户消息
@@ -116,7 +116,7 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 	}
 	err = x.eh.SaveMessage(userMessage, convID)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// 格式化文档为系统提示
@@ -179,11 +179,12 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 	})
 
 	if err != nil {
-		return "", fmt.Errorf("API调用失败: %w", err)
+		return "", "", fmt.Errorf("API调用失败: %w", err)
 	}
 
 	resp := result.(*openai.ChatCompletionResponse)
 	answerContent := resp.Choices[0].Message.Content
+	thinkContent := resp.Choices[0].Message.ReasoningContent
 
 	// 计算延迟
 	latencyMs := time.Since(start).Milliseconds()
@@ -192,6 +193,11 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 	assistantMsg := &schema.Message{
 		Role:    schema.Assistant,
 		Content: answerContent,
+	}
+
+	// 只有当思考内容不为空时才添加到消息中
+	if thinkContent != "" {
+		assistantMsg.ReasoningContent = thinkContent
 	}
 
 	// 创建带指标的消息
@@ -204,10 +210,10 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 	err = x.eh.SaveMessageWithMetrics(msgWithMetrics, convID)
 	if err != nil {
 		g.Log().Error(ctx, "save assistant message err: %v", err)
-		return
+		return "", "", err
 	}
 
-	return answerContent, nil
+	return answerContent, thinkContent, nil
 }
 
 // GetAnswerStream 使用指定模型流式生成答案
@@ -306,6 +312,8 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 		var fullContent strings.Builder
 		var tokenCount int
 
+		var fullReasoningContent strings.Builder
+
 		for {
 			response, err := stream.Recv()
 			if errors.Is(err, io.EOF) {
@@ -313,6 +321,11 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 				assistantMsg := &schema.Message{
 					Role:    schema.Assistant,
 					Content: fullContent.String(),
+				}
+
+				// 只有当思考内容不为空时才添加到消息中
+				if fullReasoningContent.Len() > 0 {
+					assistantMsg.ReasoningContent = fullReasoningContent.String()
 				}
 
 				// 计算延迟
@@ -346,14 +359,27 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 			// 处理流式响应
 			if len(response.Choices) > 0 {
 				delta := response.Choices[0].Delta.Content
+				rdelta := response.Choices[0].Delta.ReasoningContent
+
+				// 创建增量消息
+				chunk := &schema.Message{
+					Role: schema.Assistant,
+				}
+
+				// 处理普通内容
 				if delta != "" {
 					fullContent.WriteString(delta)
+					chunk.Content = delta
+				}
 
-					// 创建增量消息并发送到流
-					chunk := &schema.Message{
-						Role:    schema.Assistant,
-						Content: delta,
-					}
+				// 处理思考内容
+				if rdelta != "" {
+					fullReasoningContent.WriteString(rdelta)
+					chunk.ReasoningContent = rdelta
+				}
+
+				// 只有当有内容或思考内容时才发送
+				if delta != "" || rdelta != "" {
 					closed := streamWriter.Send(chunk, nil)
 					if closed {
 						g.Log().Warningf(ctx, "stream writer closed unexpectedly")
@@ -701,6 +727,11 @@ func (x *Chat) GenerateWithTools(ctx context.Context, modelID string, messages [
 	result := &schema.Message{
 		Role:    schema.Assistant,
 		Content: choice.Message.Content,
+	}
+
+	// 只有当思考内容不为空时才添加到消息中
+	if choice.Message.ReasoningContent != "" {
+		result.ReasoningContent = choice.Message.ReasoningContent
 	}
 
 	// 转换 ToolCalls

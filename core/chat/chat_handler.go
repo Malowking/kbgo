@@ -216,27 +216,28 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 	// 5. 调用Chat逻辑生成最终答案（仅在MCP未返回最终答案时）
 	chatI := chat.GetChat()
 
-	var answer string
-	var err error
-
 	// 根据是否有文件或文档内容选择不同的处理方式
 	if len(fileParseRes.multimodalFiles) > 0 || fileParseRes.fileContent != "" || len(fileParseRes.fileImages) > 0 {
 		// 有文件或文档内容：使用文件对话模式
 		g.Log().Infof(ctx, "Using file-based chat with %d multimodal files, text content length: %d, %d images",
 			len(fileParseRes.multimodalFiles), len(fileParseRes.fileContent), len(fileParseRes.fileImages))
-		answer, err = chatI.GetAnswerWithParsedFiles(ctx, req.ModelID, req.ConvID, documents, req.Question,
+		answer, reasoningContent, err := chatI.GetAnswerWithParsedFiles(ctx, req.ModelID, req.ConvID, documents, req.Question,
 			fileParseRes.multimodalFiles, fileParseRes.fileContent, fileParseRes.fileImages, req.JsonFormat)
+		if err != nil {
+			return nil, err
+		}
+		res.Answer = answer
+		res.ReasoningContent = reasoningContent
 	} else {
 		// 无文件：普通对话模式
 		g.Log().Infof(ctx, "Using standard chat without files")
-		answer, err = chatI.GetAnswer(ctx, req.ModelID, req.ConvID, documents, req.Question, req.JsonFormat)
+		answer, reasoningContent, err := chatI.GetAnswer(ctx, req.ModelID, req.ConvID, documents, req.Question, req.JsonFormat)
+		if err != nil {
+			return nil, err
+		}
+		res.Answer = answer
+		res.ReasoningContent = reasoningContent
 	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	res.Answer = answer
 
 	return res, nil
 }

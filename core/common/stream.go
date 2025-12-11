@@ -14,10 +14,11 @@ import (
 )
 
 type StreamData struct {
-	Id       string             `json:"id"`      // 同一个消息里面的id是相同的
-	Created  int64              `json:"created"` // 消息初始生成时间
-	Content  string             `json:"content"` // 消息具体内容
-	Document []*schema.Document `json:"document"`
+	Id               string             `json:"id"`                          // 同一个消息里面的id是相同的
+	Created          int64              `json:"created"`                     // 消息初始生成时间
+	Content          string             `json:"content"`                     // 消息具体内容
+	ReasoningContent string             `json:"reasoning_content,omitempty"` // 思考内容（用于思考模型）
+	Document         []*schema.Document `json:"document"`
 }
 
 func SteamResponse(ctx context.Context, streamReader *schema.StreamReader[*schema.Message], docs []*schema.Document) (err error) {
@@ -50,11 +51,13 @@ func SteamResponse(ctx context.Context, streamReader *schema.StreamReader[*schem
 			writeSSEError(httpResp, err)
 			break
 		}
-		if len(chunk.Content) == 0 {
+		// 如果内容和思考内容都为空，跳过
+		if len(chunk.Content) == 0 && len(chunk.ReasoningContent) == 0 {
 			continue
 		}
 
 		sd.Content = chunk.Content
+		sd.ReasoningContent = chunk.ReasoningContent
 		marshal, _ := sonic.Marshal(sd)
 		// 发送数据事件
 		writeSSEData(httpResp, string(marshal))

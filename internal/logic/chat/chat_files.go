@@ -26,11 +26,11 @@ import (
 )
 
 // GetAnswerWithParsedFiles 使用已解析的文件内容进行多模态对话
-func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, multimodalFiles []*common.MultimodalFile, fileContent string, fileImages []string, jsonFormat bool) (answer string, err error) {
+func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, multimodalFiles []*common.MultimodalFile, fileContent string, fileImages []string, jsonFormat bool) (answer string, reasoningContent string, err error) {
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
-		return "", fmt.Errorf("model not found: %s", modelID)
+		return "", "", fmt.Errorf("model not found: %s", modelID)
 	}
 
 	// 根据模型类型选择格式适配器
@@ -47,19 +47,19 @@ func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, con
 	// 获取聊天历史
 	chatHistory, err := x.eh.GetHistory(convID, 100)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// 构建多模态消息（只包含用户问题和多模态文件）
 	userMessage, err := buildMultimodalMessageWithImages(ctx, question, multimodalFiles, fileImages, mc.Type)
 	if err != nil {
-		return "", fmt.Errorf("构建多模态消息失败: %w", err)
+		return "", "", fmt.Errorf("构建多模态消息失败: %w", err)
 	}
 
 	// 保存用户消息
 	err = x.eh.SaveMessage(userMessage, convID)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// 构建system提示词
@@ -106,14 +106,15 @@ func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, con
 	// 调用模型服务
 	resp, err := modelService.ChatCompletion(ctx, chatParams)
 	if err != nil {
-		return "", fmt.Errorf("API调用失败: %w", err)
+		return "", "", fmt.Errorf("API调用失败: %w", err)
 	}
 
 	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("received empty choices from API")
+		return "", "", fmt.Errorf("received empty choices from API")
 	}
 
 	answerContent := resp.Choices[0].Message.Content
+	thinkContent := resp.Choices[0].Message.ReasoningContent
 
 	// 计算延迟
 	latencyMs := time.Since(start).Milliseconds()
@@ -122,6 +123,11 @@ func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, con
 	assistantMsg := &schema.Message{
 		Role:    schema.Assistant,
 		Content: answerContent,
+	}
+
+	// 只有当思考内容不为空时才添加到消息中
+	if thinkContent != "" {
+		assistantMsg.ReasoningContent = thinkContent
 	}
 
 	// 创建带指标的消息
@@ -134,18 +140,18 @@ func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, con
 	err = x.eh.SaveMessageWithMetrics(msgWithMetrics, convID)
 	if err != nil {
 		g.Log().Error(ctx, "save assistant message err: %v", err)
-		return
+		return "", "", err
 	}
 
-	return answerContent, nil
+	return answerContent, thinkContent, nil
 }
 
 // GetAnswerWithFiles 统一的多模态对话处理（使用新架构）
-func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile) (answer string, err error) {
+func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile) (answer string, reasoningContent string, err error) {
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
-		return "", fmt.Errorf("model not found: %s", modelID)
+		return "", "", fmt.Errorf("model not found: %s", modelID)
 	}
 
 	// 根据模型类型选择格式适配器
@@ -162,7 +168,7 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 	// 获取聊天历史
 	chatHistory, err := x.eh.GetHistory(convID, 100)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// 分离多模态文件和文档文件
@@ -202,13 +208,13 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 	// 构建多模态消息（只包含用户问题和多模态文件）
 	userMessage, err := buildMultimodalMessageWithImages(ctx, question, multimodalFiles, fileImages, mc.Type)
 	if err != nil {
-		return "", fmt.Errorf("构建多模态消息失败: %w", err)
+		return "", "", fmt.Errorf("构建多模态消息失败: %w", err)
 	}
 
 	// 保存用户消息
 	err = x.eh.SaveMessage(userMessage, convID)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// 构建system提示词
@@ -248,14 +254,15 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 	// 调用模型服务
 	resp, err := modelService.ChatCompletion(ctx, chatParams)
 	if err != nil {
-		return "", fmt.Errorf("API调用失败: %w", err)
+		return "", "", fmt.Errorf("API调用失败: %w", err)
 	}
 
 	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("received empty choices from API")
+		return "", "", fmt.Errorf("received empty choices from API")
 	}
 
 	answerContent := resp.Choices[0].Message.Content
+	thinkContent := resp.Choices[0].Message.ReasoningContent
 
 	// 计算延迟
 	latencyMs := time.Since(start).Milliseconds()
@@ -264,6 +271,11 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 	assistantMsg := &schema.Message{
 		Role:    schema.Assistant,
 		Content: answerContent,
+	}
+
+	// 只有当思考内容不为空时才添加到消息中
+	if thinkContent != "" {
+		assistantMsg.ReasoningContent = thinkContent
 	}
 
 	// 创建带指标的消息
@@ -276,10 +288,10 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 	err = x.eh.SaveMessageWithMetrics(msgWithMetrics, convID)
 	if err != nil {
 		g.Log().Error(ctx, "save assistant message err: %v", err)
-		return
+		return "", "", err
 	}
 
-	return answerContent, nil
+	return answerContent, thinkContent, nil
 }
 
 // GetAnswerStreamWithFiles 统一的多模态流式对话处理
@@ -409,6 +421,7 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 		defer stream.Close()
 
 		var fullContent strings.Builder
+		var fullReasoningContent strings.Builder
 		var tokenCount int
 
 		for {
@@ -418,6 +431,11 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 				assistantMsg := &schema.Message{
 					Role:    schema.Assistant,
 					Content: fullContent.String(),
+				}
+
+				// 只有当思考内容不为空时才添加到消息中
+				if fullReasoningContent.Len() > 0 {
+					assistantMsg.ReasoningContent = fullReasoningContent.String()
 				}
 
 				// 计算延迟
@@ -451,14 +469,27 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 			// 处理流式响应
 			if len(response.Choices) > 0 {
 				delta := response.Choices[0].Delta.Content
+				rdelta := response.Choices[0].Delta.ReasoningContent
+
+				// 创建增量消息
+				chunk := &schema.Message{
+					Role: schema.Assistant,
+				}
+
+				// 处理普通内容
 				if delta != "" {
 					fullContent.WriteString(delta)
+					chunk.Content = delta
+				}
 
-					// 创建增量消息并发送到流
-					chunk := &schema.Message{
-						Role:    schema.Assistant,
-						Content: delta,
-					}
+				// 处理思考内容
+				if rdelta != "" {
+					fullReasoningContent.WriteString(rdelta)
+					chunk.ReasoningContent = rdelta
+				}
+
+				// 只有当有内容或思考内容时才发送
+				if delta != "" || rdelta != "" {
 					closed := streamWriter.Send(chunk, nil)
 					if closed {
 						g.Log().Warningf(ctx, "stream writer closed unexpectedly")

@@ -27,10 +27,11 @@ type ChatReq struct {
 }
 
 type ChatRes struct {
-	g.Meta     `mime:"application/json"`
-	Answer     string             `json:"answer"`
-	References []*schema.Document `json:"references"`
-	MCPResults []*MCPResult       `json:"mcp_results,omitempty"`
+	g.Meta           `mime:"application/json"`
+	Answer           string             `json:"answer"`
+	ReasoningContent string             `json:"reasoning_content,omitempty"` // 思考内容（用于思考模型）
+	References       []*schema.Document `json:"references"`
+	MCPResults       []*MCPResult       `json:"mcp_results,omitempty"`
 }
 
 type MCPResult struct {

@@ -17,6 +17,9 @@ type Message struct {
 	// Content 文本内容
 	Content string `json:"content,omitempty"`
 
+	// ReasoningContent 思考内容（用于思考模型）
+	ReasoningContent string `json:"reasoning_content,omitempty"`
+
 	// UserInputMultiContent 用户多模态输入内容（新版字段）
 	UserInputMultiContent []MessageInputPart `json:"user_input_multi_content,omitempty"`
 
