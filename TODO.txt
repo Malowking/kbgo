@@ -1,6 +1,5 @@
 待办事项
 mcp调用工具适配不同模型，tools参数的传入方式（仅openai未测试）
-thinking消息接收
 
 
 1. text2sql实现，python独立服务

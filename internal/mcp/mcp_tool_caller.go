@@ -279,7 +279,7 @@ func (tc *MCPToolCaller) CallToolsWithLLM(ctx context.Context, modelID string, q
 		g.Log().Infof(ctx, "调用 %d 个工具", len(response.ToolCalls))
 
 		for idx, toolCall := range response.ToolCalls {
-			// 解析工具名（格式：serviceName__toolName）
+			// 解析工具名
 			serviceName, toolName := client.ParseToolName(toolCall.Function.Name)
 
 			// 解析参数
@@ -327,7 +327,7 @@ func (tc *MCPToolCaller) CallToolsWithLLM(ctx context.Context, modelID string, q
 			}
 			toolCallLogs = append(toolCallLogs, toolCallLog)
 
-			// 【关键】将工具执行结果添加到消息历史，供 LLM 下次调用时使用
+			// 将工具执行结果添加到消息历史，供 LLM 下次调用时使用
 			toolResultMsg := &schema.Message{
 				Role:       schema.Tool,
 				Content:    mcpResult.Content,
@@ -352,7 +352,7 @@ func (tc *MCPToolCaller) CallToolsWithLLM(ctx context.Context, modelID string, q
 		}
 	}
 
-	// 6. 记录工具调用日志（仅用于调试，不返回给用户）
+	// 6. 记录工具调用日志
 	if len(toolCallLogs) > 0 {
 		toolCallLogsJSON, _ := json.Marshal(toolCallLogs)
 		g.Log().Debugf(ctx, "MCP 工具调用日志: %s", string(toolCallLogsJSON))
