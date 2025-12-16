@@ -1,0 +1,276 @@
+import { useState, useEffect } from 'react';
+import { RefreshCw, Server, CheckCircle, XCircle, Plus, Edit2, Trash2 } from 'lucide-react';
+import { modelApi } from '@/services';
+import type { Model } from '@/types';
+import CreateModelModal from './CreateModelModal';
+
+export default function Models() {
+  const [models, setModels] = useState<Model[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [reloading, setReloading] = useState(false);
+  const [filterType, setFilterType] = useState<string>('all');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingModel, setEditingModel] = useState<Model | null>(null);
+
+  useEffect(() => {
+    fetchModels();
+  }, []);
+
+  const fetchModels = async () => {
+    try {
+      setLoading(true);
+      const response = await modelApi.list();
+      // 添加 id 别名，方便使用
+      const modelsWithId = (response.models || []).map(m => ({
+        ...m,
+        id: m.model_id,
+        status: m.enabled ? 'active' : 'inactive',
+      }));
+      setModels(modelsWithId as Model[]);
+    } catch (error) {
+      console.error('Failed to fetch models:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReload = async () => {
+    if (!confirm('确定要重新加载模型配置吗?')) return;
+
+    try {
+      setReloading(true);
+      await modelApi.reload();
+      await fetchModels();
+      alert('模型配置已重新加载');
+    } catch (error) {
+      console.error('Failed to reload models:', error);
+      alert('重新加载失败');
+    } finally {
+      setReloading(false);
+    }
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`确定要删除模型 "${name}" 吗？`)) return;
+
+    try {
+      await modelApi.delete(id);
+      fetchModels();
+    } catch (error) {
+      console.error('Failed to delete model:', error);
+      alert('删除失败');
+    }
+  };
+
+  const handleEdit = (model: Model) => {
+    setEditingModel(model);
+    setShowCreateModal(true);
+  };
+
+  const handleModalClose = () => {
+    setShowCreateModal(false);
+    setEditingModel(null);
+  };
+
+  const filteredModels = filterType === 'all'
+    ? models
+    : models.filter(m => m.type === filterType);
+
+  const modelTypeColors = {
+    llm: 'bg-blue-100 text-blue-700',
+    embedding: 'bg-green-100 text-green-700',
+    rerank: 'bg-purple-100 text-purple-700',
+    multimodal: 'bg-orange-100 text-orange-700',
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">模型管理</h1>
+          <p className="mt-2 text-gray-600">
+            管理和配置 AI 模型
+          </p>
+        </div>
+        <div className="flex space-x-3">
+          <button
+            onClick={handleReload}
+            disabled={reloading}
+            className="btn btn-secondary flex items-center"
+          >
+            <RefreshCw className={`w-5 h-5 mr-2 ${reloading ? 'animate-spin' : ''}`} />
+            重新加载配置
+          </button>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="btn btn-primary flex items-center"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            添加模型
+          </button>
+        </div>
+      </div>
+
+      {/* Filter */}
+      <div className="card">
+        <div className="flex items-center space-x-2">
+          <span className="text-sm font-medium text-gray-700">筛选类型:</span>
+          <div className="flex space-x-2">
+            {[
+              { value: 'all', label: '全部' },
+              { value: 'llm', label: 'LLM' },
+              { value: 'embedding', label: 'Embedding' },
+              { value: 'rerank', label: 'Rerank' },
+              { value: 'multimodal', label: '多模态' },
+            ].map((type) => (
+              <button
+                key={type.value}
+                onClick={() => setFilterType(type.value)}
+                className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                  filterType === type.value
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {type.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {[
+          { label: '总模型数', value: models.length, bgColor: 'bg-blue-100', iconColor: 'text-blue-600' },
+          { label: 'LLM 模型', value: models.filter(m => m.type === 'llm').length, bgColor: 'bg-blue-100', iconColor: 'text-blue-600' },
+          { label: 'Embedding', value: models.filter(m => m.type === 'embedding').length, bgColor: 'bg-green-100', iconColor: 'text-green-600' },
+          { label: 'Rerank', value: models.filter(m => m.type === 'rerank').length, bgColor: 'bg-purple-100', iconColor: 'text-purple-600' },
+        ].map((stat, idx) => (
+          <div key={idx} className="card">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">{stat.label}</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{stat.value}</p>
+              </div>
+              <div className={`w-12 h-12 rounded-full ${stat.bgColor} flex items-center justify-center`}>
+                <Server className={`w-6 h-6 ${stat.iconColor}`} />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Models List */}
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="inline-block w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="mt-4 text-gray-600">加载中...</p>
+        </div>
+      ) : filteredModels.length === 0 ? (
+        <div className="card text-center py-12">
+          <p className="text-gray-500">
+            {filterType === 'all' ? '没有配置的模型' : `没有 ${filterType} 类型的模型`}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {filteredModels.map((model) => (
+            <div key={model.id} className="card hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      {model.name}
+                    </h3>
+                    {model.status === 'active' ? (
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                    ) : (
+                      <XCircle className="w-5 h-5 text-gray-400" />
+                    )}
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className={`px-2 py-1 text-xs font-medium rounded ${
+                      modelTypeColors[model.type as keyof typeof modelTypeColors] || 'bg-gray-100 text-gray-700'
+                    }`}>
+                      {model.type.toUpperCase()}
+                    </span>
+                    <span className="text-sm text-gray-600">
+                      {model.provider}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => handleEdit(model)}
+                    className="p-2 rounded hover:bg-gray-100 text-blue-600"
+                    title="编辑"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(model.id || model.model_id, model.name)}
+                    className="p-2 rounded hover:bg-gray-100 text-red-600"
+                    title="删除"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center justify-between py-2 border-t border-gray-100">
+                  <span className="text-gray-600">模型 ID:</span>
+                  <span className="text-gray-900 font-mono text-xs">{model.id}</span>
+                </div>
+
+                {model.base_url && (
+                  <div className="flex items-center justify-between py-2 border-t border-gray-100">
+                    <span className="text-gray-600">Base URL:</span>
+                    <span className="text-gray-900 text-xs truncate max-w-[200px]">
+                      {model.base_url}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between py-2 border-t border-gray-100">
+                  <span className="text-gray-600">状态:</span>
+                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                    model.status === 'active'
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-gray-100 text-gray-700'
+                  }`}>
+                    {model.status === 'active' ? '活跃' : '禁用'}
+                  </span>
+                </div>
+
+                {model.config && Object.keys(model.config).length > 0 && (
+                  <details className="py-2 border-t border-gray-100">
+                    <summary className="cursor-pointer text-gray-600 hover:text-gray-900">
+                      配置详情
+                    </summary>
+                    <pre className="mt-2 p-2 bg-gray-50 rounded text-xs overflow-x-auto">
+                      {JSON.stringify(model.config, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Create/Edit Modal */}
+      {showCreateModal && (
+        <CreateModelModal
+          model={editingModel}
+          onClose={handleModalClose}
+          onSuccess={fetchModels}
+        />
+      )}
+    </div>
+  );
+}
