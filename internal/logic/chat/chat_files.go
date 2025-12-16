@@ -415,6 +415,11 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 	// 创建 Pipe 用于流式传输
 	streamReader, streamWriter := schema.Pipe[*schema.Message](10)
 
+	// 保留原始 context 用于取消控制
+	originalCtx := ctx
+	// 使用 Background context 避免父 context 取消影响流式处理的完整性
+	ctx = context.Background()
+
 	// 启动goroutine处理流式响应
 	go func() {
 		defer streamWriter.Close()
@@ -425,6 +430,14 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 		var tokenCount int
 
 		for {
+			// 检查客户端是否断开连接
+			select {
+			case <-originalCtx.Done():
+				g.Log().Warning(ctx, "Stream cancelled by client, stopping goroutine")
+				return
+			default:
+			}
+
 			response, err := stream.Recv()
 			if errors.Is(err, io.EOF) {
 				// 流结束，保存完整消息
@@ -624,20 +637,9 @@ func buildFilePart(file *common.MultimodalFile) (schema.MessageInputPart, error)
 }
 
 // getMimeTypeForFile 获取MIME类型
+// 已废弃：使用 common.GetMimeType 替代
 func getMimeTypeForFile(ext string) string {
-	mimeTypes := map[string]string{
-		".jpg":  "image/jpeg",
-		".jpeg": "image/jpeg",
-		".png":  "image/png",
-		".gif":  "image/gif",
-		".bmp":  "image/bmp",
-		".webp": "image/webp",
-	}
-
-	if mime, ok := mimeTypes[ext]; ok {
-		return mime
-	}
-	return "image/jpeg"
+	return common.GetMimeType(ext)
 }
 
 // 辅助函数

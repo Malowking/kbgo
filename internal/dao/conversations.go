@@ -58,6 +58,57 @@ func (d *ConversationDAO) ListByUserID(ctx context.Context, userID string, page,
 	return conversations, total, nil
 }
 
+// List 获取会话列表（支持更多筛选条件）
+func (d *ConversationDAO) List(ctx context.Context, filters map[string]interface{}, page, pageSize int, sortBy, order string) ([]*gormModel.Conversation, int64, error) {
+	var conversations []*gormModel.Conversation
+	var total int64
+
+	query := GetDB().WithContext(ctx).Model(&gormModel.Conversation{})
+
+	// 应用筛选条件
+	if knowledgeID, ok := filters["knowledge_id"].(string); ok && knowledgeID != "" {
+		query = query.Where("JSON_EXTRACT(metadata, '$.knowledge_id') = ?", knowledgeID)
+	}
+	if status, ok := filters["status"].(string); ok && status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if userID, ok := filters["user_id"].(string); ok && userID != "" {
+		query = query.Where("user_id = ?", userID)
+	}
+
+	// 统计总数
+	if err := query.Count(&total).Error; err != nil {
+		g.Log().Errorf(ctx, "统计会话总数失败: %v", err)
+		return nil, 0, err
+	}
+
+	// 排序
+	orderClause := "update_time DESC" // 默认排序
+	if sortBy != "" {
+		validSortFields := map[string]bool{
+			"create_time": true,
+			"update_time": true,
+		}
+		if validSortFields[sortBy] {
+			if order == "asc" {
+				orderClause = sortBy + " ASC"
+			} else {
+				orderClause = sortBy + " DESC"
+			}
+		}
+	}
+	query = query.Order(orderClause)
+
+	// 分页查询
+	offset := (page - 1) * pageSize
+	if err := query.Offset(offset).Limit(pageSize).Find(&conversations).Error; err != nil {
+		g.Log().Errorf(ctx, "查询会话列表失败: %v", err)
+		return nil, 0, err
+	}
+
+	return conversations, total, nil
+}
+
 // Update 更新会话
 func (d *ConversationDAO) Update(ctx context.Context, conversation *gormModel.Conversation) error {
 	if err := GetDB().WithContext(ctx).Save(conversation).Error; err != nil {
@@ -67,10 +118,31 @@ func (d *ConversationDAO) Update(ctx context.Context, conversation *gormModel.Co
 	return nil
 }
 
+// UpdateFields 更新会话指定字段
+func (d *ConversationDAO) UpdateFields(ctx context.Context, convID string, updates map[string]interface{}) error {
+	if err := GetDB().WithContext(ctx).Model(&gormModel.Conversation{}).Where("conv_id = ?", convID).Updates(updates).Error; err != nil {
+		g.Log().Errorf(ctx, "更新会话字段失败: %v", err)
+		return err
+	}
+	return nil
+}
+
 // Delete 删除会话
 func (d *ConversationDAO) Delete(ctx context.Context, convID string) error {
 	if err := GetDB().WithContext(ctx).Where("conv_id = ?", convID).Delete(&gormModel.Conversation{}).Error; err != nil {
 		g.Log().Errorf(ctx, "删除会话失败: %v", err)
+		return err
+	}
+	return nil
+}
+
+// BatchDelete 批量删除会话
+func (d *ConversationDAO) BatchDelete(ctx context.Context, convIDs []string) error {
+	if len(convIDs) == 0 {
+		return nil
+	}
+	if err := GetDB().WithContext(ctx).Where("conv_id IN ?", convIDs).Delete(&gormModel.Conversation{}).Error; err != nil {
+		g.Log().Errorf(ctx, "批量删除会话失败: %v", err)
 		return err
 	}
 	return nil

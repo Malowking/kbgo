@@ -11,9 +11,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/formatter"
 	coreModel "github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/internal/history"
+	"github.com/Malowking/kbgo/internal/logic/rewriter"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gctx"
@@ -23,7 +25,8 @@ import (
 var chatInstance *Chat
 
 type Chat struct {
-	eh *history.Manager
+	eh            *history.Manager
+	queryRewriter *rewriter.QueryRewriter
 }
 
 func GetChat() *Chat {
@@ -36,7 +39,8 @@ func InitHistory() {
 	g.Log().Info(ctx, "Initializing Chat history manager...")
 
 	chatInstance = &Chat{
-		eh: history.NewManager(),
+		eh:            history.NewManager(),
+		queryRewriter: rewriter.NewQueryRewriter(),
 	}
 
 	g.Log().Info(ctx, "Chat history manager initialized successfully")
@@ -109,7 +113,17 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 		return "", "", err
 	}
 
-	// 保存用户消息
+	// 使用查询重写器进行指代消解（如果需要）
+	rewriteConfig := rewriter.DefaultConfig()
+	rewriteConfig.ModelID = modelID // 使用相同的模型进行重写
+	rewrittenQuestion, err := x.queryRewriter.RewriteQuery(ctx, question, chatHistory, rewriteConfig)
+	if err != nil {
+		g.Log().Warningf(ctx, "查询重写失败: %v，使用原查询", err)
+		rewrittenQuestion = question
+	}
+	_ = rewrittenQuestion
+
+	// 保存用户消息（使用原始问题）
 	userMessage := &schema.Message{
 		Role:    schema.User,
 		Content: question,
@@ -241,7 +255,18 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 		return nil, err
 	}
 
-	// 保存用户消息
+	// 使用查询重写器进行指代消解（如果需要）
+	rewriteConfig := rewriter.DefaultConfig()
+	rewriteConfig.ModelID = modelID // 使用相同的模型进行重写
+	rewrittenQuestion, err := x.queryRewriter.RewriteQuery(ctx, question, chatHistory, rewriteConfig)
+	if err != nil {
+		g.Log().Warningf(ctx, "查询重写失败: %v，使用原查询", err)
+		rewrittenQuestion = question
+	}
+	// TODO: rewrittenQuestion 可用于文档检索优化，当前版本文档已预先检索
+	_ = rewrittenQuestion
+
+	// 保存用户消息（使用原始问题）
 	userMessage := &schema.Message{
 		Role:    schema.User,
 		Content: question,
@@ -304,6 +329,11 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 	// 创建 Pipe 用于流式传输
 	streamReader, streamWriter := schema.Pipe[*schema.Message](10)
 
+	// 保留原始 context 用于取消控制
+	originalCtx := ctx
+	// 使用 Background context 避免父 context 取消影响流式处理的完整性
+	ctx = context.Background()
+
 	// 启动goroutine处理流式响应
 	go func() {
 		defer streamWriter.Close()
@@ -315,6 +345,14 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 		var fullReasoningContent strings.Builder
 
 		for {
+			// 检查客户端是否断开连接
+			select {
+			case <-originalCtx.Done():
+				g.Log().Warning(ctx, "Stream cancelled by client, stopping goroutine")
+				return
+			default:
+			}
+
 			response, err := stream.Recv()
 			if errors.Is(err, io.EOF) {
 				// 流结束，保存完整消息
@@ -578,45 +616,9 @@ func preprocessMultimodalMessages(ctx context.Context, messages []*schema.Messag
 }
 
 // getMimeType 根据文件扩展名获取MIME类型
+// 已废弃：使用 common.GetMimeType 替代
 func getMimeType(ext string) string {
-	mimeTypes := map[string]string{
-		// 图片格式
-		".jpg":  "image/jpeg",
-		".jpeg": "image/jpeg",
-		".png":  "image/png",
-		".gif":  "image/gif",
-		".bmp":  "image/bmp",
-		".webp": "image/webp",
-		".svg":  "image/svg+xml",
-		".ico":  "image/x-icon",
-		".tiff": "image/tiff",
-
-		// 音频格式
-		".mp3":  "audio/mpeg",
-		".wav":  "audio/wav",
-		".flac": "audio/flac",
-		".aac":  "audio/aac",
-		".ogg":  "audio/ogg",
-		".m4a":  "audio/mp4",
-		".wma":  "audio/x-ms-wma",
-
-		// 视频格式
-		".mp4":  "video/mp4",
-		".avi":  "video/x-msvideo",
-		".mkv":  "video/x-matroska",
-		".mov":  "video/quicktime",
-		".wmv":  "video/x-ms-wmv",
-		".flv":  "video/x-flv",
-		".webm": "video/webm",
-		".m4v":  "video/mp4",
-		".mpeg": "video/mpeg",
-		".mpg":  "video/mpeg",
-	}
-
-	if mime, ok := mimeTypes[ext]; ok {
-		return mime
-	}
-	return "application/octet-stream"
+	return common.GetMimeType(ext)
 }
 
 // GenerateWithTools 使用指定模型进行工具调用（支持 Function Calling）
