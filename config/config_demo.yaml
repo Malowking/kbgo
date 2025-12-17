@@ -83,3 +83,14 @@ retriever:
 fileParse:
   url: "http://kbgo-file-parse:8002"  # file_parse 服务地址
   timeout: 120                         # 请求超时时间（秒），默认 120 秒
+
+# Redis 缓存配置
+redis:
+  address: "kbgo-redis:6379"          # Redis 服务地址（Docker环境使用容器名）
+  db: 0                                # Redis 数据库编号 (0-15)
+  password: "kbgo123"                  # Redis 密码
+  maxRetries: 3                        # 最大重试次数
+  poolSize: 10                         # 连接池大小
+  minIdleConns: 2                      # 最小空闲连接数
+  cache:
+    agentPresetTTL: 300                # Agent预设缓存过期时间（秒），默认 5分钟

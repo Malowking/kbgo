@@ -15,6 +15,7 @@ type Conversation struct {
 	ModelName        string     `gorm:"column:model_name;type:varchar(64);not null"`              // 模型名称
 	ConversationType string     `gorm:"column:conversation_type;type:varchar(32);default:'text'"` // 会话类型
 	Status           string     `gorm:"column:status;type:varchar(20);default:'active'"`          // 状态
+	AgentPresetID    string     `gorm:"column:agent_preset_id;type:varchar(64);index"`            // 关联的Agent预设ID
 	Metadata         JSON       `gorm:"column:metadata;type:json"`                                // 扩展元数据
 	CreateTime       *time.Time `gorm:"column:create_time"`                                       // 创建时间
 	UpdateTime       *time.Time `gorm:"column:update_time"`                                       // 更新时间

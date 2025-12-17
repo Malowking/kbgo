@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 
+	"github.com/Malowking/kbgo/core/cache"
 	"github.com/Malowking/kbgo/core/config"
 	"github.com/Malowking/kbgo/core/file_store"
 	"github.com/Malowking/kbgo/core/model"
@@ -29,6 +30,16 @@ func init() {
 	err = dao.InitDB()
 	if err != nil {
 		g.Log().Fatalf(ctx, "Database connection initialization failed: %v", err)
+	}
+
+	// Initialize Redis cache
+	g.Log().Info(ctx, "Initializing Redis cache...")
+	err = cache.InitRedis(ctx)
+	if err != nil {
+		g.Log().Warningf(ctx, "Redis initialization failed (non-fatal): %v", err)
+		g.Log().Warning(ctx, "Agent preset caching will be disabled")
+	} else {
+		g.Log().Info(ctx, "✓ Redis cache initialized successfully")
 	}
 
 	// Initialize storage system

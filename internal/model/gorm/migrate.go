@@ -20,6 +20,7 @@ func Migrate(db *gorm.DB) error {
 		&MCPRegistry{},
 		&MCPCallLog{},
 		&AIModel{},
+		&AgentPreset{},
 	)
 	if err != nil {
 		glog.Error(context.Background(), "数据库迁移失败:", err)

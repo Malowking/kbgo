@@ -21,6 +21,9 @@ func NewChatHandler() *ChatHandler {
 
 // Handle basic chat request (non-streaming)
 func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles []*common.MultimodalFile) (*v1.ChatRes, error) {
+	// 加载Agent预设配置（如果会话关联了Agent预设）
+	req = h.loadAgentPresetConfig(ctx, req)
+
 	// Get retriever configuration
 	cfg := retriever.GetRetrieverConfig()
 
