@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, ChevronDown, ChevronUp } from 'lucide-react';
 import { modelApi } from '@/services';
 import type { Model } from '@/types';
 
@@ -16,26 +16,74 @@ export default function CreateModelModal({ model, onClose, onSuccess }: CreateMo
     provider: '',
     base_url: '',
     api_key: '',
-    max_completion_tokens: 0,
-    dimension: 0,
+    max_completion_tokens: 3000,
+    dimension: 1024,
     enabled: true,
+    // 额外参数
+    temperature: 0.7,
+    topP: 0.9,
+    frequencyPenalty: 0,
+    presencePenalty: 0,
+    stop: [] as string[],
     config: '',
   });
   const [loading, setLoading] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [stopInput, setStopInput] = useState('');
 
   useEffect(() => {
     if (model) {
+      // 从 extra 和 config 中提取额外参数和描述
+      let extraParams = {
+        temperature: 0.7,
+        topP: 0.9,
+        frequencyPenalty: 0,
+        presencePenalty: 0,
+        stop: [] as string[],
+        max_completion_tokens: 3000,
+      };
+      let dimension = 1024;
+      let description = '';
+
+      // 先从 extra 字段提取参数
+      if (model.extra && typeof model.extra === 'object') {
+        extraParams = {
+          temperature: (model.extra as any).temperature ?? 0.7,
+          topP: (model.extra as any).topP ?? 0.9,
+          frequencyPenalty: (model.extra as any).frequencyPenalty ?? 0,
+          presencePenalty: (model.extra as any).presencePenalty ?? 0,
+          stop: (model.extra as any).stop ?? [],
+          max_completion_tokens: (model.extra as any).max_completion_tokens ?? 3000,
+        };
+        dimension = (model.extra as any).dimension ?? 1024;
+        description = (model.extra as any).description || '';
+      }
+      // 如果 extra 为空，尝试从 config 提取
+      else if (model.config && typeof model.config === 'object') {
+        extraParams = {
+          temperature: (model.config as any).temperature ?? 0.7,
+          topP: (model.config as any).topP ?? 0.9,
+          frequencyPenalty: (model.config as any).frequencyPenalty ?? 0,
+          presencePenalty: (model.config as any).presencePenalty ?? 0,
+          stop: (model.config as any).stop ?? [],
+          max_completion_tokens: (model.config as any).max_completion_tokens ?? 3000,
+        };
+        dimension = (model.config as any).dimension ?? 1024;
+        description = (model.config as any).description || '';
+      }
+
       setFormData({
         model_name: model.name,
         model_type: model.type as any,
         provider: model.provider || '',
         base_url: model.base_url || '',
         api_key: model.api_key || '',
-        max_completion_tokens: 0,
-        dimension: 0,
-        enabled: model.status === 'active',
-        config: model.config ? JSON.stringify(model.config, null, 2) : '',
+        dimension: dimension,
+        enabled: model.status === 'active' || model.enabled === true,
+        config: description,
+        ...extraParams,
       });
+      setStopInput(extraParams.stop.join(', '));
     }
   }, [model]);
 
@@ -50,14 +98,35 @@ export default function CreateModelModal({ model, onClose, onSuccess }: CreateMo
     try {
       setLoading(true);
 
-      let config: Record<string, any> | undefined;
+      // 根据模型类型构建不同的配置对象
+      let config: Record<string, any> = {};
+
+      if (formData.model_type === 'llm' || formData.model_type === 'multimodal') {
+        // LLM 和 Multimodal 模型的配置
+        const stopArray = stopInput
+          .split(',')
+          .map(s => s.trim())
+          .filter(s => s.length > 0);
+
+        config = {
+          temperature: formData.temperature,
+          topP: formData.topP,
+          frequencyPenalty: formData.frequencyPenalty,
+          presencePenalty: formData.presencePenalty,
+          stop: stopArray,
+          max_completion_tokens: formData.max_completion_tokens,
+        };
+      } else if (formData.model_type === 'embedding') {
+        // Embedding 模型的配置
+        config = {
+          dimension: formData.dimension,
+        };
+      }
+      // Rerank 模型不需要额外配置，config 保持为空对象
+
+      // 添加描述（如果有）
       if (formData.config.trim()) {
-        try {
-          config = JSON.parse(formData.config);
-        } catch {
-          alert('配置格式错误，请输入有效的JSON');
-          return;
-        }
+        config.description = formData.config.trim();
       }
 
       if (model) {
@@ -70,7 +139,7 @@ export default function CreateModelModal({ model, onClose, onSuccess }: CreateMo
           base_url: formData.base_url.trim() || undefined,
           api_key: formData.api_key.trim() || undefined,
           enabled: formData.enabled,
-          extra: config ? JSON.stringify(config) : undefined,
+          extra: JSON.stringify(config),
         });
       } else {
         // Create
@@ -80,8 +149,8 @@ export default function CreateModelModal({ model, onClose, onSuccess }: CreateMo
           provider: formData.provider.trim() || undefined,
           base_url: formData.base_url.trim() || undefined,
           api_key: formData.api_key.trim() || undefined,
-          max_completion_tokens: formData.max_completion_tokens || undefined,
-          dimension: formData.dimension || undefined,
+          max_completion_tokens: formData.model_type === 'llm' || formData.model_type === 'multimodal' ? formData.max_completion_tokens : undefined,
+          dimension: formData.model_type === 'embedding' ? formData.dimension : undefined,
           config,
           enabled: formData.enabled,
         });
@@ -139,7 +208,7 @@ export default function CreateModelModal({ model, onClose, onSuccess }: CreateMo
             >
               <option value="llm">LLM（大语言模型）</option>
               <option value="embedding">Embedding（向量模型）</option>
-              <option value="rerank">Rerank（重排序模型）</option>
+              <option value="reranker">Reranker（重排序模型）</option>
               <option value="multimodal">Multimodal（多模态模型）</option>
               <option value="image">Image（图像模型）</option>
               <option value="video">Video（视频模型）</option>
@@ -186,21 +255,17 @@ export default function CreateModelModal({ model, onClose, onSuccess }: CreateMo
             />
           </div>
 
-          {!model && formData.model_type === 'llm' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                最大输出Token数
-              </label>
-              <input
-                type="number"
-                value={formData.max_completion_tokens}
-                onChange={(e) => setFormData({ ...formData, max_completion_tokens: parseInt(e.target.value) || 0 })}
-                className="input"
-                min="0"
-                placeholder="例如：4096"
-              />
-            </div>
-          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              模型描述
+            </label>
+            <textarea
+              value={formData.config}
+              onChange={(e) => setFormData({ ...formData, config: e.target.value })}
+              className="input min-h-[80px]"
+              placeholder="请输入模型描述信息"
+            />
+          </div>
 
           {!model && formData.model_type === 'embedding' && (
             <div>
@@ -213,22 +278,193 @@ export default function CreateModelModal({ model, onClose, onSuccess }: CreateMo
                 onChange={(e) => setFormData({ ...formData, dimension: parseInt(e.target.value) || 0 })}
                 className="input"
                 min="0"
-                placeholder="例如：1536"
+                placeholder="1024"
               />
             </div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              自定义配置（JSON格式）
-            </label>
-            <textarea
-              value={formData.config}
-              onChange={(e) => setFormData({ ...formData, config: e.target.value })}
-              className="input font-mono text-sm min-h-[100px]"
-              placeholder={'{\n  "temperature": 0.7,\n  "top_p": 0.9\n}'}
-            />
-          </div>
+          {/* 额外参数按钮 - LLM 和 Multimodal 显示完整参数，Embedding 显示 dimension，Rerank 不显示 */}
+          {(formData.model_type === 'llm' || formData.model_type === 'multimodal') && (
+            <div className="border-t border-gray-200 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex items-center justify-between w-full px-4 py-2 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <span>额外参数配置</span>
+                {showAdvanced ? (
+                  <ChevronUp className="w-4 h-4" />
+                ) : (
+                  <ChevronDown className="w-4 h-4" />
+                )}
+              </button>
+
+              {/* 可折叠的额外参数表单 */}
+              {showAdvanced && (
+                <div className="mt-4 space-y-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Max Completion Tokens */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        最大输出Token数
+                      </label>
+                      <input
+                        type="number"
+                        value={formData.max_completion_tokens}
+                        onChange={(e) => setFormData({ ...formData, max_completion_tokens: parseInt(e.target.value) || 0 })}
+                        className="input"
+                        min="0"
+                        placeholder="3000"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">控制最大生成长度</p>
+                    </div>
+
+                    {/* Temperature */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Temperature
+                        <span className="text-xs text-gray-500 ml-1">(0-2)</span>
+                      </label>
+                      <input
+                        type="number"
+                        value={formData.temperature}
+                        onChange={(e) => setFormData({ ...formData, temperature: parseFloat(e.target.value) || 0 })}
+                        className="input"
+                        min="0"
+                        max="2"
+                        step="0.1"
+                        placeholder="0.7"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">控制输出随机性，越高越随机</p>
+                    </div>
+
+                    {/* Top P */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Top P
+                        <span className="text-xs text-gray-500 ml-1">(0-1)</span>
+                      </label>
+                      <input
+                        type="number"
+                        value={formData.topP}
+                        onChange={(e) => setFormData({ ...formData, topP: parseFloat(e.target.value) || 0 })}
+                        className="input"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        placeholder="0.9"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">核采样概率阈值</p>
+                    </div>
+
+                    {/* Frequency Penalty */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Frequency Penalty
+                        <span className="text-xs text-gray-500 ml-1">(-2 to 2)</span>
+                      </label>
+                      <input
+                        type="number"
+                        value={formData.frequencyPenalty}
+                        onChange={(e) => setFormData({ ...formData, frequencyPenalty: parseFloat(e.target.value) || 0 })}
+                        className="input"
+                        min="-2"
+                        max="2"
+                        step="0.1"
+                        placeholder="0"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">降低重复词频率</p>
+                    </div>
+
+                    {/* Presence Penalty */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Presence Penalty
+                        <span className="text-xs text-gray-500 ml-1">(-2 to 2)</span>
+                      </label>
+                      <input
+                        type="number"
+                        value={formData.presencePenalty}
+                        onChange={(e) => setFormData({ ...formData, presencePenalty: parseFloat(e.target.value) || 0 })}
+                        className="input"
+                        min="-2"
+                        max="2"
+                        step="0.1"
+                        placeholder="0"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">鼓励讨论新话题</p>
+                    </div>
+                  </div>
+
+                  {/* Stop Sequences */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Stop Sequences
+                      <span className="text-xs text-gray-500 ml-1">(用逗号分隔)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={stopInput}
+                      onChange={(e) => setStopInput(e.target.value)}
+                      className="input"
+                      placeholder="例如：\n, ###, END"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">模型遇到这些序列时将停止生成</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Embedding 模型的额外参数配置 */}
+          {formData.model_type === 'embedding' && (
+            <div className="border-t border-gray-200 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex items-center justify-between w-full px-4 py-2 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <span>额外参数配置</span>
+                {showAdvanced ? (
+                  <ChevronUp className="w-4 h-4" />
+                ) : (
+                  <ChevronDown className="w-4 h-4" />
+                )}
+              </button>
+
+              {showAdvanced && (
+                <div className="mt-4 space-y-4 p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      向量维度
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.dimension}
+                      onChange={(e) => setFormData({ ...formData, dimension: parseInt(e.target.value) || 0 })}
+                      className="input"
+                      min="0"
+                      placeholder="1024"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">向量模型的输出维度</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/*<div>*/}
+          {/*  <label className="block text-sm font-medium text-gray-700 mb-2">*/}
+          {/*    自定义配置（JSON格式）*/}
+          {/*  </label>*/}
+          {/*  <textarea*/}
+          {/*    value={formData.config}*/}
+          {/*    onChange={(e) => setFormData({ ...formData, config: e.target.value })}*/}
+          {/*    className="input font-mono text-sm min-h-[100px]"*/}
+          {/*    placeholder={'{\n  "description": "模型描述"\n}'}*/}
+          {/*  />*/}
+          {/*  <p className="text-xs text-gray-500 mt-1">可选：用于添加其他自定义字段（如 description 等）</p>*/}
+          {/*</div>*/}
 
           <div className="flex items-center">
             <input

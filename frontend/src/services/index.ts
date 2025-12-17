@@ -17,6 +17,12 @@ import type {
   MCPCallLog,
   MCPStats,
   MCPTool,
+  AgentPreset,
+  AgentPresetItem,
+  CreateAgentPresetRequest,
+  UpdateAgentPresetRequest,
+  AgentChatRequest,
+  AgentChatResponse,
 } from '@/types';
 
 // 知识库 API
@@ -27,7 +33,7 @@ export const knowledgeBaseApi = {
 
   // 获取单个知识库
   get: (id: string) =>
-    apiClient.get<KnowledgeBase>(`/v1/kb/${id}`),
+    apiClient.get<KnowledgeBase>(`/api/v1/kb/${id}`),
 
   // 创建知识库
   create: (data: CreateKBRequest) =>
@@ -35,15 +41,15 @@ export const knowledgeBaseApi = {
 
   // 更新知识库
   update: (id: string, data: Partial<CreateKBRequest & { status: 1 | 2 }>) =>
-    apiClient.put<void>(`/v1/kb/${id}`, data),
+    apiClient.put<void>(`/api/v1/kb/${id}`, data),
 
   // 删除知识库
   delete: (id: string) =>
-    apiClient.delete<void>(`/v1/kb/${id}`),
+    apiClient.delete<void>(`/api/v1/kb/${id}`),
 
   // 更新知识库状态
   updateStatus: (id: string, status: 1 | 2) =>
-    apiClient.patch<void>(`/v1/kb/${id}/status`, { status }),
+    apiClient.patch<void>(`/api/v1/kb/${id}/status`, { status }),
 };
 
 // 文档 API
@@ -53,24 +59,41 @@ export const documentApi = {
     apiClient.upload<{ document_ids: string[] }>('/api/v1/upload', formData),
 
   // 索引文档
-  index: (data: { document_ids: string[]; chunk_size?: number; chunk_overlap?: number }) =>
-    apiClient.post<void>('/api/v1/index', data),
+  index: (data: {
+    document_ids: string[];
+    embedding_model_id: string;
+    chunk_size?: number;
+    overlap_size?: number;
+    separator?: string;
+  }) =>
+    apiClient.post<{ message: string }>('/api/v1/index', data),
 
   // 获取文档列表
-  list: (params: { kb_id: string; page?: number; page_size?: number }) =>
-    apiClient.get<{ list: Document[]; total?: number }>('/api/v1/documents', { params }),
+  list: (params: { knowledge_id: string; page?: number; page_size?: number }) =>
+    apiClient.get<{ data: Document[]; total?: number; page?: number; size?: number }>('/api/v1/documents', { params }),
 
-  // 删除文档
-  delete: (documentIds: string[]) =>
-    apiClient.delete<void>('/api/v1/documents', { data: { document_ids: documentIds } }),
+  // 删除文档 - 后端只支持单个文档删除，参数名是 document_id (query/form parameter)
+  delete: (documentIds: string[]) => {
+    // 依次删除每个文档
+    return Promise.all(
+      documentIds.map(id =>
+        apiClient.delete<void>(`/api/v1/documents?document_id=${encodeURIComponent(id)}`)
+      )
+    );
+  },
 
-  // 重新索引
-  reindex: (documentIds: string[]) =>
-    apiClient.post<void>('/api/v1/documents/reindex', { document_ids: documentIds }),
+  // 重新索引 - 后端只支持单个文档，参数名是 document_id
+  reindex: (documentIds: string[]) => {
+    return Promise.all(
+      documentIds.map(id =>
+        apiClient.post<void>(`/api/v1/documents/reindex?document_id=${encodeURIComponent(id)}`)
+      )
+    );
+  },
 
   // 获取分块列表
-  getChunks: (params: { document_id: string; page?: number; page_size?: number }) =>
-    apiClient.get<{ list: Chunk[]; total?: number }>('/api/v1/chunks', { params }),
+  getChunks: (params: { knowledge_doc_id: string; page?: number; page_size?: number }) =>
+    apiClient.get<{ data: Chunk[]; total?: number; page?: number; size?: number }>('/api/v1/chunks', { params }),
 };
 
 // 对话 API
@@ -93,15 +116,15 @@ export const conversationApi = {
 
   // 获取会话详情
   get: (convId: string) =>
-    apiClient.get<ConversationDetailRes>(`/v1/conversations/${convId}`),
+    apiClient.get<ConversationDetailRes>(`/api/v1/conversations/${convId}`),
 
   // 删除会话
   delete: (convId: string) =>
-    apiClient.delete<{ message: string }>(`/v1/conversations/${convId}`),
+    apiClient.delete<{ message: string }>(`/api/v1/conversations/${convId}`),
 
   // 更新会话
   update: (convId: string, data: { title?: string; status?: string; tags?: string[]; metadata?: Record<string, any> }) =>
-    apiClient.put<{ message: string }>(`/v1/conversations/${convId}`, data),
+    apiClient.put<{ message: string }>(`/api/v1/conversations/${convId}`, data),
 
   // 批量删除会话
   batchDelete: (convIds: string[]) =>
@@ -117,7 +140,7 @@ export const chatApi = {
   // 流式聊天（需要特殊处理）
   sendStream: async (
     data: ChatRequest,
-    onMessage: (chunk: string) => void,
+    onMessage: (chunk: string, reasoningChunk?: string) => void,
     onError?: (error: Error) => void
   ) => {
     try {
@@ -140,16 +163,42 @@ export const chatApi = {
         throw new Error('Response body is null');
       }
 
+      let buffer = '';
+
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          const chunk = decoder.decode(value, { stream: true });
+          buffer += decoder.decode(value, { stream: true });
 
-          // 直接传递文本块，不进行 SSE 解析
-          if (chunk) {
-            onMessage(chunk);
+          // 按行分割处理 SSE 消息
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // 保留最后一个不完整的行
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+
+            // 处理 SSE 格式的 data: 行
+            if (trimmed.startsWith('data:')) {
+              const dataContent = trimmed.substring(5).trim();
+
+              // 检查是否是结束标记
+              if (dataContent === '[DONE]') {
+                continue;
+              }
+
+              // 解析 JSON 数据
+              try {
+                const parsed = JSON.parse(dataContent);
+                // 传递 content 和 reasoning_content
+                if (parsed.content || parsed.reasoning_content) {
+                  onMessage(parsed.content || '', parsed.reasoning_content);
+                }
+              } catch (parseError) {
+                console.warn('Failed to parse SSE data:', dataContent, parseError);
+              }
+            }
           }
         }
       } finally {
@@ -174,7 +223,7 @@ export const modelApi = {
 
   // 获取单个模型
   get: (modelId: string) =>
-    apiClient.get<{ model: Model }>(`/v1/model/${modelId}`),
+    apiClient.get<{ model: Model }>(`/api/v1/model/${modelId}`),
 
   // 创建模型
   create: (data: CreateModelRequest) =>
@@ -182,11 +231,11 @@ export const modelApi = {
 
   // 更新模型
   update: (modelId: string, data: Omit<UpdateModelRequest, 'model_id'>) =>
-    apiClient.put<{ success: boolean; message: string }>(`/v1/model/${modelId}`, data),
+    apiClient.put<{ success: boolean; message: string }>(`/api/v1/model/${modelId}`, data),
 
   // 删除模型
   delete: (modelId: string) =>
-    apiClient.delete<{ success: boolean; message: string }>(`/v1/model/${modelId}`),
+    apiClient.delete<{ success: boolean; message: string }>(`/api/v1/model/${modelId}`),
 
   // 重新加载模型配置
   reload: () =>
@@ -201,7 +250,7 @@ export const mcpApi = {
 
   // 获取单个MCP服务
   get: (id: string) =>
-    apiClient.get<MCPRegistry>(`/v1/mcp/registry/${id}`),
+    apiClient.get<MCPRegistry>(`/api/v1/mcp/registry/${id}`),
 
   // 创建MCP服务
   create: (data: CreateMCPRequest) =>
@@ -209,27 +258,27 @@ export const mcpApi = {
 
   // 更新MCP服务
   update: (id: string, data: UpdateMCPRequest) =>
-    apiClient.put<void>(`/v1/mcp/registry/${id}`, data),
+    apiClient.put<void>(`/api/v1/mcp/registry/${id}`, data),
 
   // 删除MCP服务
   delete: (id: string) =>
-    apiClient.delete<void>(`/v1/mcp/registry/${id}`),
+    apiClient.delete<void>(`/api/v1/mcp/registry/${id}`),
 
   // 更新MCP服务状态
   updateStatus: (id: string, status: 1 | 0) =>
-    apiClient.patch<void>(`/v1/mcp/registry/${id}/status`, { status }),
+    apiClient.patch<void>(`/api/v1/mcp/registry/${id}/status`, { status }),
 
   // 测试MCP服务连接
   test: (id: string) =>
-    apiClient.post<{ success: boolean; message: string }>(`/v1/mcp/registry/${id}/test`, {}),
+    apiClient.post<{ success: boolean; message: string }>(`/api/v1/mcp/registry/${id}/test`, {}),
 
   // 获取MCP服务工具列表
   listTools: (id: string) =>
-    apiClient.get<{ tools: MCPTool[] }>(`/v1/mcp/registry/${id}/tools`),
+    apiClient.get<{ tools: MCPTool[] }>(`/api/v1/mcp/registry/${id}/tools`),
 
   // 获取MCP服务统计信息
   stats: (id: string) =>
-    apiClient.get<MCPStats>(`/v1/mcp/registry/${id}/stats`),
+    apiClient.get<MCPStats>(`/api/v1/mcp/registry/${id}/stats`),
 
   // 获取MCP调用日志列表
   logs: (params?: {
@@ -244,5 +293,109 @@ export const mcpApi = {
 
   // 根据会话ID获取MCP调用日志
   logsByConversation: (conversationId: string) =>
-    apiClient.get<{ list: MCPCallLog[] }>(`/v1/mcp/logs/conversation/${conversationId}`),
+    apiClient.get<{ list: MCPCallLog[] }>(`/api/v1/mcp/logs/conversation/${conversationId}`),
+};
+
+// Agent API
+export const agentApi = {
+  // 创建Agent预设
+  create: (data: CreateAgentPresetRequest) =>
+    apiClient.post<{ preset_id: string }>('/api/v1/agent/preset', data),
+
+  // 更新Agent预设
+  update: (presetId: string, data: Omit<UpdateAgentPresetRequest, 'preset_id'>) =>
+    apiClient.put<{ success: boolean }>(`/api/v1/agent/preset/${presetId}`, data),
+
+  // 获取Agent预设详情
+  get: (presetId: string) =>
+    apiClient.get<AgentPreset>(`/api/v1/agent/preset/${presetId}`),
+
+  // 获取Agent预设列表
+  list: (params?: { user_id?: string; is_public?: boolean; page?: number; page_size?: number }) =>
+    apiClient.get<{ list: AgentPresetItem[]; total: number; page: number }>('/api/v1/agent/presets', { params }),
+
+  // 删除Agent预设
+  delete: (presetId: string, userId: string) =>
+    apiClient.delete<{ success: boolean }>(`/api/v1/agent/preset/${presetId}`, { data: { user_id: userId } }),
+
+  // Agent对话
+  chat: (data: AgentChatRequest) =>
+    apiClient.post<AgentChatResponse>('/api/v1/agent/chat', data),
+
+  // Agent流式对话
+  chatStream: async (
+    data: AgentChatRequest,
+    onMessage: (chunk: string, reasoningChunk?: string) => void,
+    onError?: (error: Error) => void
+  ) => {
+    try {
+      const response = await fetch('/api/v1/agent/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ...data, stream: true }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error('Response body is null');
+      }
+
+      let buffer = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          // 按行分割处理 SSE 消息
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // 保留最后一个不完整的行
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+
+            // 处理 SSE 格式的 data: 行
+            if (trimmed.startsWith('data:')) {
+              const dataContent = trimmed.substring(5).trim();
+
+              // 检查是否是结束标记
+              if (dataContent === '[DONE]') {
+                continue;
+              }
+
+              // 解析 JSON 数据
+              try {
+                const parsed = JSON.parse(dataContent);
+                // 传递 content 和 reasoning_content
+                if (parsed.content || parsed.reasoning_content) {
+                  onMessage(parsed.content || '', parsed.reasoning_content);
+                }
+              } catch (parseError) {
+                console.warn('Failed to parse SSE data:', dataContent, parseError);
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } catch (error) {
+      console.error('Stream error:', error);
+      if (onError) {
+        onError(error as Error);
+      } else {
+        throw error;
+      }
+    }
+  },
 };

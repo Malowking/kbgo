@@ -1,0 +1,445 @@
+import { useState, useEffect, useRef } from 'react';
+import { Send, Bot, User, ArrowLeft, Plus, Loader2 } from 'lucide-react';
+import { agentApi } from '@/services';
+import { generateId } from '@/lib/utils';
+import type { AgentPresetItem } from '@/types';
+import { useNavigate } from 'react-router-dom';
+import MessageContent from '@/components/MessageContent';
+
+interface Message {
+  id: number;
+  role: 'user' | 'assistant';
+  content: string;
+  reasoning_content?: string;
+  references?: any[];
+  mcp_results?: any[];
+  timestamp: string;
+}
+
+interface Conversation {
+  conv_id: string;
+  preset_id: string;
+  preset_name: string;
+  messages: Message[];
+}
+
+export default function AgentChat() {
+  const navigate = useNavigate();
+  const [presets, setPresets] = useState<AgentPresetItem[]>([]);
+  const [selectedPreset, setSelectedPreset] = useState<string>('');
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [currentConvId, setCurrentConvId] = useState<string>('');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const USER_ID = 'user_001'; // TODO: Get from auth context
+
+  useEffect(() => {
+    fetchPresets();
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const fetchPresets = async () => {
+    try {
+      const response = await agentApi.list({ user_id: USER_ID, page: 1, page_size: 100 });
+      setPresets(response.list || []);
+
+      // Auto-select first preset if available
+      if (response.list && response.list.length > 0 && !selectedPreset) {
+        setSelectedPreset(response.list[0].preset_id);
+      }
+    } catch (error) {
+      console.error('Failed to fetch agent presets:', error);
+    }
+  };
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleSelectPreset = (presetId: string) => {
+    setSelectedPreset(presetId);
+    setCurrentConvId('');
+    setMessages([]);
+  };
+
+  const handleNewConversation = () => {
+    if (!selectedPreset) {
+      alert('请先选择一个 Agent');
+      return;
+    }
+
+    const newConvId = generateId();
+    const preset = presets.find(p => p.preset_id === selectedPreset);
+
+    const newConv: Conversation = {
+      conv_id: newConvId,
+      preset_id: selectedPreset,
+      preset_name: preset?.preset_name || 'Agent',
+      messages: [],
+    };
+
+    setConversations(prev => [newConv, ...prev]);
+    setCurrentConvId(newConvId);
+    setMessages([]);
+  };
+
+  const handleSend = async () => {
+    if (!input.trim() || !selectedPreset) {
+      alert('请输入消息并选择 Agent');
+      return;
+    }
+
+    const convId = currentConvId || generateId();
+    if (!currentConvId) {
+      setCurrentConvId(convId);
+
+      // Create conversation entry
+      const preset = presets.find(p => p.preset_id === selectedPreset);
+      const newConv: Conversation = {
+        conv_id: convId,
+        preset_id: selectedPreset,
+        preset_name: preset?.preset_name || 'Agent',
+        messages: [],
+      };
+      setConversations(prev => [newConv, ...prev]);
+    }
+
+    // 使用时间戳 + 随机数确保唯一性
+    const userMessageId = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+    const assistantMessageId = userMessageId + 1;
+
+    const userMessage: Message = {
+      id: userMessageId,
+      role: 'user',
+      content: input,
+      timestamp: new Date().toISOString(),
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    const currentInput = input;
+    setInput('');
+    setLoading(true);
+
+    try {
+      // 默认使用流式输出
+      let accumulatedContent = '';
+      let accumulatedReasoning = '';
+
+      setMessages(prev => [
+        ...prev,
+        {
+          id: assistantMessageId,
+          role: 'assistant',
+          content: '',
+          reasoning_content: '',
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+
+      await agentApi.chatStream(
+        {
+          preset_id: selectedPreset,
+          user_id: USER_ID,
+          question: currentInput,
+          conv_id: convId,
+          stream: true,
+        },
+        (chunk, reasoningChunk) => {
+          // 累积内容和思考过程
+          accumulatedContent += chunk;
+          if (reasoningChunk) {
+            accumulatedReasoning += reasoningChunk;
+          }
+
+          setMessages(prev =>
+            prev.map(msg =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: accumulatedContent, reasoning_content: accumulatedReasoning || undefined }
+                : msg
+            )
+          );
+        },
+        (error) => {
+          console.error('Stream error:', error);
+          setMessages(prev =>
+            prev.map(msg =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: '抱歉，发生了错误：' + error.message }
+                : msg
+            )
+          );
+        }
+      );
+    } catch (error: any) {
+      console.error('Failed to send message:', error);
+      const errorMessage: Message = {
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: '抱歉，发送消息失败：' + (error.message || '未知错误'),
+        timestamp: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const selectedPresetName = presets.find(p => p.preset_id === selectedPreset)?.preset_name || 'Agent';
+
+  return (
+    <div className="h-screen flex bg-gray-50">
+      {/* Sidebar */}
+      <div className="w-64 border-r bg-white flex flex-col">
+        {/* Header */}
+        <div className="p-4 border-b">
+          <button
+            onClick={() => navigate('/agent-builder')}
+            className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-3"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            返回 Agent 构建器
+          </button>
+          <button
+            onClick={handleNewConversation}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            新对话
+          </button>
+        </div>
+
+        {/* Agent Selection */}
+        <div className="p-4 border-b">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            选择 Agent
+          </label>
+          <select
+            value={selectedPreset}
+            onChange={(e) => handleSelectPreset(e.target.value)}
+            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          >
+            <option value="">请选择</option>
+            {presets.map((preset) => (
+              <option key={preset.preset_id} value={preset.preset_id}>
+                {preset.preset_name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Conversations List */}
+        <div className="flex-1 overflow-auto p-4">
+          <h3 className="text-sm font-medium text-gray-700 mb-2">对话历史</h3>
+          {conversations.length === 0 ? (
+            <p className="text-sm text-gray-500">暂无对话</p>
+          ) : (
+            <div className="space-y-2">
+              {conversations.map((conv) => (
+                <button
+                  key={conv.conv_id}
+                  onClick={() => {
+                    setCurrentConvId(conv.conv_id);
+                    setMessages(conv.messages);
+                    setSelectedPreset(conv.preset_id);
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                    currentConvId === conv.conv_id
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="font-medium truncate">{conv.preset_name}</div>
+                  <div className="text-xs text-gray-500">
+                    {conv.messages.length} 条消息
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Chat Area */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="border-b bg-white px-6 py-4">
+          <div className="flex items-center gap-3">
+            <Bot className="w-6 h-6 text-blue-500" />
+            <div>
+              <h1 className="text-xl font-bold">{selectedPresetName}</h1>
+              {selectedPreset && (
+                <p className="text-sm text-gray-500">
+                  {presets.find(p => p.preset_id === selectedPreset)?.description || ''}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-auto p-6 space-y-4">
+          {messages.length === 0 ? (
+            <div className="text-center py-12">
+              <Bot className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500 mb-2">开始与 {selectedPresetName} 对话</p>
+              <p className="text-sm text-gray-400">在下方输入框中输入您的问题</p>
+            </div>
+          ) : (
+            <>
+              {messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`flex gap-3 ${
+                    message.role === 'user' ? 'justify-end' : 'justify-start'
+                  }`}
+                >
+                  {message.role === 'assistant' && (
+                    <div className="flex-shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
+                        <Bot className="w-5 h-5 text-white" />
+                      </div>
+                    </div>
+                  )}
+
+                  <div
+                    className={`max-w-2xl rounded-lg px-4 py-3 ${
+                      message.role === 'user'
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-white border'
+                    }`}
+                  >
+                    {message.role === 'user' ? (
+                      <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                    ) : (
+                      <MessageContent
+                        content={message.content}
+                        reasoningContent={message.reasoning_content}
+                        isStreaming={loading && messages[messages.length - 1]?.id === message.id}
+                      />
+                    )}
+
+                    {message.references && message.references.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <p className="text-sm font-medium text-gray-700 mb-2">
+                          参考文档 ({message.references.length})
+                        </p>
+                        <div className="space-y-2">
+                          {message.references.map((ref: any, idx: number) => (
+                            <div
+                              key={idx}
+                              className="text-sm p-2 bg-gray-50 rounded border border-gray-200"
+                            >
+                              <p className="text-gray-700 line-clamp-2">{ref.content}</p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                相似度: {(ref.score * 100).toFixed(1)}%
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {message.mcp_results && message.mcp_results.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <p className="text-sm font-medium text-gray-700 mb-2">
+                          工具调用结果
+                        </p>
+                        <div className="space-y-2">
+                          {message.mcp_results.map((result: any, idx: number) => (
+                            <div
+                              key={idx}
+                              className="text-sm p-2 bg-green-50 rounded border border-green-200"
+                            >
+                              <p className="font-medium text-green-900">
+                                {result.service_name} - {result.tool_name}
+                              </p>
+                              <p className="text-gray-700 mt-1 line-clamp-3">{result.content}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <p className="text-xs text-gray-400 mt-2">
+                      {new Date(message.timestamp).toLocaleTimeString()}
+                    </p>
+                  </div>
+
+                  {message.role === 'user' && (
+                    <div className="flex-shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+                        <User className="w-5 h-5 text-gray-600" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {loading && (
+                <div className="flex gap-3">
+                  <div className="flex-shrink-0">
+                    <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
+                      <Bot className="w-5 h-5 text-white" />
+                    </div>
+                  </div>
+                  <div className="bg-white border rounded-lg px-4 py-3">
+                    <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                  </div>
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </>
+          )}
+        </div>
+
+        {/* Input */}
+        <div className="border-t bg-white p-4">
+          <div className="max-w-4xl mx-auto">
+            {!selectedPreset ? (
+              <div className="text-center text-gray-500 py-4">
+                请先选择一个 Agent
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="输入消息..."
+                  disabled={loading}
+                  className="flex-1 px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
+                />
+                <button
+                  onClick={handleSend}
+                  disabled={loading || !input.trim()}
+                  className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {loading ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Send className="w-5 h-5" />
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

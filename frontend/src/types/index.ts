@@ -19,24 +19,36 @@ export interface CreateKBRequest {
 // 文档相关类型
 export interface Document {
   id: string;
-  kb_id: string;
-  name: string;
-  file_type: string;
-  file_size: number;
-  source_url?: string;
-  status: string;
-  chunk_count: number;
-  created_at: string;
-  updated_at: string;
+  knowledgeId: string;
+  fileName: string;
+  fileExtension: string;
+  collectionName?: string;
+  sha256?: string;
+  rustfsBucket?: string;
+  rustfsLocation?: string;
+  localFilePath?: string;
+  status: number; // 0=pending, 1=indexing, 2=active, 3=failed
+  CreateTime: string;
+  UpdateTime: string;
+
+  // 兼容旧字段名（可选）
+  name?: string; // alias for fileName
+  file_type?: string; // alias for fileExtension
+  file_size?: number;
+  chunk_count?: number;
+  created_at?: string; // alias for CreateTime
+  updated_at?: string; // alias for UpdateTime
 }
 
 export interface Chunk {
   id: string;
-  document_id: string;
+  knowledgeDocId: string;
   content: string;
-  chunk_index: number;
-  status: string;
-  created_at: string;
+  ext: string; // JSON string containing metadata like chunk_index
+  collectionName: string;
+  status: number;
+  createTime: string;
+  updateTime: string;
 }
 
 // 对话相关类型
@@ -228,4 +240,79 @@ export interface MCPStats {
   failed_calls: number;
   avg_duration: number;
   success_rate: number;
+}
+
+// Agent 相关类型
+export interface AgentConfig {
+  model_id: string;
+  embedding_model_id?: string;
+  rerank_model_id?: string;
+  knowledge_id?: string;
+  enable_retriever?: boolean;
+  top_k?: number;
+  score?: number;
+  retrieve_mode?: 'milvus' | 'rerank' | 'rrf';
+  use_mcp?: boolean;
+  mcp_service_tools?: Record<string, string[]>;
+  jsonformat?: boolean;
+}
+
+export interface AgentPreset {
+  preset_id: string;
+  user_id: string;
+  preset_name: string;
+  description: string;
+  config: AgentConfig;
+  is_public: boolean;
+  create_time: string;
+  update_time: string;
+}
+
+export interface CreateAgentPresetRequest {
+  user_id: string;
+  preset_name: string;
+  description: string;
+  config: AgentConfig;
+  is_public: boolean;
+}
+
+export interface UpdateAgentPresetRequest {
+  preset_id: string;
+  user_id: string;
+  preset_name?: string;
+  description?: string;
+  config?: AgentConfig;
+  is_public?: boolean;
+}
+
+export interface AgentPresetItem {
+  preset_id: string;
+  preset_name: string;
+  description: string;
+  is_public: boolean;
+  create_time: string;
+  update_time: string;
+}
+
+export interface AgentChatRequest {
+  preset_id: string;
+  user_id: string;
+  question: string;
+  conv_id?: string;
+  stream?: boolean;
+}
+
+export interface AgentDoc {
+  document_id: string;
+  chunk_id: string;
+  content: string;
+  score: number;
+}
+
+export interface AgentChatResponse {
+  conv_id: string;
+  answer: string;
+  reasoning_content?: string;
+  references?: AgentDoc[];
+  mcp_results?: MCPResult[];
 }

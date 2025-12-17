@@ -1,13 +1,14 @@
 import { User, Bot } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
 import type { Message } from '@/types';
 import { formatDate } from '@/lib/utils';
+import MessageContent from '@/components/MessageContent';
 
 interface ChatMessageProps {
   message: Message;
+  isStreaming?: boolean;
 }
 
-export default function ChatMessage({ message }: ChatMessageProps) {
+export default function ChatMessage({ message, isStreaming = false }: ChatMessageProps) {
   const isUser = message.role === 'user';
 
   return (
@@ -36,20 +37,11 @@ export default function ChatMessage({ message }: ChatMessageProps) {
             {isUser ? (
               <p className="whitespace-pre-wrap">{message.content}</p>
             ) : (
-              <div className="prose prose-sm max-w-none">
-                <ReactMarkdown>{message.content}</ReactMarkdown>
-              </div>
-            )}
-
-            {message.reasoning_content && (
-              <details className="mt-3 pt-3 border-t border-gray-300">
-                <summary className="cursor-pointer text-sm font-medium">
-                  思考过程
-                </summary>
-                <div className="mt-2 text-sm opacity-80">
-                  <ReactMarkdown>{message.reasoning_content}</ReactMarkdown>
-                </div>
-              </details>
+              <MessageContent
+                content={message.content}
+                reasoningContent={message.reasoning_content}
+                isStreaming={isStreaming}
+              />
             )}
           </div>
 

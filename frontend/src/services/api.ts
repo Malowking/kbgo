@@ -32,13 +32,26 @@ class ApiClient {
     // 响应拦截器
     this.client.interceptors.response.use(
       (response: AxiosResponse) => {
+        // 检查响应格式是否为 { code, message, data } 结构
+        if (response.data && typeof response.data === 'object' && 'code' in response.data) {
+          // 检查业务状态码
+          if (response.data.code !== 0) {
+            const errorMsg = response.data.message || 'Request failed';
+            console.error('API Business Error:', errorMsg);
+            return Promise.reject(new Error(errorMsg));
+          }
+          // 返回实际数据部分
+          return { ...response, data: response.data.data };
+        }
         return response;
       },
       (error) => {
         if (error.response) {
           // 处理错误响应
           const { status, data } = error.response;
-          console.error(`API Error [${status}]:`, data);
+          const errorMsg = data?.message || data?.error || `HTTP Error ${status}`;
+          console.error(`API Error [${status}]:`, errorMsg);
+          return Promise.reject(new Error(errorMsg));
         }
         return Promise.reject(error);
       }

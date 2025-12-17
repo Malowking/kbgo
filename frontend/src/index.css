@@ -33,3 +33,77 @@
     @apply bg-white rounded-lg shadow-sm border border-gray-200 p-6;
   }
 }
+
+/* Message content animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes typing {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.message-content {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.message-streaming {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Smooth scrolling for message containers */
+.messages-container {
+  scroll-behavior: smooth;
+}
+
+/* Prose styling for markdown */
+.prose {
+  @apply text-gray-800;
+}
+
+.prose p {
+  @apply my-3 leading-relaxed;
+}
+
+.prose strong {
+  @apply font-semibold text-gray-900;
+}
+
+.prose em {
+  @apply italic;
+}
+
+.prose hr {
+  @apply my-6 border-gray-300;
+}
+
+/* Code block scrollbar styling */
+.prose pre::-webkit-scrollbar {
+  height: 8px;
+}
+
+.prose pre::-webkit-scrollbar-track {
+  background: #1e293b;
+  border-radius: 4px;
+}
+
+.prose pre::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 4px;
+}
+
+.prose pre::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}

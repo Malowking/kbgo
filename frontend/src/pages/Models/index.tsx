@@ -20,7 +20,7 @@ export default function Models() {
     try {
       setLoading(true);
       const response = await modelApi.list();
-      // 添加 id 别名，方便使用
+      // 添加 id 别名，方便使用，并使用 enabled 字段判断状态
       const modelsWithId = (response.models || []).map(m => ({
         ...m,
         id: m.model_id,
@@ -72,6 +72,20 @@ export default function Models() {
     setEditingModel(null);
   };
 
+  const getModelDescription = (model: Model): string => {
+    try {
+      if (model.extra && typeof model.extra === 'object' && 'description' in model.extra) {
+        return model.extra.description as string;
+      }
+      if (model.config && typeof model.config === 'object' && 'description' in model.config) {
+        return model.config.description as string;
+      }
+    } catch (e) {
+      console.error('Failed to parse model description:', e);
+    }
+    return '';
+  };
+
   const filteredModels = filterType === 'all'
     ? models
     : models.filter(m => m.type === filterType);
@@ -79,7 +93,7 @@ export default function Models() {
   const modelTypeColors = {
     llm: 'bg-blue-100 text-blue-700',
     embedding: 'bg-green-100 text-green-700',
-    rerank: 'bg-purple-100 text-purple-700',
+    reranker: 'bg-purple-100 text-purple-700',
     multimodal: 'bg-orange-100 text-orange-700',
   };
 
@@ -121,8 +135,8 @@ export default function Models() {
               { value: 'all', label: '全部' },
               { value: 'llm', label: 'LLM' },
               { value: 'embedding', label: 'Embedding' },
-              { value: 'rerank', label: 'Rerank' },
-              { value: 'multimodal', label: '多模态' },
+              { value: 'reranker', label: 'Reranker' },
+              { value: 'multimodal', label: 'VLM' },
             ].map((type) => (
               <button
                 key={type.value}
@@ -141,12 +155,13 @@ export default function Models() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         {[
           { label: '总模型数', value: models.length, bgColor: 'bg-blue-100', iconColor: 'text-blue-600' },
-          { label: 'LLM 模型', value: models.filter(m => m.type === 'llm').length, bgColor: 'bg-blue-100', iconColor: 'text-blue-600' },
+          { label: 'LLM', value: models.filter(m => m.type === 'llm').length, bgColor: 'bg-blue-100', iconColor: 'text-blue-600' },
           { label: 'Embedding', value: models.filter(m => m.type === 'embedding').length, bgColor: 'bg-green-100', iconColor: 'text-green-600' },
-          { label: 'Rerank', value: models.filter(m => m.type === 'rerank').length, bgColor: 'bg-purple-100', iconColor: 'text-purple-600' },
+          { label: 'Rerank', value: models.filter(m => m.type === 'reranker').length, bgColor: 'bg-purple-100', iconColor: 'text-purple-600' },
+          { label: 'VLM', value: models.filter(m => m.type === 'multimodal').length, bgColor: 'bg-orange-100', iconColor: 'text-orange-600' },
         ].map((stat, idx) => (
           <div key={idx} className="card">
             <div className="flex items-center justify-between">
@@ -176,7 +191,10 @@ export default function Models() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {filteredModels.map((model) => (
+          {filteredModels.map((model) => {
+            const description = getModelDescription(model);
+
+            return (
             <div key={model.id} className="card hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
@@ -190,7 +208,7 @@ export default function Models() {
                       <XCircle className="w-5 h-5 text-gray-400" />
                     )}
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 mb-2">
                     <span className={`px-2 py-1 text-xs font-medium rounded ${
                       modelTypeColors[model.type as keyof typeof modelTypeColors] || 'bg-gray-100 text-gray-700'
                     }`}>
@@ -200,6 +218,11 @@ export default function Models() {
                       {model.provider}
                     </span>
                   </div>
+                  {description && (
+                    <p className="text-sm text-gray-600 mt-2 line-clamp-2">
+                      {description}
+                    </p>
+                  )}
                 </div>
 
                 {/* Actions */}
@@ -259,7 +282,8 @@ export default function Models() {
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

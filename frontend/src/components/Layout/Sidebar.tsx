@@ -1,19 +1,20 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
   Database,
-  FileText,
   MessageSquare,
   Settings,
   Menu,
   X,
-  Plug
+  Plug,
+  Bot
 } from 'lucide-react';
 import { useAppStore } from '@/store';
 
 const navigation = [
   { name: '知识库', href: '/knowledge-base', icon: Database },
-  { name: '文档管理', href: '/documents', icon: FileText },
   { name: '对话', href: '/chat', icon: MessageSquare },
+  { name: 'Agent构建', href: '/agent-builder', icon: Bot },
+  { name: 'Agent对话', href: '/agent-chat', icon: Bot },
   { name: 'MCP服务', href: '/mcp', icon: Plug },
   { name: '模型管理', href: '/models', icon: Settings },
 ];

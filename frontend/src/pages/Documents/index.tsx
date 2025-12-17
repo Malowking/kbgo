@@ -46,8 +46,8 @@ export default function Documents() {
 
     try {
       setLoading(true);
-      const response = await documentApi.list({ kb_id: selectedKB });
-      setDocuments(response.list || []);
+      const response = await documentApi.list({ knowledge_id: selectedKB });
+      setDocuments(response.data || []);
     } catch (error) {
       console.error('Failed to fetch documents:', error);
       setDocuments([]); // 错误时清空列表
@@ -102,7 +102,7 @@ export default function Documents() {
   };
 
   const filteredDocuments = documents.filter((doc) =>
-    doc.name.toLowerCase().includes(searchQuery.toLowerCase())
+    doc.fileName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -247,30 +247,32 @@ export default function Documents() {
                     />
                   </td>
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                    {doc.name}
+                    {doc.fileName}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">
-                    {doc.file_type}
+                    {doc.fileExtension}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">
-                    {formatBytes(doc.file_size)}
+                    {doc.file_size ? formatBytes(doc.file_size) : '-'}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">
-                    {doc.chunk_count}
+                    {doc.chunk_count || 0}
                   </td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-1 text-xs rounded ${
-                      doc.status === 'indexed'
+                      doc.status === 2
                         ? 'bg-green-100 text-green-700'
-                        : doc.status === 'processing'
+                        : doc.status === 1
                         ? 'bg-yellow-100 text-yellow-700'
+                        : doc.status === 3
+                        ? 'bg-red-100 text-red-700'
                         : 'bg-gray-100 text-gray-700'
                     }`}>
-                      {doc.status}
+                      {doc.status === 2 ? '已完成' : doc.status === 1 ? '索引中' : doc.status === 3 ? '失败' : '待处理'}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">
-                    {formatDate(doc.created_at)}
+                    {formatDate(doc.CreateTime)}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex space-x-2">

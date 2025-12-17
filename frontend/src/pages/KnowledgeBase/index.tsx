@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Plus, Search, Edit2, Trash2, Power, PowerOff } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { knowledgeBaseApi } from '@/services';
 import { useAppStore } from '@/store';
 import type { KnowledgeBase } from '@/types';
@@ -7,6 +8,7 @@ import { formatDate } from '@/lib/utils';
 import CreateKBModal from './CreateKBModal';
 
 export default function KnowledgeBasePage() {
+  const navigate = useNavigate();
   const [kbList, setKbList] = useState<KnowledgeBase[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -119,7 +121,10 @@ export default function KnowledgeBasePage() {
             <div
               key={kb.id}
               className="card hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => setCurrentKB(kb)}
+              onClick={() => {
+                setCurrentKB(kb);
+                navigate(`/knowledge-base/${kb.id}`);
+              }}
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
