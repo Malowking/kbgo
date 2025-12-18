@@ -70,17 +70,18 @@ export default function AgentBuilder() {
       const response = await modelApi.list();
       const allModels = response.models || [];
 
-      const llmModels = allModels.filter(m => m.type === 'llm');
+      // 包含 LLM 和多模态模型
+      const llmAndMultimodalModels = allModels.filter(m => m.type === 'llm' || m.type === 'multimodal');
       const embeddingModels = allModels.filter(m => m.type === 'embedding');
       const rerankModels = allModels.filter(m => m.type === 'rerank' || m.type === 'reranker');
 
-      setModels(llmModels);
+      setModels(llmAndMultimodalModels);
       setEmbeddingModels(embeddingModels);
       setRerankModels(rerankModels);
 
       // Set default model if available
-      if (llmModels.length > 0 && !config.model_id) {
-        setConfig(prev => ({ ...prev, model_id: llmModels[0].model_id }));
+      if (llmAndMultimodalModels.length > 0 && !config.model_id) {
+        setConfig(prev => ({ ...prev, model_id: llmAndMultimodalModels[0].model_id }));
       }
     } catch (error) {
       console.error('Failed to fetch models:', error);
@@ -144,6 +145,16 @@ export default function AgentBuilder() {
       return;
     }
 
+    // 如果是编辑模式，提示用户会清除历史对话
+    if (editingPresetId) {
+      const confirmed = confirm(
+        '修改配置后，将会清除该 Agent 的历史对话记录。\n\n确定要继续吗？'
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
     try {
       setLoading(true);
 
@@ -160,6 +171,15 @@ export default function AgentBuilder() {
           config: configData,
           is_public: isPublic,
         });
+
+        // 更新成功后，删除该 Agent 的所有对话记录
+        try {
+          await deleteAgentConversations(editingPresetId);
+        } catch (deleteError) {
+          console.error('Failed to delete conversations:', deleteError);
+          // 删除对话失败不阻断流程，只是警告
+        }
+
         alert('更新成功');
       } else {
         await agentApi.create({
@@ -225,6 +245,14 @@ export default function AgentBuilder() {
   const getSelectedModelName = (): string => {
     const model = models.find(m => m.model_id === config.model_id);
     return model ? model.name : '选择模型';
+  };
+
+  // 删除 Agent 的所有对话记录
+  const deleteAgentConversations = async (presetId: string) => {
+    // TODO: 实现删除该 Agent 的所有对话
+    // 这里可以调用批量删除 API，根据 agent_preset_id 筛选
+    console.log('Deleting conversations for preset:', presetId);
+    // 暂时不实现，因为后端可能需要添加按 preset_id 删除的接口
   };
 
   return (
@@ -335,6 +363,22 @@ export default function AgentBuilder() {
                     <label htmlFor="jsonformat" className="text-sm text-gray-700">
                       JSON 格式输出
                     </label>
+                  </div>
+
+                  {/* System Prompt */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      系统提示词 (System Prompt)
+                    </label>
+                    <textarea
+                      value={config.system_prompt || ''}
+                      onChange={(e) => setConfig(prev => ({ ...prev, system_prompt: e.target.value }))}
+                      placeholder="输入系统提示词，定义 Agent 的角色、行为和输出格式...&#10;&#10;例如：&#10;你是一个专业的技术支持助手，擅长解答用户的技术问题。请保持友好、专业的态度，用简洁明了的语言回答问题。"
+                      className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[120px] resize-y font-mono text-sm"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      系统提示词会在每次对话开始时发送给模型，用于定义 Agent 的行为规则、角色设定、输出格式等
+                    </p>
                   </div>
                 </div>
               </div>

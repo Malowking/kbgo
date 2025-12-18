@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Search, PlayCircle, Settings as SettingsIcon, Loader2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { modelApi } from '@/services';
 import type { Model } from '@/types';
 
@@ -99,8 +101,9 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
 
       const data = await response.json();
 
-      if (data.code === 0 && data.data && data.data.document) {
-        setResults(data.data.document);
+      if (data.code === 0) {
+        // 如果有文档结果，设置结果；如果没有，设置空数组
+        setResults(data.data?.document || []);
       } else {
         throw new Error(data.message || '召回测试失败');
       }
@@ -308,8 +311,8 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
           ) : results.length === 0 ? (
             <div className="text-center py-12">
               <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">
-                {question ? '没有召回到相关文档' : '请输入查询问题并点击"开始测试"'}
+              <p className="text-gray-400">
+                无召回结果
               </p>
             </div>
           ) : (
@@ -333,13 +336,49 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
                             : 'bg-red-100 text-red-800'
                         }`}
                       >
-                        {(doc.score * 100).toFixed(1)}%
+                        {doc.score.toFixed(2)}
                       </span>
                     </div>
                   </div>
 
-                  <div className="text-sm text-gray-700 whitespace-pre-wrap break-words mb-3">
-                    {doc.content}
+                  <div className="text-sm text-gray-700 prose max-w-none mb-3">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        // Images
+                        img({ src, alt, ...props }) {
+                          return (
+                            <div className="my-2">
+                              <img
+                                src={src}
+                                alt={alt}
+                                className="max-w-full h-auto rounded-lg shadow-md"
+                                loading="lazy"
+                                {...props}
+                              />
+                              {alt && <p className="text-sm text-gray-500 mt-1 text-center italic">{alt}</p>}
+                            </div>
+                          );
+                        },
+                        // Paragraphs
+                        p({ children, ...props }) {
+                          return (
+                            <p className="my-1 leading-relaxed" {...props}>
+                              {children}
+                            </p>
+                          );
+                        },
+                        // Code
+                        code({ inline, children, ...props }: any) {
+                          if (inline) {
+                            return <code className="px-1 py-0.5 rounded bg-gray-100 text-red-600 text-xs font-mono" {...props}>{children}</code>;
+                          }
+                          return <code className="block p-2 bg-gray-100 rounded text-xs font-mono overflow-x-auto" {...props}>{children}</code>;
+                        },
+                      }}
+                    >
+                      {doc.content}
+                    </ReactMarkdown>
                   </div>
 
                   {doc.metadata && Object.keys(doc.metadata).length > 0 && (

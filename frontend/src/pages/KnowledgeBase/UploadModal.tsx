@@ -36,30 +36,54 @@ export default function UploadModal({ kbId, onClose, onSuccess }: UploadModalPro
     try {
       setUploading(true);
 
-      // 上传文档
-      const formData = new FormData();
-      formData.append('knowledge_id', kbId);
+      // 上传文档 - 后端只支持单文件上传，需要逐个上传
+      const documentIds: string[] = [];
 
       if (uploadMode === 'file') {
-        files.forEach((file) => {
-          formData.append('files', file);
-        });
+        // 逐个上传文件
+        for (const file of files) {
+          const formData = new FormData();
+          formData.append('knowledge_id', kbId);
+          formData.append('file', file); // 使用 'file' (singular) 参数名
+
+          try {
+            const uploadResult = await documentApi.upload(formData);
+            if (uploadResult.document_id) {
+              documentIds.push(uploadResult.document_id);
+            }
+          } catch (error) {
+            console.error(`Failed to upload ${file.name}:`, error);
+            alert(`上传文件 ${file.name} 失败`);
+            // 继续上传其他文件
+          }
+        }
       } else {
+        // 逐个上传URL
         const urlList = urls.split('\n').filter(u => u.trim());
-        urlList.forEach((url) => {
-          formData.append('urls', url.trim());
-        });
+        for (const url of urlList) {
+          const formData = new FormData();
+          formData.append('knowledge_id', kbId);
+          formData.append('url', url.trim()); // 使用 'url' (singular) 参数名
+
+          try {
+            const uploadResult = await documentApi.upload(formData);
+            if (uploadResult.document_id) {
+              documentIds.push(uploadResult.document_id);
+            }
+          } catch (error) {
+            console.error(`Failed to upload URL ${url}:`, error);
+            alert(`上传 URL ${url} 失败`);
+            // 继续上传其他URL
+          }
+        }
       }
 
-      const uploadResult = await documentApi.upload(formData);
-
-      if (uploadResult.document_ids && uploadResult.document_ids.length > 0) {
-        alert(`成功上传 ${uploadResult.document_ids.length} 个文档，请继续进行索引`);
-        onSuccess(uploadResult.document_ids); // 返回上传成功的文档 ID
+      if (documentIds.length > 0) {
+        alert(`成功上传 ${documentIds.length} 个文档，请继续进行索引`);
+        onSuccess(documentIds); // 返回上传成功的文档 ID
         onClose();
       } else {
-        alert('上传成功，但未返回文档 ID');
-        onClose();
+        alert('上传失败，请重试');
       }
     } catch (error) {
       console.error('Failed to upload documents:', error);

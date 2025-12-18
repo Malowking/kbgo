@@ -30,8 +30,8 @@ type ParseRequest struct {
 	FilePath       string   `json:"file_path"`
 	ChunkSize      int      `json:"chunk_size"`
 	ChunkOverlap   int      `json:"chunk_overlap"`
-	Separators     []string `json:"separators"`       // 必须是数组，不能为 null
-	ImageURLFormat *bool    `json:"image_url_format"` // 是否格式化图片URL为静态地址，nil表示使用默认值true
+	Separators     []string `json:"separators"`
+	ImageURLFormat *bool    `json:"image_url_format,omitempty"`
 }
 
 // ChunkData file_parse 服务返回的分片数据

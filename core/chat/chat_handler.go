@@ -199,6 +199,16 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 					res.References = append(res.References, mcpDocs...)
 				}
 
+				// 转换返回的文档中的图片URL为可访问的代理URL
+				r := g.RequestFromCtx(ctx)
+				if r != nil && res.References != nil {
+					baseURL := common.GetBaseURL(r.Host, r.URL.Scheme, map[string]string{
+						"X-Forwarded-Host":  r.Header.Get("X-Forwarded-Host"),
+						"X-Forwarded-Proto": r.Header.Get("X-Forwarded-Proto"),
+					})
+					common.ConvertImageURLsInDocuments(res.References, baseURL)
+				}
+
 				return res, nil
 			}
 
@@ -225,7 +235,7 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 		g.Log().Infof(ctx, "Using file-based chat with %d multimodal files, text content length: %d, %d images",
 			len(fileParseRes.multimodalFiles), len(fileParseRes.fileContent), len(fileParseRes.fileImages))
 		answer, reasoningContent, err := chatI.GetAnswerWithParsedFiles(ctx, req.ModelID, req.ConvID, documents, req.Question,
-			fileParseRes.multimodalFiles, fileParseRes.fileContent, fileParseRes.fileImages, req.JsonFormat)
+			fileParseRes.multimodalFiles, fileParseRes.fileContent, fileParseRes.fileImages, req.SystemPrompt, req.JsonFormat)
 		if err != nil {
 			return nil, err
 		}
@@ -234,12 +244,22 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 	} else {
 		// 无文件：普通对话模式
 		g.Log().Infof(ctx, "Using standard chat without files")
-		answer, reasoningContent, err := chatI.GetAnswer(ctx, req.ModelID, req.ConvID, documents, req.Question, req.JsonFormat)
+		answer, reasoningContent, err := chatI.GetAnswer(ctx, req.ModelID, req.ConvID, documents, req.Question, req.SystemPrompt, req.JsonFormat)
 		if err != nil {
 			return nil, err
 		}
 		res.Answer = answer
 		res.ReasoningContent = reasoningContent
+	}
+
+	// 转换返回的文档中的图片URL为可访问的代理URL
+	r := g.RequestFromCtx(ctx)
+	if r != nil && res.References != nil {
+		baseURL := common.GetBaseURL(r.Host, r.URL.Scheme, map[string]string{
+			"X-Forwarded-Host":  r.Header.Get("X-Forwarded-Host"),
+			"X-Forwarded-Proto": r.Header.Get("X-Forwarded-Proto"),
+		})
+		common.ConvertImageURLsInDocuments(res.References, baseURL)
 	}
 
 	return res, nil

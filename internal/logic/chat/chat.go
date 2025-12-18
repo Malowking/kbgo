@@ -89,7 +89,7 @@ func parseModelParams(extra map[string]any) *ModelParams {
 }
 
 // GetAnswer 使用指定模型生成答案（非流式）
-func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, jsonFormat bool) (answer string, reasoningContent string, err error) {
+func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, systemPrompt string, jsonFormat bool) (answer string, reasoningContent string, err error) {
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
@@ -113,7 +113,7 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 		return "", "", err
 	}
 
-	// 使用查询重写器进行指代消解（如果需要）
+	// 使用查询重写器进行指代消解
 	rewriteConfig := rewriter.DefaultConfig()
 	rewriteConfig.ModelID = modelID // 使用相同的模型进行重写
 	rewrittenQuestion, err := x.queryRewriter.RewriteQuery(ctx, question, chatHistory, rewriteConfig)
@@ -136,13 +136,27 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 	// 格式化文档为系统提示
 	formattedDocs := formatDocumentsForChat(docs)
 
+	// 构建系统提示词
+	var systemContent string
+	if systemPrompt != "" {
+		// 如果提供了自定义系统提示词，使用它
+		systemContent = systemPrompt
+		// 如果有检索到的文档，追加到系统提示词后面
+		if formattedDocs != "" {
+			systemContent += "\n\n" + formattedDocs
+		}
+	} else {
+		// 使用默认系统提示词
+		systemContent = "你是一个专业的AI助手，能够根据提供的参考信息准确回答用户问题。" +
+			"如果没有提供参考信息，也请根据你的知识自由回答用户问题。\n\n" +
+			formattedDocs
+	}
+
 	// 构建消息列表
 	messages := []*schema.Message{
 		{
-			Role: schema.System,
-			Content: "你是一个专业的AI助手，能够根据提供的参考信息准确回答用户问题。" +
-				"如果没有提供参考信息，也请根据你的知识自由回答用户问题。\n\n" +
-				formattedDocs,
+			Role:    schema.System,
+			Content: systemContent,
 		},
 	}
 	messages = append(messages, chatHistory...)
@@ -231,7 +245,7 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 }
 
 // GetAnswerStream 使用指定模型流式生成答案
-func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, jsonFormat bool) (answer *schema.StreamReader[*schema.Message], err error) {
+func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, systemPrompt string, jsonFormat bool) (answer *schema.StreamReader[*schema.Message], err error) {
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
@@ -279,13 +293,27 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 	// 格式化文档为系统提示
 	formattedDocs := formatDocumentsForChat(docs)
 
+	// 构建系统提示词
+	var systemContent string
+	if systemPrompt != "" {
+		// 如果提供了自定义系统提示词，使用它
+		systemContent = systemPrompt
+		// 如果有检索到的文档，追加到系统提示词后面
+		if formattedDocs != "" {
+			systemContent += "\n\n" + formattedDocs
+		}
+	} else {
+		// 使用默认系统提示词
+		systemContent = "你是一个专业的AI助手，能够根据提供的参考信息准确回答用户问题。" +
+			"如果没有提供参考信息，也请根据你的知识自由回答用户问题。\n\n" +
+			formattedDocs
+	}
+
 	// 构建消息列表
 	messages := []*schema.Message{
 		{
-			Role: schema.System,
-			Content: "你是一个专业的AI助手，能够根据提供的参考信息准确回答用户问题。" +
-				"如果没有提供参考信息，也请根据你的知识自由回答用户问题。\n\n" +
-				formattedDocs,
+			Role:    schema.System,
+			Content: systemContent,
 		},
 	}
 	messages = append(messages, chatHistory...)

@@ -8,6 +8,7 @@ import (
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/cache"
 	"github.com/Malowking/kbgo/core/chat"
+	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/internal/dao"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
@@ -248,7 +249,7 @@ func (s *AgentService) DeletePreset(ctx context.Context, req *v1.DeleteAgentPres
 }
 
 // AgentChat 使用Agent预设进行对话
-func (s *AgentService) AgentChat(ctx context.Context, req *v1.AgentChatReq) (*v1.AgentChatRes, error) {
+func (s *AgentService) AgentChat(ctx context.Context, req *v1.AgentChatReq, uploadedFiles []*common.MultimodalFile) (*v1.AgentChatRes, error) {
 	// 获取Agent预设配置（带缓存）
 	preset, err := s.GetPreset(ctx, req.PresetID)
 	if err != nil {
@@ -288,6 +289,7 @@ func (s *AgentService) AgentChat(ctx context.Context, req *v1.AgentChatReq) (*v1
 		ConvID:           convID,
 		Question:         req.Question,
 		ModelID:          config.ModelID,
+		SystemPrompt:     config.SystemPrompt,
 		EmbeddingModelID: config.EmbeddingModelID,
 		RerankModelID:    config.RerankModelID,
 		KnowledgeId:      config.KnowledgeId,
@@ -303,7 +305,7 @@ func (s *AgentService) AgentChat(ctx context.Context, req *v1.AgentChatReq) (*v1
 
 	// 调用Chat处理器
 	chatHandler := chat.NewChatHandler()
-	chatRes, err := chatHandler.Chat(ctx, chatReq, nil)
+	chatRes, err := chatHandler.Chat(ctx, chatReq, uploadedFiles)
 	if err != nil {
 		return nil, fmt.Errorf("对话处理失败: %v", err)
 	}

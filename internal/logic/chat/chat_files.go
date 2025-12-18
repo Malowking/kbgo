@@ -26,7 +26,7 @@ import (
 )
 
 // GetAnswerWithParsedFiles 使用已解析的文件内容进行多模态对话
-func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, multimodalFiles []*common.MultimodalFile, fileContent string, fileImages []string, jsonFormat bool) (answer string, reasoningContent string, err error) {
+func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, multimodalFiles []*common.MultimodalFile, fileContent string, fileImages []string, customSystemPrompt string, jsonFormat bool) (answer string, reasoningContent string, err error) {
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
@@ -63,7 +63,25 @@ func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, con
 	}
 
 	// 构建system提示词
-	systemPrompt := buildSystemPrompt(mc.Type, docs, fileContent, fileImages)
+	var systemPrompt string
+	if customSystemPrompt != "" {
+		// 使用自定义系统提示词
+		systemPrompt = customSystemPrompt
+		// 追加文档和文件信息
+		if len(docs) > 0 {
+			systemPrompt += "\n\n参考资料:\n"
+			for i, doc := range docs {
+				systemPrompt += fmt.Sprintf("[%d] %s\n", i+1, doc.Content)
+			}
+		}
+		if fileContent != "" {
+			cleanedContent := removeImagePlaceholders(fileContent)
+			systemPrompt += "\n文档内容:\n" + cleanedContent + "\n"
+		}
+	} else {
+		// 使用默认系统提示词
+		systemPrompt = buildSystemPrompt(mc.Type, docs, fileContent, fileImages)
+	}
 
 	// 构建消息列表
 	messages := []*schema.Message{
@@ -146,7 +164,7 @@ func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, con
 	return answerContent, thinkContent, nil
 }
 
-// GetAnswerWithFiles 统一的多模态对话处理（使用新架构）
+// GetAnswerWithFiles 统一的多模态对话处理
 func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile) (answer string, reasoningContent string, err error) {
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)

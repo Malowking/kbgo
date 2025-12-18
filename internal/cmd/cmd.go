@@ -22,7 +22,7 @@ var (
 			s.AddStaticPath("/", ".")
 
 			s.Group("/api", func(group *ghttp.RouterGroup) {
-				group.Middleware(MiddlewareHandlerResponse, ghttp.MiddlewareCORS)
+				group.Middleware(MiddlewareMultipartMaxMemory, MiddlewareHandlerResponse, ghttp.MiddlewareCORS)
 				group.Bind(
 					kbgo.NewV1(),
 				)

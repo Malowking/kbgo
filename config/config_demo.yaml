@@ -45,10 +45,10 @@ vectorStore:
   type: "pgvector"
 
 # Milvus 向量数据库配置
-milvus:
-  address: "localhost:19530"  # Milvus 服务地址
-  database: "kbgo"             # Milvus 数据库名称
-  dim: 1024                    # 向量维度
+#milvus:
+#  address: "localhost:19530"  # Milvus 服务地址
+#  database: "kbgo"             # Milvus 数据库名称
+#  dim: 1024                    # 向量维度
 
 # PostgreSQL 向量数据库配置 (pgvector)
 # 使用前需要先安装 pgvector 扩展: CREATE EXTENSION vector;
@@ -86,7 +86,7 @@ fileParse:
 
 # Redis 缓存配置
 redis:
-  address: "kbgo-redis:6379"          # Redis 服务地址（Docker环境使用容器名）
+  address: "kbgo-redis:6379"          # Redis 服务地址
   db: 0                                # Redis 数据库编号 (0-15)
   password: "kbgo123"                  # Redis 密码
   maxRetries: 3                        # 最大重试次数

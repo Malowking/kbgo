@@ -245,6 +245,7 @@ export interface MCPStats {
 // Agent 相关类型
 export interface AgentConfig {
   model_id: string;
+  system_prompt?: string;
   embedding_model_id?: string;
   rerank_model_id?: string;
   knowledge_id?: string;

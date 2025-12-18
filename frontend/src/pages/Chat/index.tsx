@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Send, Paperclip, Plus, List, Settings, ChevronDown } from 'lucide-react';
-import { chatApi, conversationApi, knowledgeBaseApi, modelApi } from '@/services';
+import { chatApi, conversationApi, knowledgeBaseApi, modelApi, mcpApi } from '@/services';
 import { generateId } from '@/lib/utils';
-import type { Message, KnowledgeBase, Model } from '@/types';
+import type { Message, KnowledgeBase, Model, MCPRegistry } from '@/types';
 import ChatMessage from './ChatMessage';
 import ConversationSidebar from './ConversationSidebar';
 import ModelSelectorModal from '@/components/ModelSelectorModal';
@@ -14,6 +14,8 @@ export default function Chat() {
   const [currentConvId, setCurrentConvId] = useState<string>('');
   const [kbList, setKbList] = useState<KnowledgeBase[]>([]);
   const [models, setModels] = useState<Model[]>([]);
+  const [embeddingModels, setEmbeddingModels] = useState<Model[]>([]);
+  const [rerankModels, setRerankModels] = useState<Model[]>([]);
   const [showSidebar, setShowSidebar] = useState(true);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
@@ -22,10 +24,15 @@ export default function Chat() {
   // Settings
   const [selectedKB, setSelectedKB] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState<string>('');
-  const [enableRetriever, setEnableRetriever] = useState(true);
+  const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState<string>('');
+  const [selectedRerankModel, setSelectedRerankModel] = useState<string>('');
+  const [enableRetriever, setEnableRetriever] = useState(false);
   const [topK, setTopK] = useState(5);
   const [score, setScore] = useState(0.2);
   const [retrieveMode, setRetrieveMode] = useState<'milvus' | 'rerank' | 'rrf'>('rrf');
+  const [useMCP, setUseMCP] = useState(false);
+  const [mcpServices, setMcpServices] = useState<MCPRegistry[]>([]);
+  const [selectedMCPService, setSelectedMCPService] = useState<string>('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -33,6 +40,7 @@ export default function Chat() {
   useEffect(() => {
     fetchKBList();
     fetchModels();
+    fetchMCPServices();
   }, []);
 
   useEffect(() => {
@@ -51,16 +59,53 @@ export default function Chat() {
   const fetchModels = async () => {
     try {
       const response = await modelApi.list();
-      const llmModels = response.models?.filter(m => m.type === 'llm').map(m => ({
+
+      // LLM 和多模态模型
+      const llmAndMultimodalModels = response.models?.filter(m =>
+        m.type === 'llm' || m.type === 'multimodal'
+      ).map(m => ({
         ...m,
         id: m.model_id,
       })) || [];
-      setModels(llmModels as Model[]);
-      if (llmModels.length > 0 && !selectedModel) {
-        setSelectedModel(llmModels[0].id || llmModels[0].model_id);
+      setModels(llmAndMultimodalModels as Model[]);
+      if (llmAndMultimodalModels.length > 0 && !selectedModel) {
+        setSelectedModel(llmAndMultimodalModels[0].id || llmAndMultimodalModels[0].model_id);
+      }
+
+      // Embedding 模型
+      const embeddingModelsList = response.models?.filter(m =>
+        m.type === 'embedding'
+      ).map(m => ({
+        ...m,
+        id: m.model_id,
+      })) || [];
+      setEmbeddingModels(embeddingModelsList as Model[]);
+      if (embeddingModelsList.length > 0 && !selectedEmbeddingModel) {
+        setSelectedEmbeddingModel(embeddingModelsList[0].id || embeddingModelsList[0].model_id);
+      }
+
+      // Rerank 模型
+      const rerankModelsList = response.models?.filter(m =>
+        m.type === 'reranker'
+      ).map(m => ({
+        ...m,
+        id: m.model_id,
+      })) || [];
+      setRerankModels(rerankModelsList as Model[]);
+      if (rerankModelsList.length > 0 && !selectedRerankModel) {
+        setSelectedRerankModel(rerankModelsList[0].id || rerankModelsList[0].model_id);
       }
     } catch (error) {
       console.error('Failed to fetch models:', error);
+    }
+  };
+
+  const fetchMCPServices = async () => {
+    try {
+      const response = await mcpApi.list({ status: 1 }); // 只获取启用的服务
+      setMcpServices(response.list || []);
+    } catch (error) {
+      console.error('Failed to fetch MCP services:', error);
     }
   };
 
@@ -97,7 +142,9 @@ export default function Chat() {
 
     setMessages((prev) => [...prev, userMessage]);
     const currentInput = input; // 保存输入内容
+    const currentFiles = attachedFiles; // 保存附件
     setInput('');
+    setAttachedFiles([]); // 清空附件列表
     setLoading(true);
 
     try {
@@ -121,12 +168,16 @@ export default function Chat() {
           conv_id: convId,
           question: currentInput,
           model_id: selectedModel,
+          embedding_model_id: selectedEmbeddingModel,
+          rerank_model_id: selectedRerankModel,
           knowledge_id: selectedKB,
           enable_retriever: enableRetriever && !!selectedKB,
           top_k: topK,
           score: score,
           retrieve_mode: retrieveMode,
+          use_mcp: useMCP && !!selectedMCPService,
           stream: true,
+          files: currentFiles, // 传递文件
         },
         (chunk, reasoningChunk) => {
           // 累积内容和思考过程
@@ -177,7 +228,6 @@ export default function Chat() {
     const files = e.target.files;
     if (files && files.length > 0) {
       setAttachedFiles(Array.from(files));
-      alert(`已选择 ${files.length} 个文件。注意：当前版本仅支持文件预览，完整的文件上传功能正在开发中。`);
     }
   };
 
@@ -258,7 +308,7 @@ export default function Chat() {
 
         {/* Settings Bar */}
         <div className="border-b border-gray-200 bg-gray-50">
-          <div className="px-6 py-3 flex items-center space-x-4">
+          <div className="px-6 py-3 flex items-center justify-between space-x-4">
             <div className="flex-1">
               <button
                 onClick={() => setShowModelSelector(true)}
@@ -269,85 +319,186 @@ export default function Chat() {
               </button>
             </div>
 
-            <div className="flex-1">
-              <select
-                value={selectedKB}
-                onChange={(e) => setSelectedKB(e.target.value)}
-                className="input text-sm"
-              >
-                <option value="">不使用知识库</option>
-                {kbList.map((kb) => (
-                  <option key={kb.id} value={kb.id}>
-                    {kb.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <label className="flex items-center space-x-2 text-sm">
-              <input
-                type="checkbox"
-                checked={enableRetriever}
-                onChange={(e) => setEnableRetriever(e.target.checked)}
-                disabled={!selectedKB}
-                className="rounded border-gray-300 text-primary-600"
-              />
-              <span className="text-gray-700">启用检索</span>
-            </label>
-
             <button
               onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
-              className="p-2 rounded hover:bg-gray-100 text-gray-600"
+              className="flex items-center space-x-2 px-4 py-2 border rounded-lg bg-white hover:bg-gray-50 transition-colors text-sm"
               title="高级设置"
             >
-              <Settings className="w-5 h-5" />
+              <Settings className="w-4 h-4 text-gray-600" />
+              <span className="text-gray-700">高级设置</span>
             </button>
           </div>
 
           {/* Advanced Settings */}
-          {showAdvancedSettings && enableRetriever && selectedKB && (
-            <div className="px-6 py-4 border-t border-gray-200 bg-white">
-              <h3 className="text-sm font-medium text-gray-700 mb-3">检索参数配置</h3>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">Top K</label>
-                  <input
-                    type="number"
-                    value={topK}
-                    onChange={(e) => setTopK(Number(e.target.value))}
-                    className="input text-sm"
-                    min="1"
-                    max="20"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">返回文档数量（默认5）</p>
-                </div>
+          {showAdvancedSettings && (
+            <div className="px-6 py-4 border-t border-gray-200 bg-white space-y-6">
+              {/* 知识库配置 */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 mb-3">知识库配置</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">选择知识库</label>
+                    <select
+                      value={selectedKB}
+                      onChange={(e) => setSelectedKB(e.target.value)}
+                      className="input text-sm"
+                    >
+                      <option value="">不使用知识库</option>
+                      {kbList.map((kb) => (
+                        <option key={kb.id} value={kb.id}>
+                          {kb.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">相似度分数</label>
-                  <input
-                    type="number"
-                    value={score}
-                    onChange={(e) => setScore(Number(e.target.value))}
-                    className="input text-sm"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">默认0.2（RRF模式时不重要）</p>
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">启用检索</label>
+                    <label className="flex items-center space-x-2 mt-2">
+                      <input
+                        type="checkbox"
+                        checked={enableRetriever}
+                        onChange={(e) => setEnableRetriever(e.target.checked)}
+                        disabled={!selectedKB}
+                        className="rounded border-gray-300 text-primary-600"
+                      />
+                      <span className="text-sm text-gray-700">
+                        {enableRetriever ? '已启用' : '未启用'}
+                      </span>
+                    </label>
+                  </div>
                 </div>
+              </div>
 
+              {/* 检索参数配置 - 只在启用检索时显示 */}
+              {enableRetriever && selectedKB && (
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1">检索模式</label>
-                  <select
-                    value={retrieveMode}
-                    onChange={(e) => setRetrieveMode(e.target.value as 'milvus' | 'rerank' | 'rrf')}
-                    className="input text-sm"
-                  >
-                    <option value="rrf">RRF（推荐）</option>
-                    <option value="rerank">Rerank</option>
-                    <option value="milvus">Milvus</option>
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">检索策略选择</p>
+                  <h3 className="text-sm font-medium text-gray-700 mb-3">检索参数配置</h3>
+
+                  {/* 模型选择行 */}
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Embedding 模型</label>
+                      <select
+                        value={selectedEmbeddingModel}
+                        onChange={(e) => setSelectedEmbeddingModel(e.target.value)}
+                        className="input text-sm"
+                      >
+                        {embeddingModels.length === 0 && (
+                          <option value="">无可用的 Embedding 模型</option>
+                        )}
+                        {embeddingModels.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.name}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">用于文本向量化</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Rerank 模型</label>
+                      <select
+                        value={selectedRerankModel}
+                        onChange={(e) => setSelectedRerankModel(e.target.value)}
+                        className="input text-sm"
+                        disabled={retrieveMode === 'milvus'}
+                      >
+                        {rerankModels.length === 0 && (
+                          <option value="">无可用的 Rerank 模型</option>
+                        )}
+                        {rerankModels.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.name}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">用于结果重排序（Milvus模式不需要）</p>
+                    </div>
+                  </div>
+
+                  {/* 参数配置行 */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Top K</label>
+                      <input
+                        type="number"
+                        value={topK}
+                        onChange={(e) => setTopK(Number(e.target.value))}
+                        className="input text-sm"
+                        min="1"
+                        max="20"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">返回文档数量（默认5）</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">相似度分数</label>
+                      <input
+                        type="number"
+                        value={score}
+                        onChange={(e) => setScore(Number(e.target.value))}
+                        className="input text-sm"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">默认0.2（RRF模式时不重要）</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">检索模式</label>
+                      <select
+                        value={retrieveMode}
+                        onChange={(e) => setRetrieveMode(e.target.value as 'milvus' | 'rerank' | 'rrf')}
+                        className="input text-sm"
+                      >
+                        <option value="rrf">RRF（推荐）</option>
+                        <option value="rerank">Rerank</option>
+                        <option value="milvus">Milvus</option>
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">检索策略选择</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* MCP 配置 */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 mb-3">MCP 服务配置</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">选择 MCP 服务</label>
+                    <select
+                      value={selectedMCPService}
+                      onChange={(e) => setSelectedMCPService(e.target.value)}
+                      className="input text-sm"
+                    >
+                      <option value="">不使用 MCP 服务</option>
+                      {mcpServices.map((service) => (
+                        <option key={service.id} value={service.id}>
+                          {service.name} - {service.description || '无描述'}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">选择要使用的 MCP 服务</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">启用 MCP</label>
+                    <label className="flex items-center space-x-2 mt-2">
+                      <input
+                        type="checkbox"
+                        checked={useMCP}
+                        onChange={(e) => setUseMCP(e.target.checked)}
+                        disabled={!selectedMCPService}
+                        className="rounded border-gray-300 text-primary-600"
+                      />
+                      <span className="text-sm text-gray-700">
+                        {useMCP ? '已启用' : '未启用'}
+                      </span>
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>

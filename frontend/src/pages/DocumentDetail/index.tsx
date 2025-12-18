@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileText, Calendar, AlertCircle } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { documentApi } from '@/services';
 import type { Chunk } from '@/types';
 import { formatDate } from '@/lib/utils';
@@ -184,8 +186,54 @@ export default function DocumentDetail() {
 
                     {/* Chunk Content */}
                     <div className="mt-4">
-                      <div className="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 p-4 rounded-lg border">
-                        {chunk.content || '(空内容)'}
+                      <div className="text-sm text-gray-700 prose max-w-none bg-gray-50 p-4 rounded-lg border">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            // Images
+                            img({ src, alt, ...props }) {
+                              return (
+                                <div className="my-2">
+                                  <img
+                                    src={src}
+                                    alt={alt}
+                                    className="max-w-full h-auto rounded-lg shadow-md"
+                                    loading="lazy"
+                                    {...props}
+                                  />
+                                  {alt && <p className="text-sm text-gray-500 mt-1 text-center italic">{alt}</p>}
+                                </div>
+                              );
+                            },
+                            // Paragraphs
+                            p({ children, ...props }) {
+                              return (
+                                <p className="my-1 leading-relaxed" {...props}>
+                                  {children}
+                                </p>
+                              );
+                            },
+                            // Code
+                            code({ inline, children, ...props }: any) {
+                              if (inline) {
+                                return <code className="px-1 py-0.5 rounded bg-gray-200 text-gray-700 text-xs font-mono" {...props}>{children}</code>;
+                              }
+                              return <code className="block p-2 bg-gray-200 rounded text-xs font-mono overflow-x-auto" {...props}>{children}</code>;
+                            },
+                            // Headings
+                            h1({ children, ...props }) {
+                              return <h1 className="text-xl font-bold mt-4 mb-2" {...props}>{children}</h1>;
+                            },
+                            h2({ children, ...props }) {
+                              return <h2 className="text-lg font-bold mt-3 mb-2" {...props}>{children}</h2>;
+                            },
+                            h3({ children, ...props }) {
+                              return <h3 className="text-base font-bold mt-2 mb-1" {...props}>{children}</h3>;
+                            },
+                          }}
+                        >
+                          {chunk.content || '(空内容)'}
+                        </ReactMarkdown>
                       </div>
                     </div>
                   </div>

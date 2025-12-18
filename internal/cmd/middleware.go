@@ -4,6 +4,7 @@ import (
 	"mime"
 	"net/http"
 	"reflect"
+	"strings"
 
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
@@ -17,10 +18,57 @@ const (
 	contentTypeMixedReplace = "multipart/x-mixed-replace"
 )
 
+const (
+	// 知识库上传文件大小限制: 500MB
+	maxKnowledgeBaseUploadSize = 500 << 20 // 500MB
+	// 文件对话上传文件大小限制: 5MB
+	maxChatFileUploadSize = 5 << 20 // 5MB
+)
+
 var (
 	// streamContentType is the content types for stream response.
 	streamContentType = []string{contentTypeEventStream, contentTypeOctetStream, contentTypeMixedReplace}
 )
+
+// MiddlewareMultipartMaxMemory 根据不同的路由设置不同的文件上传大小限制
+func MiddlewareMultipartMaxMemory(r *ghttp.Request) {
+	// 获取请求路径
+	path := r.URL.Path
+
+	// 只处理 multipart/form-data 请求
+	contentType := r.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "multipart/form-data") {
+		r.Middleware.Next()
+		return
+	}
+
+	// 根据不同路由设置不同的上传限制
+	if strings.HasPrefix(path, "/api/v1/upload") {
+		// 知识库上传: 500MB
+		if err := r.ParseMultipartForm(maxKnowledgeBaseUploadSize); err != nil {
+			r.Response.WriteStatus(http.StatusRequestEntityTooLarge)
+			r.Response.WriteJson(ghttp.DefaultHandlerResponse{
+				Code:    gcode.CodeInvalidParameter.Code(),
+				Message: "File size exceeds the knowledge base upload limit (500MB)",
+				Data:    nil,
+			})
+			return
+		}
+	} else if strings.HasPrefix(path, "/api/v1/chat") {
+		// 文件对话: 5MB
+		if err := r.ParseMultipartForm(maxChatFileUploadSize); err != nil {
+			r.Response.WriteStatus(http.StatusRequestEntityTooLarge)
+			r.Response.WriteJson(ghttp.DefaultHandlerResponse{
+				Code:    gcode.CodeInvalidParameter.Code(),
+				Message: "File size exceeds the chat upload limit (5MB)",
+				Data:    nil,
+			})
+			return
+		}
+	}
+
+	r.Middleware.Next()
+}
 
 // MiddlewareHandlerResponse is the default middleware handling handler response object and its error.
 func MiddlewareHandlerResponse(r *ghttp.Request) {

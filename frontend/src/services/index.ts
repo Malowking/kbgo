@@ -56,7 +56,7 @@ export const knowledgeBaseApi = {
 export const documentApi = {
   // 上传文件
   upload: (formData: FormData) =>
-    apiClient.upload<{ document_ids: string[] }>('/api/v1/upload', formData),
+    apiClient.upload<{ document_id: string; status: string; message: string }>('/api/v1/upload', formData),
 
   // 索引文档
   index: (data: {
@@ -139,18 +139,68 @@ export const chatApi = {
 
   // 流式聊天（需要特殊处理）
   sendStream: async (
-    data: ChatRequest,
+    data: ChatRequest & { files?: File[] },
     onMessage: (chunk: string, reasoningChunk?: string) => void,
     onError?: (error: Error) => void
   ) => {
     try {
-      const response = await fetch('/api/v1/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ ...data, stream: true }),
-      });
+      // 判断是否有文件需要上传
+      const hasFiles = data.files && data.files.length > 0;
+
+      let response: Response;
+
+      if (hasFiles) {
+        // 使用 FormData 上传文件
+        const formData = new FormData();
+        formData.append('conv_id', data.conv_id || '');
+        formData.append('question', data.question);
+        formData.append('model_id', data.model_id);
+        formData.append('stream', 'true');
+
+        if (data.embedding_model_id) {
+          formData.append('embedding_model_id', data.embedding_model_id);
+        }
+        if (data.rerank_model_id) {
+          formData.append('rerank_model_id', data.rerank_model_id);
+        }
+        if (data.knowledge_id) {
+          formData.append('knowledge_id', data.knowledge_id);
+        }
+        if (data.enable_retriever !== undefined) {
+          formData.append('enable_retriever', data.enable_retriever.toString());
+        }
+        if (data.top_k !== undefined) {
+          formData.append('top_k', data.top_k.toString());
+        }
+        if (data.score !== undefined) {
+          formData.append('score', data.score.toString());
+        }
+        if (data.retrieve_mode) {
+          formData.append('retrieve_mode', data.retrieve_mode);
+        }
+        if (data.use_mcp !== undefined) {
+          formData.append('use_mcp', data.use_mcp.toString());
+        }
+
+        // 添加文件
+        data.files!.forEach(file => {
+          formData.append('files', file);
+        });
+
+        response = await fetch('/api/v1/chat', {
+          method: 'POST',
+          body: formData,
+        });
+      } else {
+        // 使用 JSON 格式
+        response = await fetch('/api/v1/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ ...data, stream: true }),
+        });
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -324,18 +374,47 @@ export const agentApi = {
 
   // Agent流式对话
   chatStream: async (
-    data: AgentChatRequest,
+    data: AgentChatRequest & { files?: File[] },
     onMessage: (chunk: string, reasoningChunk?: string) => void,
     onError?: (error: Error) => void
   ) => {
     try {
-      const response = await fetch('/api/v1/agent/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ ...data, stream: true }),
-      });
+      // 判断是否有文件需要上传
+      const hasFiles = data.files && data.files.length > 0;
+
+      let response: Response;
+
+      if (hasFiles) {
+        // 使用 FormData 上传文件
+        const formData = new FormData();
+        formData.append('preset_id', data.preset_id);
+        formData.append('user_id', data.user_id);
+        formData.append('question', data.question);
+        formData.append('stream', 'true');
+
+        if (data.conv_id) {
+          formData.append('conv_id', data.conv_id);
+        }
+
+        // 添加文件
+        data.files!.forEach(file => {
+          formData.append('files', file);
+        });
+
+        response = await fetch('/api/v1/agent/chat', {
+          method: 'POST',
+          body: formData,
+        });
+      } else {
+        // 使用 JSON 格式
+        response = await fetch('/api/v1/agent/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ ...data, stream: true }),
+        });
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);

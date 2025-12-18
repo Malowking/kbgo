@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"sort"
+	"time"
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/config"
@@ -46,6 +47,8 @@ func convertFromRerankDocs(rerankDocs []common.RerankDocument, originalDocs []*s
 
 // retrieveWithRerank 使用Milvus检索后进行Rerank重排序
 func retrieveWithRerank(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveReq) ([]*schema.Document, error) {
+	startTime := time.Now()
+
 	docs, err := retrieve(ctx, conf, req)
 	if err != nil {
 		g.Log().Errorf(ctx, "retrieve failed, err=%v", err)
@@ -57,6 +60,8 @@ func retrieveWithRerank(ctx context.Context, conf *config.RetrieverConfig, req *
 		return doc.ID
 	})
 
+	g.Log().Infof(ctx, "Retrieved %d documents before rerank", len(docs))
+
 	// 创建 rerank 客户端
 	reranker, err := common.NewReranker(ctx, conf)
 	if err != nil {
@@ -67,10 +72,19 @@ func retrieveWithRerank(ctx context.Context, conf *config.RetrieverConfig, req *
 	// 转换文档格式
 	rerankDocs := convertToRerankDocs(docs)
 
-	// 使用Rerank重排序，直接使用req中已设置好的TopK
-	rerankResults, err := reranker.Rerank(ctx, req.optQuery, rerankDocs, *req.TopK)
+	// 使用子切片滑窗并行 Rerank（新的优化方案）
+	subChunkConfig := common.DefaultSubChunkConfig()
+	// 使用 Max Pooling 作为聚合策略（推荐）
+	subChunkConfig.AggregateStrategy = common.AggregateStrategyMax
+	// 可选：限制每个文档的最大子片段数以控制成本
+	// subChunkConfig.MaxSubChunksPerDoc = 8 // 例如：最多切8个片段
+
+	g.Log().Infof(ctx, "Starting sub-chunk parallel rerank with config: size=%d, overlap=%d, strategy=%s",
+		subChunkConfig.SubChunkSize, subChunkConfig.OverlapSize, subChunkConfig.AggregateStrategy)
+
+	rerankResults, err := reranker.RerankWithSubChunks(ctx, req.optQuery, rerankDocs, *req.TopK, subChunkConfig)
 	if err != nil {
-		g.Log().Errorf(ctx, "Rerank failed, err=%v", err)
+		g.Log().Errorf(ctx, "RerankWithSubChunks failed, err=%v", err)
 		return nil, err
 	}
 
@@ -86,6 +100,10 @@ func retrieveWithRerank(ctx context.Context, conf *config.RetrieverConfig, req *
 		}
 		relatedDocs = append(relatedDocs, doc)
 	}
+
+	elapsed := time.Since(startTime)
+	g.Log().Infof(ctx, "Rerank completed in %v, returned %d documents", elapsed, len(relatedDocs))
+
 	return relatedDocs, nil
 }
 
@@ -93,6 +111,7 @@ func retrieveWithRerank(ctx context.Context, conf *config.RetrieverConfig, req *
 // RRF公式: score = sum(1/(k+rank)), k通常为60
 func retrieveWithRRF(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveReq) ([]*schema.Document, error) {
 	const k = 60.0 // RRF常数
+	startTime := time.Now()
 
 	// 1. 原始查询检索
 	docs1, err := retrieve(ctx, conf, req)
@@ -115,11 +134,18 @@ func retrieveWithRRF(ctx context.Context, conf *config.RetrieverConfig, req *Ret
 		return nil, err
 	}
 
-	// 转换文档格式并执行 rerank
+	// 转换文档格式并执行子切片滑窗并行 rerank
 	rerankDocs2 := convertToRerankDocs(docs2)
-	rerankResults2, err := reranker.Rerank(ctx, req.optQuery, rerankDocs2, (*req.TopK)*2)
+
+	// 使用子切片滑窗并行 Rerank（新的优化方案）
+	subChunkConfig := common.DefaultSubChunkConfig()
+	subChunkConfig.AggregateStrategy = common.AggregateStrategyMax
+
+	g.Log().Infof(ctx, "RRF: Starting sub-chunk parallel rerank for second path")
+
+	rerankResults2, err := reranker.RerankWithSubChunks(ctx, req.optQuery, rerankDocs2, (*req.TopK)*2, subChunkConfig)
 	if err != nil {
-		g.Log().Errorf(ctx, "Rerank failed, err=%v", err)
+		g.Log().Errorf(ctx, "RerankWithSubChunks failed, err=%v", err)
 		return nil, err
 	}
 	docs2 = convertFromRerankDocs(rerankResults2, docs2)
@@ -176,6 +202,9 @@ func retrieveWithRRF(ctx context.Context, conf *config.RetrieverConfig, req *Ret
 		}
 		relatedDocs = append(relatedDocs, doc)
 	}
+
+	elapsed := time.Since(startTime)
+	g.Log().Infof(ctx, "RRF completed in %v, returned %d documents", elapsed, len(relatedDocs))
 
 	return relatedDocs, nil
 }

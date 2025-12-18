@@ -336,23 +336,45 @@ func (h *Manager) processImageContent(mediaURL string) (schema.ChatMessagePart, 
 		}, nil
 	}
 
-	// 检查文件是否存在
-	if _, err := os.Stat(mediaURL); os.IsNotExist(err) {
-		return schema.ChatMessagePart{}, fmt.Errorf("image file not found: %s", mediaURL)
+	// 调试日志：打印原始路径和当前工作目录
+	cwd, _ := os.Getwd()
+	g.Log().Debugf(context.Background(), "[processImageContent] mediaURL=%s, cwd=%s", mediaURL, cwd)
+
+	// 检查文件路径是否为绝对路径，如果是相对路径则使用当前工作目录
+	filePath := mediaURL
+	if !filepath.IsAbs(mediaURL) {
+		// 相对路径，使用当前工作目录拼接
+		filePath = filepath.Join(cwd, mediaURL)
+		g.Log().Debugf(context.Background(), "[processImageContent] Converted to absolute path: %s", filePath)
 	}
 
-	// 读取文件
-	data, err := os.ReadFile(mediaURL)
+	// 检查文件是否存在
+	fileInfo, err := os.Stat(filePath)
+	if os.IsNotExist(err) {
+		// 返回一个占位符表示图片不可用,而不是返回错误,避免影响整个对话加载
+		return schema.ChatMessagePart{
+			Type: schema.ChatMessagePartTypeText,
+			Text: fmt.Sprintf("[图片不可用: %s]", filepath.Base(mediaURL)),
+		}, nil
+	}
+	g.Log().Debugf(context.Background(), "[processImageContent] File found, size=%d bytes", fileInfo.Size())
+
+	// 读取文件（使用处理后的绝对路径）
+	data, err := os.ReadFile(filePath)
 	if err != nil {
+		g.Log().Errorf(context.Background(), "[processImageContent] Failed to read file: %v", err)
 		return schema.ChatMessagePart{}, fmt.Errorf("failed to read image file: %w", err)
 	}
+	g.Log().Debugf(context.Background(), "[processImageContent] File read successfully, data length=%d", len(data))
 
 	// 获取MIME类型
 	ext := filepath.Ext(mediaURL)
 	mimeType := getMimeTypeFromExt(ext)
+	g.Log().Debugf(context.Background(), "[processImageContent] ext=%s, mimeType=%s", ext, mimeType)
 
 	// 编码为base64
 	base64Data := base64.StdEncoding.EncodeToString(data)
+	g.Log().Debugf(context.Background(), "[processImageContent] base64 length=%d, first 100 chars=%s", len(base64Data), base64Data[:min(100, len(base64Data))])
 
 	// 构造data URI
 	dataURI := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
@@ -364,6 +386,13 @@ func (h *Manager) processImageContent(mediaURL string) (schema.ChatMessagePart, 
 			Detail: schema.ImageURLDetailAuto,
 		},
 	}, nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // processAudioContent 处理音频内容，将文件路径转换为base64 data URI

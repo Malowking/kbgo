@@ -119,7 +119,7 @@ export default function IndexModal({ documentIds, onClose, onSuccess, isReindex 
               ) : (
                 embeddingModels.map((model) => (
                   <option key={model.model_id} value={model.model_id}>
-                    {model.name} ({model.provider})
+                    {model.name}
                   </option>
                 ))
               )}

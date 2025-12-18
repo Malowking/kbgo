@@ -2,9 +2,11 @@ package kbgo
 
 import (
 	"context"
+	"mime/multipart"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/agent"
+	"github.com/Malowking/kbgo/core/common"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -54,21 +56,44 @@ func (c *ControllerV1) DeleteAgentPreset(ctx context.Context, req *v1.DeleteAgen
 
 // AgentChat 使用Agent预设进行对话
 func (c *ControllerV1) AgentChat(ctx context.Context, req *v1.AgentChatReq) (res *v1.AgentChatRes, err error) {
-	g.Log().Infof(ctx, "Agent对话请求 - PresetID: %s, ConvID: %s, UserID: %s, Question: %s, Stream: %v",
-		req.PresetID, req.ConvID, req.UserID, req.Question, req.Stream)
+	g.Log().Infof(ctx, "Agent对话请求 - PresetID: %s, ConvID: %s, UserID: %s, Question: %s, Stream: %v, Files: %d",
+		req.PresetID, req.ConvID, req.UserID, req.Question, req.Stream, len(req.Files))
+
+	// 处理文件上传（如果有文件）
+	var uploadedFiles []*common.MultimodalFile
+	if len(req.Files) > 0 {
+		// 手动从 HTTP Request 中提取文件
+		r := g.RequestFromCtx(ctx)
+		uploadFiles := r.GetUploadFiles("files")
+
+		// 转换为 multipart.FileHeader 切片
+		var fileHeaders []*multipart.FileHeader
+		for _, uploadFile := range uploadFiles {
+			fileHeaders = append(fileHeaders, uploadFile.FileHeader)
+		}
+
+		// 使用 FileUploader 异步上传文件
+		fileUploader := common.GetGlobalFileUploader()
+		uploadedFiles, err = fileUploader.UploadFiles(ctx, fileHeaders)
+		if err != nil {
+			g.Log().Errorf(ctx, "文件上传失败: %v", err)
+			return nil, err
+		}
+		g.Log().Infof(ctx, "成功上传 %d 个文件", len(uploadedFiles))
+	}
 
 	// 如果启用流式返回，执行流式逻辑
 	if req.Stream {
-		return nil, c.handleAgentStreamChat(ctx, req)
+		return nil, c.handleAgentStreamChat(ctx, req, uploadedFiles)
 	}
 
 	agentService := agent.NewAgentService()
-	return agentService.AgentChat(ctx, req)
+	return agentService.AgentChat(ctx, req, uploadedFiles)
 }
 
 // handleAgentStreamChat 处理Agent流式聊天请求
-func (c *ControllerV1) handleAgentStreamChat(ctx context.Context, req *v1.AgentChatReq) error {
-	g.Log().Infof(ctx, "Agent流式对话请求 - PresetID: %s, ConvID: %s", req.PresetID, req.ConvID)
+func (c *ControllerV1) handleAgentStreamChat(ctx context.Context, req *v1.AgentChatReq, uploadedFiles []*common.MultimodalFile) error {
+	g.Log().Infof(ctx, "Agent流式对话请求 - PresetID: %s, ConvID: %s, Files: %d", req.PresetID, req.ConvID, len(uploadedFiles))
 
 	agentService := agent.NewAgentService()
 
@@ -91,6 +116,7 @@ func (c *ControllerV1) handleAgentStreamChat(ctx context.Context, req *v1.AgentC
 		ConvID:           convID,
 		Question:         req.Question,
 		ModelID:          preset.Config.ModelID,
+		SystemPrompt:     preset.Config.SystemPrompt,
 		EmbeddingModelID: preset.Config.EmbeddingModelID,
 		RerankModelID:    preset.Config.RerankModelID,
 		KnowledgeId:      preset.Config.KnowledgeId,
@@ -104,8 +130,8 @@ func (c *ControllerV1) handleAgentStreamChat(ctx context.Context, req *v1.AgentC
 		JsonFormat:       preset.Config.JsonFormat,
 	}
 
-	// 调用原有的流式Chat处理器
-	return c.handleStreamChat(ctx, chatReq, nil)
+	// 调用原有的流式Chat处理器，传递上传的文件
+	return c.handleStreamChat(ctx, chatReq, uploadedFiles)
 }
 
 // generateUUID 生成UUID（简化版）

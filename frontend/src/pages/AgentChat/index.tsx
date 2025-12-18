@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, ArrowLeft, Plus, Loader2 } from 'lucide-react';
+import { Send, Bot, User, ArrowLeft, Plus, Loader2, Paperclip } from 'lucide-react';
 import { agentApi } from '@/services';
 import { generateId } from '@/lib/utils';
 import type { AgentPresetItem } from '@/types';
@@ -32,8 +32,10 @@ export default function AgentChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const USER_ID = 'user_001'; // TODO: Get from auth context
 
   useEffect(() => {
@@ -43,6 +45,15 @@ export default function AgentChat() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // 当选择的 Agent 变化时，清空对话历史
+  useEffect(() => {
+    if (selectedPreset) {
+      setConversations([]);
+      setMessages([]);
+      setCurrentConvId('');
+    }
+  }, [selectedPreset]);
 
   const fetchPresets = async () => {
     try {
@@ -123,7 +134,9 @@ export default function AgentChat() {
 
     setMessages(prev => [...prev, userMessage]);
     const currentInput = input;
+    const currentFiles = attachedFiles;
     setInput('');
+    setAttachedFiles([]); // 清空文件列表
     setLoading(true);
 
     try {
@@ -149,6 +162,7 @@ export default function AgentChat() {
           question: currentInput,
           conv_id: convId,
           stream: true,
+          files: currentFiles, // 传递文件
         },
         (chunk, reasoningChunk) => {
           // 累积内容和思考过程
@@ -195,6 +209,21 @@ export default function AgentChat() {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  const handleFileClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      setAttachedFiles(Array.from(files));
+    }
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const selectedPresetName = presets.find(p => p.preset_id === selectedPreset)?.preset_name || 'Agent';
@@ -344,7 +373,7 @@ export default function AgentChat() {
                             >
                               <p className="text-gray-700 line-clamp-2">{ref.content}</p>
                               <p className="text-xs text-gray-500 mt-1">
-                                相似度: {(ref.score * 100).toFixed(1)}%
+                                相似度: {ref.score.toFixed(2)}
                               </p>
                             </div>
                           ))}
@@ -414,27 +443,74 @@ export default function AgentChat() {
                 请先选择一个 Agent
               </div>
             ) : (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="输入消息..."
-                  disabled={loading}
-                  className="flex-1 px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
-                />
-                <button
-                  onClick={handleSend}
-                  disabled={loading || !input.trim()}
-                  className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {loading ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <Send className="w-5 h-5" />
-                  )}
-                </button>
+              <div>
+                {/* File Attachments Preview */}
+                {attachedFiles.length > 0 && (
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {attachedFiles.map((file, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm"
+                      >
+                        <Paperclip className="w-4 h-4 text-blue-600" />
+                        <span className="text-blue-900">{file.name}</span>
+                        <button
+                          onClick={() => handleRemoveFile(index)}
+                          className="ml-2 text-blue-600 hover:text-blue-800"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Input Area */}
+                <div className="flex items-end space-x-3">
+                  {/* Hidden File Input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    onChange={handleFileChange}
+                    className="hidden"
+                    accept=".pdf,.doc,.docx,.txt,.md,.jpg,.jpeg,.png,.gif,.bmp,.webp,.mp3,.wav,.mp4,.avi"
+                  />
+
+                  {/* File Attach Button */}
+                  <button
+                    onClick={handleFileClick}
+                    className="p-2 rounded hover:bg-gray-100 text-gray-600"
+                    title="附件"
+                    disabled={loading}
+                  >
+                    <Paperclip className="w-5 h-5" />
+                  </button>
+
+                  <div className="flex-1">
+                    <textarea
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      placeholder="输入消息... (Shift+Enter 换行，Enter 发送)"
+                      disabled={loading}
+                      className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 resize-none"
+                      rows={3}
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleSend}
+                    disabled={loading || !input.trim()}
+                    className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {loading ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Send className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
               </div>
             )}
           </div>

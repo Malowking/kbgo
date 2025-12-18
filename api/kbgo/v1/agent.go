@@ -1,6 +1,10 @@
 package v1
 
-import "github.com/gogf/gf/v2/frame/g"
+import (
+	"mime/multipart"
+
+	"github.com/gogf/gf/v2/frame/g"
+)
 
 // ============ Agent预设管理接口 ============
 
@@ -17,6 +21,7 @@ type CreateAgentPresetReq struct {
 // AgentConfig Agent配置结构（对应ChatReq的核心参数）
 type AgentConfig struct {
 	ModelID          string              `json:"model_id" v:"required#模型ID不能为空"` // LLM模型UUID
+	SystemPrompt     string              `json:"system_prompt"`                  // 系统提示词
 	EmbeddingModelID string              `json:"embedding_model_id"`             // Embedding模型UUID
 	RerankModelID    string              `json:"rerank_model_id"`                // Rerank模型UUID
 	KnowledgeId      string              `json:"knowledge_id"`                   // 知识库ID
@@ -111,11 +116,12 @@ type DeleteAgentPresetRes struct {
 // AgentChatReq Agent对话请求（简化版）
 type AgentChatReq struct {
 	g.Meta   `path:"/v1/agent/chat" method:"post" tags:"agent" summary:"使用Agent预设进行对话"`
-	PresetID string `json:"preset_id" v:"required#预设ID不能为空"` // Agent预设ID
-	ConvID   string `json:"conv_id"`                         // 会话ID（可选，首次为空会创建新会话）
-	UserID   string `json:"user_id" v:"required#用户ID不能为空"`   // 用户ID
-	Question string `json:"question" v:"required#问题不能为空"`    // 用户问题
-	Stream   bool   `json:"stream"`                          // 是否流式返回
+	PresetID string                  `json:"preset_id" v:"required#预设ID不能为空"` // Agent预设ID
+	ConvID   string                  `json:"conv_id"`                         // 会话ID（可选，首次为空会创建新会话）
+	UserID   string                  `json:"user_id" v:"required#用户ID不能为空"`   // 用户ID
+	Question string                  `json:"question" v:"required#问题不能为空"`    // 用户问题
+	Stream   bool                    `json:"stream"`                          // 是否流式返回
+	Files    []*multipart.FileHeader `json:"files" type:"file"`               // 多模态文件（图片、音频、视频等）
 }
 
 // AgentChatRes Agent对话响应

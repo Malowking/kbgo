@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	// MaxFileSize 单个文件最大大小 (10MB)
-	MaxFileSize = 10 * 1024 * 1024
+	// MaxFileSize 单个文件最大大小 (5MB) - 用于文件对话中的多模态文件
+	MaxFileSize = 5 * 1024 * 1024
 	// MaxFilesPerRequest 每次请求最多上传文件数
 	MaxFilesPerRequest = 5
 )

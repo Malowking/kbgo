@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"io"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -40,7 +41,15 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 		err         error
 	}
 
+	type fileParseResult struct {
+		multimodalFiles []*common.MultimodalFile // 多模态文件（图片、音频、视频等）
+		fileContent     string                   // 文档文件的解析文本内容
+		fileImages      []string                 // 文档文件中提取的图片路径
+		err             error
+	}
+
 	retrievalChan := make(chan retrievalResult, 1)
+	fileParseChan := make(chan fileParseResult, 1)
 
 	// 并行执行检索
 	go func() {
@@ -84,16 +93,74 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 		retrievalChan <- result
 	}()
 
-	// 等待检索任务完成
+	// 并行处理文件（如果有上传文件）
+	go func() {
+		var result fileParseResult
+		if len(uploadedFiles) > 0 {
+			g.Log().Infof(ctx, "Stream handler - Processing %d uploaded files", len(uploadedFiles))
+
+			// 分离多模态文件和文档文件
+			var multimodalFiles []*common.MultimodalFile
+			var documentFiles []*common.MultimodalFile
+
+			for _, file := range uploadedFiles {
+				if file.FileType == common.FileTypeImage ||
+					file.FileType == common.FileTypeAudio ||
+					file.FileType == common.FileTypeVideo {
+					multimodalFiles = append(multimodalFiles, file)
+				} else {
+					documentFiles = append(documentFiles, file)
+				}
+			}
+
+			g.Log().Infof(ctx, "Stream handler - Separated into %d multimodal files and %d document files",
+				len(multimodalFiles), len(documentFiles))
+
+			result.multimodalFiles = multimodalFiles
+
+			// 如果有文档文件，调用Python服务解析
+			if len(documentFiles) > 0 {
+				g.Log().Infof(ctx, "Stream handler - Parsing %d document files", len(documentFiles))
+				fileContent, fileImages, err := chat.ParseDocumentFiles(ctx, documentFiles)
+				if err != nil {
+					g.Log().Errorf(ctx, "Stream handler - Failed to parse document files: %v", err)
+					result.err = err
+				} else {
+					result.fileContent = fileContent
+					result.fileImages = fileImages
+					g.Log().Infof(ctx, "Stream handler - Parsed documents: %d chars of text, %d images",
+						len(fileContent), len(fileImages))
+				}
+			}
+		}
+		fileParseChan <- result
+	}()
+
+	// 等待并行任务完成
 	retrievalRes := <-retrievalChan
+	fileParseRes := <-fileParseChan
 
 	if retrievalRes.err != nil {
 		return retrievalRes.err
 	}
 
+	if fileParseRes.err != nil {
+		g.Log().Warningf(ctx, "File parsing failed: %v, continuing without file content", fileParseRes.err)
+	}
+
 	// 获取检索文档
 	var documents []*schema.Document
 	documents = retrievalRes.documents
+
+	// 如果有解析的文档内容，添加到 documents 中
+	if fileParseRes.fileContent != "" {
+		documents = append(documents, &schema.Document{
+			ID:       "uploaded_document",
+			Content:  fileParseRes.fileContent,
+			MetaData: map[string]interface{}{"source": "user_upload", "type": "document"},
+		})
+		g.Log().Infof(ctx, "Added parsed document content to documents (%d chars)", len(fileParseRes.fileContent))
+	}
 
 	// 2. 执行MCP工具调用（检索完成后，MCP需要检索结果）
 	// MCP调用是同步的，会等待所有工具调用完成后才返回
@@ -101,8 +168,8 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 	if req.UseMCP {
 		g.Log().Infof(ctx, "开始执行MCP工具调用...")
 		mcpHandler := NewMCPHandler()
-		// 传入检索到的文档，流式处理中没有文件解析内容
-		_, mcpResults, mcpFinalAnswer, err := mcpHandler.CallMCPToolsWithLLM(ctx, req, documents, "")
+		// 传入检索到的文档和文件解析内容
+		_, mcpResults, mcpFinalAnswer, err := mcpHandler.CallMCPToolsWithLLM(ctx, req, documents, fileParseRes.fileContent)
 		if err != nil {
 			g.Log().Errorf(ctx, "MCP智能工具调用失败: %v", err)
 			mcpRes.err = err
@@ -127,15 +194,19 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 	// 获取Chat实例
 	chatI := chat.GetChat()
 
-	// 过滤出多模态文件（只有图片、音频、视频才使用多模态）
-	var multimodalFiles []*common.MultimodalFile
-	for _, file := range uploadedFiles {
-		if file.FileType == common.FileTypeImage ||
-			file.FileType == common.FileTypeAudio ||
-			file.FileType == common.FileTypeVideo {
-			multimodalFiles = append(multimodalFiles, file)
-		} else {
-			g.Log().Infof(ctx, "Skipping non-multimodal file in stream: %s (type: %s)", file.FileName, file.FileType)
+	// 使用文件解析结果中的多模态文件
+	multimodalFiles := fileParseRes.multimodalFiles
+
+	// 如果有从文档中提取的图片，将它们转换为 MultimodalFile
+	if len(fileParseRes.fileImages) > 0 {
+		g.Log().Infof(ctx, "Adding %d extracted images from documents", len(fileParseRes.fileImages))
+		for _, imagePath := range fileParseRes.fileImages {
+			multimodalFiles = append(multimodalFiles, &common.MultimodalFile{
+				FileName:     filepath.Base(imagePath),
+				FilePath:     imagePath,
+				RelativePath: imagePath,
+				FileType:     common.FileTypeImage,
+			})
 		}
 	}
 
@@ -149,7 +220,7 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 		g.Log().Infof(ctx, "Using multimodal stream chat with %d files", len(multimodalFiles))
 		streamReader, err = chatI.GetAnswerStreamWithFiles(ctx, req.ModelID, req.ConvID, documents, req.Question, multimodalFiles, req.JsonFormat)
 	} else {
-		streamReader, err = chatI.GetAnswerStream(ctx, req.ModelID, req.ConvID, documents, req.Question, req.JsonFormat)
+		streamReader, err = chatI.GetAnswerStream(ctx, req.ModelID, req.ConvID, documents, req.Question, req.SystemPrompt, req.JsonFormat)
 	}
 	if err != nil {
 		g.Log().Error(ctx, err)
