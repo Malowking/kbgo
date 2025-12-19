@@ -158,7 +158,6 @@ func (l *FileParseLoader) Load(ctx context.Context, filePath string) ([]*schema.
 
 		// 基于当前工作目录构建绝对路径
 		absFilePath = filepath.Join(cwd, filePath)
-		g.Log().Infof(ctx, "Converted relative path '%s' to absolute path '%s'", filePath, absFilePath)
 	}
 
 	// 检查文件是否存在
