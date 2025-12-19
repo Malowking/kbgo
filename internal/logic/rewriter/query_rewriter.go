@@ -227,11 +227,10 @@ AI: 学习深度学习需要掌握数学基础、Python编程...
 		{Role: schema.User, Content: userPrompt},
 	}
 
-	// 获取模型配置
+	// 获取模型配置（使用聊天相同的模型）
 	modelID := config.ModelID
 	if modelID == "" {
-		// 如果没有指定，使用默认的快速模型
-		modelID = "gpt-3.5-turbo" // TODO: 从配置读取
+		return "", fmt.Errorf("ModelID 不能为空")
 	}
 
 	mc := coreModel.Registry.Get(modelID)
