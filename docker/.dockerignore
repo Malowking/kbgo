@@ -40,7 +40,6 @@ config/config.yaml
 
 # 文档（不需要在运行时）
 *.md
-TODO.txt
 LICENSE
 
 # Docker 相关（避免递归）
