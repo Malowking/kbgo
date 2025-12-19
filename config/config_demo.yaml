@@ -94,3 +94,10 @@ redis:
   minIdleConns: 2                      # 最小空闲连接数
   cache:
     agentPresetTTL: 300                # Agent预设缓存过期时间（秒），默认 5分钟
+
+# 流式响应缓冲配置
+streaming:
+  useRedis: false                      # 是否使用 Redis Stream 作为流式消息缓冲（默认 false，使用内存 channel）
+  memoryBufferSize: 100                # 内存 channel 缓冲区大小（默认 100）
+  redisBufferSize: 1000                # Redis Stream 最大长度（默认 1000）
+  redisStreamTTL: 300                  # Redis Stream 过期时间（秒），默认 5分钟

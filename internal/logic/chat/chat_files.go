@@ -313,7 +313,7 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 }
 
 // GetAnswerStreamWithFiles 统一的多模态流式对话处理
-func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile, jsonFormat bool) (answer *schema.StreamReader[*schema.Message], err error) {
+func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile, jsonFormat bool) (answer schema.StreamReaderInterface[*schema.Message], err error) {
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
@@ -431,7 +431,8 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 	}
 
 	// 创建 Pipe 用于流式传输
-	streamReader, streamWriter := schema.Pipe[*schema.Message](10)
+	// 优先使用 Redis Stream（支持更大缓冲和分布式），Redis 不可用时回退到内存 channel
+	streamReader, streamWriter := CreateStreamPipe(ctx, convID)
 
 	// 保留原始 context 用于取消控制
 	originalCtx := ctx

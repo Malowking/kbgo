@@ -245,7 +245,7 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 }
 
 // GetAnswerStream 使用指定模型流式生成答案
-func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, systemPrompt string, jsonFormat bool) (answer *schema.StreamReader[*schema.Message], err error) {
+func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, systemPrompt string, jsonFormat bool) (answer schema.StreamReaderInterface[*schema.Message], err error) {
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
@@ -355,7 +355,8 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 	}
 
 	// 创建 Pipe 用于流式传输
-	streamReader, streamWriter := schema.Pipe[*schema.Message](10)
+	// 优先使用 Redis Stream（支持更大缓冲和分布式），Redis 不可用时回退到内存 channel
+	streamReader, streamWriter := CreateStreamPipe(ctx, convID)
 
 	// 保留原始 context 用于取消控制
 	originalCtx := ctx

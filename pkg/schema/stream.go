@@ -5,14 +5,26 @@ import (
 	"sync"
 )
 
-// StreamReader 流式数据读取器
+// StreamReaderInterface 流式数据读取器接口
+type StreamReaderInterface[T any] interface {
+	Recv() (T, error)
+	Close() error
+}
+
+// StreamWriterInterface 流式数据写入器接口
+type StreamWriterInterface[T any] interface {
+	Send(value T, err error) bool
+	Close() error
+}
+
+// StreamReader 流式数据读取器（内存channel实现）
 type StreamReader[T any] struct {
 	ch     chan streamItem[T]
 	closed bool
 	mu     sync.Mutex
 }
 
-// StreamWriter 流式数据写入器
+// StreamWriter 流式数据写入器（内存channel实现）
 type StreamWriter[T any] struct {
 	ch     chan streamItem[T]
 	closed bool
@@ -23,6 +35,10 @@ type streamItem[T any] struct {
 	value T
 	err   error
 }
+
+// 确保 StreamReader 和 StreamWriter 实现接口
+var _ StreamReaderInterface[any] = (*StreamReader[any])(nil)
+var _ StreamWriterInterface[any] = (*StreamWriter[any])(nil)
 
 // Pipe 创建一个流式管道，返回 Reader 和 Writer
 func Pipe[T any](bufferSize int) (*StreamReader[T], *StreamWriter[T]) {

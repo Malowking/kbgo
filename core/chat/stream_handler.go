@@ -2,9 +2,7 @@ package chat
 
 import (
 	"context"
-	"io"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
@@ -214,7 +212,7 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 	start := time.Now()
 
 	// 获取流式响应
-	var streamReader *schema.StreamReader[*schema.Message]
+	var streamReader schema.StreamReaderInterface[*schema.Message]
 	var err error
 	if len(multimodalFiles) > 0 {
 		g.Log().Infof(ctx, "Using multimodal stream chat with %d files", len(multimodalFiles))
@@ -289,49 +287,9 @@ func (h *StreamHandler) buildMetadata(retrieverMetadata map[string]interface{}, 
 }
 
 // handleStreamResponse 处理流式响应
-func (h *StreamHandler) handleStreamResponse(ctx context.Context, streamReader *schema.StreamReader[*schema.Message], allDocuments []*schema.Document, start time.Time, convID string, metadata map[string]interface{}, chatI interface{}) error {
-	// 收集流式响应内容以保存完整消息
-	var fullContent strings.Builder
-
-	// 创建两个管道用于复制流
-	srs := streamReader.Copy(2)
-	streamReader = srs[0]     // 用于原始响应
-	collectorReader := srs[1] // 用于收集内容
-
-	// 启动一个 goroutine 来收集内容
-	go func() {
-		defer collectorReader.Close()
-		for {
-			msg, err := collectorReader.Recv()
-			if err != nil {
-				if err == io.EOF {
-					break
-				}
-				g.Log().Errorf(ctx, "Error collecting stream content: %v", err)
-				break
-			}
-			if msg != nil {
-				fullContent.WriteString(msg.Content)
-			}
-		}
-
-		// 计算延迟
-		_ = time.Since(start).Milliseconds()
-
-		// TODO: 这里可能需要将latencyMs和tokens_used传递给前端或者其他地方
-
-		// 流式响应结束后，保存带元数据的完整消息
-		if len(metadata) > 0 {
-			fullMessage := fullContent.String()
-			// 这里需要类型断言或重新设计接口
-			if chatInstance, ok := chatI.(interface {
-				SaveStreamingMessageWithMetadata(string, string, map[string]interface{})
-			}); ok {
-				chatInstance.SaveStreamingMessageWithMetadata(convID, fullMessage, metadata)
-			}
-		}
-	}()
-
+func (h *StreamHandler) handleStreamResponse(ctx context.Context, streamReader schema.StreamReaderInterface[*schema.Message], allDocuments []*schema.Document, start time.Time, convID string, metadata map[string]interface{}, chatI interface{}) error {
+	// 直接发送流式响应到客户端
+	// 注意：完整消息已经在 chat.go 的 goroutine 中保存，这里不需要重复保存
 	err := common.SteamResponse(ctx, streamReader, allDocuments)
 	if err != nil {
 		return err

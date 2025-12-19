@@ -21,7 +21,7 @@ type StreamData struct {
 	Document         []*schema.Document `json:"document"`
 }
 
-func SteamResponse(ctx context.Context, streamReader *schema.StreamReader[*schema.Message], docs []*schema.Document) (err error) {
+func SteamResponse(ctx context.Context, streamReader schema.StreamReaderInterface[*schema.Message], docs []*schema.Document) (err error) {
 	// 获取HTTP响应对象
 	httpReq := ghttp.RequestFromCtx(ctx)
 	httpResp := httpReq.Response
