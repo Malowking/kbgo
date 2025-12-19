@@ -267,23 +267,28 @@ export default function CreateModelModal({ model, onClose, onSuccess }: CreateMo
             />
           </div>
 
-          {!model && formData.model_type === 'embedding' && (
+          {formData.model_type === 'embedding' && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                向量维度
+                向量维度 <span className="text-red-500">*</span>
               </label>
               <input
                 type="number"
                 value={formData.dimension}
                 onChange={(e) => setFormData({ ...formData, dimension: parseInt(e.target.value) || 0 })}
                 className="input"
-                min="0"
+                min="1"
+                max="10000"
                 placeholder="1024"
+                required
               />
+              <p className="text-xs text-gray-500 mt-1">
+                常见维度：768 (BERT), 1024 (小模型), 1536 (OpenAI), 3072 (大模型)
+              </p>
             </div>
           )}
 
-          {/* 额外参数按钮 - LLM 和 Multimodal 显示完整参数，Embedding 显示 dimension，Rerank 不显示 */}
+          {/* 额外参数按钮 - LLM 和 Multimodal 显示完整参数，Rerank 不显示 */}
           {(formData.model_type === 'llm' || formData.model_type === 'multimodal') && (
             <div className="border-t border-gray-200 pt-4">
               <button
@@ -410,43 +415,6 @@ export default function CreateModelModal({ model, onClose, onSuccess }: CreateMo
                       placeholder="例如：\n, ###, END"
                     />
                     <p className="text-xs text-gray-500 mt-1">模型遇到这些序列时将停止生成</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Embedding 模型的额外参数配置 */}
-          {formData.model_type === 'embedding' && (
-            <div className="border-t border-gray-200 pt-4">
-              <button
-                type="button"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="flex items-center justify-between w-full px-4 py-2 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                <span>额外参数配置</span>
-                {showAdvanced ? (
-                  <ChevronUp className="w-4 h-4" />
-                ) : (
-                  <ChevronDown className="w-4 h-4" />
-                )}
-              </button>
-
-              {showAdvanced && (
-                <div className="mt-4 space-y-4 p-4 bg-gray-50 rounded-lg">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      向量维度
-                    </label>
-                    <input
-                      type="number"
-                      value={formData.dimension}
-                      onChange={(e) => setFormData({ ...formData, dimension: parseInt(e.target.value) || 0 })}
-                      className="input"
-                      min="0"
-                      placeholder="1024"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">向量模型的输出维度</p>
                   </div>
                 </div>
               )}

@@ -14,10 +14,11 @@ const (
 )
 
 type KBCreateReq struct {
-	g.Meta      `path:"/v1/kb" method:"post" tags:"kb" summary:"Create kb"`
-	Name        string `v:"required|length:3,50" dc:"kb name"`
-	Description string `v:"required|length:3,200" dc:"kb description"`
-	Category    string `v:"length:3,50" dc:"kb category"`
+	g.Meta           `path:"/v1/kb" method:"post" tags:"kb" summary:"Create kb"`
+	Name             string `v:"required|length:3,50" dc:"kb name"`
+	Description      string `v:"required|length:3,200" dc:"kb description"`
+	Category         string `v:"length:3,50" dc:"kb category"`
+	EmbeddingModelId string `v:"required" dc:"embedding model id"`
 }
 
 type KBCreateRes struct {

@@ -131,16 +131,15 @@ func (p *PostgresStore) CreateDatabaseIfNotExists(ctx context.Context) error {
 }
 
 // CreateCollection 创建集合（表）- 使用模型定义
-func (p *PostgresStore) CreateCollection(ctx context.Context, collectionName string) error {
+func (p *PostgresStore) CreateCollection(ctx context.Context, collectionName string, dimension int) error {
 	// 清理表名，防止SQL注入
 	tableName := p.sanitizeTableName(collectionName)
-	dim := g.Cfg().MustGet(ctx, "milvus.dim", 1024).Int()
 
 	// 使用标准表结构模型
 	schema := pgvectorModel.TableSchema{}
 
-	// 1. 创建表
-	createTableSQL := schema.GenerateCreateTableSQL(p.schema, tableName, dim)
+	// 1. 创建表，使用传入的维度参数
+	createTableSQL := schema.GenerateCreateTableSQL(p.schema, tableName, dimension)
 	_, err := p.pool.Exec(ctx, createTableSQL)
 	if err != nil {
 		return fmt.Errorf("failed to create table %s.%s: %w", p.schema, tableName, err)
@@ -155,7 +154,7 @@ func (p *PostgresStore) CreateCollection(ctx context.Context, collectionName str
 		}
 	}
 
-	g.Log().Infof(ctx, "Table '%s.%s' created with dimension %d and indexes", p.schema, tableName, dim)
+	g.Log().Infof(ctx, "Table '%s.%s' created with dimension %d and indexes", p.schema, tableName, dimension)
 	return nil
 }
 

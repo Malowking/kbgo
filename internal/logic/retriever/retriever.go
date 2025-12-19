@@ -10,6 +10,8 @@ import (
 	"github.com/Malowking/kbgo/core/config"
 	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/core/retriever"
+	"github.com/Malowking/kbgo/internal/dao"
+	"github.com/Malowking/kbgo/internal/model/entity"
 	"github.com/Malowking/kbgo/internal/service"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
@@ -81,15 +83,34 @@ func ProcessRetrieval(ctx context.Context, req *v1.RetrieverReq) (*v1.RetrieverR
 	g.Log().Infof(ctx, "retrieveReq: %v, EmbeddingModelID: %v, RerankModelID: %v, EnableRewrite: %v, RewriteAttempts: %v, RetrieveMode: %v",
 		req, req.EmbeddingModelID, req.RerankModelID, req.EnableRewrite, req.RewriteAttempts, req.RetrieveMode)
 
+	// 如果没有提供 embedding_model_id，则从知识库获取绑定的模型
+	embeddingModelID := req.EmbeddingModelID
+	if embeddingModelID == "" {
+		// 从数据库获取知识库信息
+		var kb entity.KnowledgeBase
+		err := dao.KnowledgeBase.Ctx(ctx).WherePri(req.KnowledgeId).Scan(&kb)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get knowledge base: %v", err)
+		}
+		if kb.Id == "" {
+			return nil, fmt.Errorf("knowledge base not found: %s", req.KnowledgeId)
+		}
+		if kb.EmbeddingModelId == "" {
+			return nil, fmt.Errorf("knowledge base %s has no embedding model bound", req.KnowledgeId)
+		}
+		embeddingModelID = kb.EmbeddingModelId
+		g.Log().Infof(ctx, "Using knowledge base bound embedding model: %s", embeddingModelID)
+	}
+
 	// 从 Registry 获取 embedding 模型信息
-	embeddingModelConfig := model.Registry.Get(req.EmbeddingModelID)
+	embeddingModelConfig := model.Registry.Get(embeddingModelID)
 	if embeddingModelConfig == nil {
-		return nil, fmt.Errorf("embedding model not found in registry: %s", req.EmbeddingModelID)
+		return nil, fmt.Errorf("embedding model not found in registry: %s", embeddingModelID)
 	}
 
 	// 验证 embedding 模型类型
 	if embeddingModelConfig.Type != model.ModelTypeEmbedding {
-		return nil, fmt.Errorf("model %s is not an embedding model, got type: %s", req.EmbeddingModelID, embeddingModelConfig.Type)
+		return nil, fmt.Errorf("model %s is not an embedding model, got type: %s", embeddingModelID, embeddingModelConfig.Type)
 	}
 
 	// 创建动态配置，使用从 Registry 获取的模型信息覆盖静态配置

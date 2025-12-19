@@ -5,6 +5,7 @@ export interface KnowledgeBase {
   description: string;
   category?: string;
   collectionName?: string;
+  embeddingModelId: string; // 绑定的 embedding 模型 ID
   status: 1 | 2; // 1-enabled, 2-disabled
   createTime: string;
   updateTime: string;
@@ -14,6 +15,7 @@ export interface CreateKBRequest {
   name: string;
   description: string;
   category?: string;
+  embedding_model_id: string; // 必填：绑定的 embedding 模型 ID
 }
 
 // 文档相关类型

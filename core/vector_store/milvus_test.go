@@ -111,7 +111,7 @@ func TestMilvusCollectionOperations(t *testing.T) {
 	testCollectionName := "test_collection_" + uuid.New().String()[:8]
 
 	t.Run("创建集合", func(t *testing.T) {
-		err := store.CreateCollection(ctx, testCollectionName)
+		err := store.CreateCollection(ctx, testCollectionName, 1024)
 		assert.NoError(t, err)
 	})
 
@@ -163,7 +163,7 @@ func TestMilvusVectorOperations(t *testing.T) {
 	knowledgeID := uuid.New().String()
 
 	// 创建测试集合
-	err = store.CreateCollection(ctx, testCollectionName)
+	err = store.CreateCollection(ctx, testCollectionName, 1024)
 	require.NoError(t, err)
 
 	// 清理
@@ -358,7 +358,7 @@ func BenchmarkMilvusInsertVectors(b *testing.B) {
 	}
 
 	testCollectionName := "bench_collection"
-	store.CreateCollection(ctx, testCollectionName)
+	store.CreateCollection(ctx, testCollectionName, 1024)
 	defer store.DeleteCollection(ctx, testCollectionName)
 
 	// 准备测试数据

@@ -21,11 +21,9 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
   const [results, setResults] = useState<Document[]>([]);
 
   // Models
-  const [embeddingModels, setEmbeddingModels] = useState<Model[]>([]);
   const [rerankModels, setRerankModels] = useState<Model[]>([]);
 
   // Parameters
-  const [embeddingModelId, setEmbeddingModelId] = useState('');
   const [rerankModelId, setRerankModelId] = useState('');
   const [topK, setTopK] = useState(5);
   const [score, setScore] = useState(0.3);
@@ -42,16 +40,11 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
       const response = await modelApi.list();
       const allModels = response.models || [];
 
-      const embedding = allModels.filter(m => m.type === 'embedding');
       const rerank = allModels.filter(m => m.type === 'rerank' || m.type === 'reranker');
 
-      setEmbeddingModels(embedding);
       setRerankModels(rerank);
 
-      // Set default models
-      if (embedding.length > 0 && !embeddingModelId) {
-        setEmbeddingModelId(embedding[0].model_id);
-      }
+      // Set default rerank model
       if (rerank.length > 0 && !rerankModelId) {
         setRerankModelId(rerank[0].model_id);
       }
@@ -66,11 +59,6 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
       return;
     }
 
-    if (!embeddingModelId) {
-      alert('请选择Embedding模型');
-      return;
-    }
-
     try {
       setLoading(true);
       setResults([]);
@@ -78,7 +66,6 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
       const requestBody = {
         question: question.trim(),
         knowledge_id: kbId,
-        embedding_model_id: embeddingModelId,
         rerank_model_id: rerankModelId || undefined,
         top_k: topK,
         score: score,
@@ -142,23 +129,11 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
           </h3>
 
           <div className="space-y-4">
-            {/* Embedding Model */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Embedding 模型 *
-              </label>
-              <select
-                value={embeddingModelId}
-                onChange={(e) => setEmbeddingModelId(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">选择模型</option>
-                {embeddingModels.map((model) => (
-                  <option key={model.model_id} value={model.model_id}>
-                    {model.name}
-                  </option>
-                ))}
-              </select>
+            {/* Info about embedding model */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-xs text-blue-800">
+                💡 Embedding 模型将自动使用知识库创建时绑定的模型
+              </p>
             </div>
 
             {/* Retrieve Mode */}
@@ -273,7 +248,7 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
           {/* Test Button */}
           <button
             onClick={handleTest}
-            disabled={loading || !question.trim() || !embeddingModelId}
+            disabled={loading || !question.trim()}
             className="w-full mt-6 flex items-center justify-center gap-2 px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (

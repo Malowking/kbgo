@@ -13,7 +13,7 @@ type ChatReq struct {
 	Question         string                  `json:"question" v:"required"`
 	ModelID          string                  `json:"model_id" v:"required"` // LLM模型UUID（必填）
 	SystemPrompt     string                  `json:"system_prompt"`         // 系统提示词（可选）
-	EmbeddingModelID string                  `json:"embedding_model_id"`    // Embedding模型UUID（可选，启用检索器时需要）
+	EmbeddingModelID string                  `json:"embedding_model_id"`    // Embedding模型UUID（可选，如果不提供且启用检索器，则使用知识库绑定的模型）
 	RerankModelID    string                  `json:"rerank_model_id"`       // Rerank模型UUID（可选，仅在使用rerank或rrf检索模式时需要）
 	KnowledgeId      string                  `json:"knowledge_id"`
 	EnableRetriever  bool                    `json:"enable_retriever"`  // Whether to enable knowledge base retrieval

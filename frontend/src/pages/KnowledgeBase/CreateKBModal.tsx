@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import { knowledgeBaseApi } from '@/services';
-import type { KnowledgeBase, CreateKBRequest } from '@/types';
+import { knowledgeBaseApi, modelApi } from '@/services';
+import type { KnowledgeBase, CreateKBRequest, Model } from '@/types';
 
 interface CreateKBModalProps {
   kb?: KnowledgeBase | null;
@@ -14,8 +14,29 @@ export default function CreateKBModal({ kb, onClose, onSuccess }: CreateKBModalP
     name: '',
     description: '',
     category: '',
+    embedding_model_id: '',
   });
   const [submitting, setSubmitting] = useState(false);
+  const [embeddingModels, setEmbeddingModels] = useState<Model[]>([]);
+  const [loadingModels, setLoadingModels] = useState(true);
+
+  // 加载 embedding 模型列表
+  useEffect(() => {
+    const fetchEmbeddingModels = async () => {
+      try {
+        setLoadingModels(true);
+        const response = await modelApi.list({ model_type: 'embedding' });
+        setEmbeddingModels(response.models || []);
+      } catch (error) {
+        console.error('Failed to load embedding models:', error);
+        alert('加载 Embedding 模型列表失败');
+      } finally {
+        setLoadingModels(false);
+      }
+    };
+
+    fetchEmbeddingModels();
+  }, []);
 
   useEffect(() => {
     if (kb) {
@@ -23,6 +44,7 @@ export default function CreateKBModal({ kb, onClose, onSuccess }: CreateKBModalP
         name: kb.name,
         description: kb.description,
         category: kb.category || '',
+        embedding_model_id: kb.embeddingModelId || '',
       });
     }
   }, [kb]);
@@ -32,6 +54,11 @@ export default function CreateKBModal({ kb, onClose, onSuccess }: CreateKBModalP
 
     if (!formData.name.trim() || !formData.description.trim()) {
       alert('请填写名称和描述');
+      return;
+    }
+
+    if (!formData.embedding_model_id && !kb) {
+      alert('请选择 Embedding 模型');
       return;
     }
 
@@ -115,6 +142,51 @@ export default function CreateKBModal({ kb, onClose, onSuccess }: CreateKBModalP
               maxLength={50}
             />
           </div>
+
+          {/* Embedding 模型选择 */}
+          {!kb && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Embedding 模型 <span className="text-red-500">*</span>
+              </label>
+              {loadingModels ? (
+                <div className="input text-gray-400">加载模型列表中...</div>
+              ) : embeddingModels.length === 0 ? (
+                <div className="input text-red-500">暂无可用的 Embedding 模型</div>
+              ) : (
+                <select
+                  value={formData.embedding_model_id}
+                  onChange={(e) => setFormData({ ...formData, embedding_model_id: e.target.value })}
+                  className="input"
+                  required
+                  disabled={!!kb}
+                >
+                  <option value="">请选择 Embedding 模型</option>
+                  {embeddingModels.map((model) => (
+                    <option key={model.model_id} value={model.model_id}>
+                      {model.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <p className="mt-1 text-xs text-gray-500">
+                选择后将决定向量数据库的维度，创建后不可修改
+              </p>
+            </div>
+          )}
+
+          {/* 如果是编辑模式，显示当前绑定的模型 */}
+          {kb && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Embedding 模型
+              </label>
+              <div className="input bg-gray-50 text-gray-600">
+                {embeddingModels.find(m => m.model_id === kb.embeddingModelId)?.name || kb.embeddingModelId}
+                <span className="text-xs text-gray-400 ml-2">(创建后不可修改)</span>
+              </div>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex justify-end space-x-3 pt-4">

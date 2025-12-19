@@ -256,6 +256,7 @@ export default function DocumentsTab({ kbId }: DocumentsTabProps) {
       {showIndexModal && pendingDocumentIds.length > 0 && (
         <IndexModal
           documentIds={pendingDocumentIds}
+          knowledgeBaseId={kbId}
           onClose={() => {
             setShowIndexModal(false);
             setPendingDocumentIds([]);
@@ -269,6 +270,7 @@ export default function DocumentsTab({ kbId }: DocumentsTabProps) {
       {showReindexModal && pendingDocumentIds.length > 0 && (
         <IndexModal
           documentIds={pendingDocumentIds}
+          knowledgeBaseId={kbId}
           onClose={() => {
             setShowReindexModal(false);
             setPendingDocumentIds([]);

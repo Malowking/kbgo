@@ -22,7 +22,7 @@ type CreateAgentPresetReq struct {
 type AgentConfig struct {
 	ModelID          string              `json:"model_id" v:"required#模型ID不能为空"` // LLM模型UUID
 	SystemPrompt     string              `json:"system_prompt"`                  // 系统提示词
-	EmbeddingModelID string              `json:"embedding_model_id"`             // Embedding模型UUID
+	EmbeddingModelID string              `json:"embedding_model_id"`             // Embedding模型UUID（可选，如果不提供且启用检索器，则使用知识库绑定的模型）
 	RerankModelID    string              `json:"rerank_model_id"`                // Rerank模型UUID
 	KnowledgeId      string              `json:"knowledge_id"`                   // 知识库ID
 	EnableRetriever  bool                `json:"enable_retriever"`               // 是否启用检索器

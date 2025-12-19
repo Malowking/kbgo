@@ -112,7 +112,7 @@ type VectorStoreConfig struct {
 // VectorStore 向量数据库接口
 type VectorStore interface {
 	// CreateCollection 创建集合
-	CreateCollection(ctx context.Context, collectionName string) error
+	CreateCollection(ctx context.Context, collectionName string, dimension int) error
 
 	// CollectionExists 检查集合是否存在
 	CollectionExists(ctx context.Context, collectionName string) (bool, error)

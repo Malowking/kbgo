@@ -8,10 +8,10 @@ import (
 type RetrieverReq struct {
 	g.Meta           `path:"/v1/retriever" method:"post" tags:"retriever"`
 	Question         string  `json:"question" v:"required"`
-	EmbeddingModelID string  `json:"embedding_model_id" v:"required"` // Embedding模型UUID（必填）
-	RerankModelID    string  `json:"rerank_model_id"`                 // Rerank模型UUID（可选，仅在retrieve_mode为rerank或rrf时需要）
-	TopK             int     `json:"top_k"`                           // Default is 5
-	Score            float64 `json:"score"`                           // Default is 0.2
+	EmbeddingModelID string  `json:"embedding_model_id"` // Embedding模型UUID（可选，如果不提供则使用知识库绑定的模型）
+	RerankModelID    string  `json:"rerank_model_id"`    // Rerank模型UUID（可选，仅在retrieve_mode为rerank或rrf时需要）
+	TopK             int     `json:"top_k"`              // Default is 5
+	Score            float64 `json:"score"`              // Default is 0.2
 	KnowledgeId      string  `json:"knowledge_id" v:"required"`
 	EnableRewrite    bool    `json:"enable_rewrite"`   // Whether to enable query rewriting (default false)
 	RewriteAttempts  int     `json:"rewrite_attempts"` // Number of query rewriting attempts (default 3, only effective when enable_rewrite=true)

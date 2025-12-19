@@ -117,10 +117,9 @@ func (m *MilvusStore) CreateDatabaseIfNotExists(ctx context.Context) error {
 }
 
 // CreateCollection 创建集合
-func (m *MilvusStore) CreateCollection(ctx context.Context, collectionName string) error {
-	// 获取向量维度，优先从配置文件读取
-	dim := g.Cfg().MustGet(ctx, "milvus.dim", 1024).Int()
-	dimStr := fmt.Sprintf("%d", dim)
+func (m *MilvusStore) CreateCollection(ctx context.Context, collectionName string, dimension int) error {
+	// 使用传入的维度参数
+	dimStr := fmt.Sprintf("%d", dimension)
 
 	// 使用标准 text collection schema
 	schema := &entity.Schema{
@@ -143,7 +142,7 @@ func (m *MilvusStore) CreateCollection(ctx context.Context, collectionName strin
 		return fmt.Errorf("failed to load Milvus collection: %w", err)
 	}
 
-	g.Log().Infof(ctx, "Collection '%s' created with dimension %d, index built and loaded", collectionName, dim)
+	g.Log().Infof(ctx, "Collection '%s' created with dimension %d, index built and loaded", collectionName, dimension)
 	return nil
 }
 

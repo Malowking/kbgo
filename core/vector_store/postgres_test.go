@@ -131,7 +131,7 @@ func TestPostgresCollectionOperations(t *testing.T) {
 	testTableName := "test_table_" + uuid.New().String()[:8]
 
 	t.Run("创建集合（表）", func(t *testing.T) {
-		err := store.CreateCollection(ctx, testTableName)
+		err := store.CreateCollection(ctx, testTableName, 1024)
 		assert.NoError(t, err)
 	})
 
@@ -149,7 +149,7 @@ func TestPostgresCollectionOperations(t *testing.T) {
 
 	t.Run("重复创建集合", func(t *testing.T) {
 		// 使用 IF NOT EXISTS，不应报错
-		err := store.CreateCollection(ctx, testTableName)
+		err := store.CreateCollection(ctx, testTableName, 1024)
 		assert.NoError(t, err)
 	})
 
@@ -194,7 +194,7 @@ func TestPostgresVectorOperations(t *testing.T) {
 	knowledgeID := uuid.New().String()
 
 	// 创建测试表
-	err = store.CreateCollection(ctx, testTableName)
+	err = store.CreateCollection(ctx, testTableName, 1024)
 	require.NoError(t, err)
 
 	// 清理
@@ -425,7 +425,7 @@ func TestPostgresTransactionRollback(t *testing.T) {
 	knowledgeID := uuid.New().String()
 
 	// 创建测试表
-	err = store.CreateCollection(ctx, testTableName)
+	err = store.CreateCollection(ctx, testTableName, 1024)
 	require.NoError(t, err)
 	defer store.DeleteCollection(ctx, testTableName)
 
@@ -484,7 +484,7 @@ func BenchmarkPostgresInsertVectors(b *testing.B) {
 	}
 
 	testTableName := "bench_table"
-	store.CreateCollection(ctx, testTableName)
+	store.CreateCollection(ctx, testTableName, 1024)
 	defer store.DeleteCollection(ctx, testTableName)
 
 	// 准备测试数据
@@ -542,7 +542,7 @@ func BenchmarkPostgresVectorSearch(b *testing.B) {
 	testTableName := "bench_search_" + uuid.New().String()[:8]
 
 	// 创建表并插入一些测试数据
-	store.CreateCollection(ctx, testTableName)
+	store.CreateCollection(ctx, testTableName, 1024)
 	defer store.DeleteCollection(ctx, testTableName)
 
 	// 插入100个测试向量

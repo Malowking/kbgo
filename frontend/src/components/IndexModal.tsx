@@ -1,47 +1,60 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import { documentApi, modelApi } from '@/services';
+import { documentApi, modelApi, knowledgeBaseApi } from '@/services';
 import type { Model } from '@/types';
 
 interface IndexModalProps {
   documentIds: string[];
+  knowledgeBaseId: string; // 添加知识库ID参数
   onClose: () => void;
   onSuccess: () => void;
   isReindex?: boolean;
 }
 
-export default function IndexModal({ documentIds, onClose, onSuccess, isReindex = false }: IndexModalProps) {
-  const [embeddingModels, setEmbeddingModels] = useState<Model[]>([]);
-  const [selectedModelId, setSelectedModelId] = useState('');
+export default function IndexModal({ documentIds, knowledgeBaseId, onClose, onSuccess, isReindex = false }: IndexModalProps) {
+  const [embeddingModel, setEmbeddingModel] = useState<Model | null>(null);
+  const [loadingModel, setLoadingModel] = useState(true);
   const [chunkSize, setChunkSize] = useState(1000);
   const [overlapSize, setOverlapSize] = useState(100);
   const [separator, setSeparator] = useState('');
   const [useSeparator, setUseSeparator] = useState(false);
   const [indexing, setIndexing] = useState(false);
 
-  // 加载 Embedding 模型列表
+  // 加载知识库绑定的 Embedding 模型
   useEffect(() => {
-    const loadEmbeddingModels = async () => {
+    const loadKBEmbeddingModel = async () => {
       try {
-        const response = await modelApi.list({ model_type: 'embedding' });
-        setEmbeddingModels(response.models || []);
-        // 默认选择第一个模型
-        if (response.models && response.models.length > 0) {
-          setSelectedModelId(response.models[0].model_id);
+        setLoadingModel(true);
+
+        // 获取知识库信息
+        const kb = await knowledgeBaseApi.get(knowledgeBaseId);
+        const embeddingModelId = kb.embeddingModelId;
+
+        if (!embeddingModelId) {
+          console.error('Knowledge base has no embedding model bound');
+          alert('该知识库未绑定 Embedding 模型');
+          return;
         }
+
+        // 获取模型信息
+        const modelResponse = await modelApi.get(embeddingModelId);
+        setEmbeddingModel(modelResponse.model);
       } catch (error) {
-        console.error('Failed to load embedding models:', error);
+        console.error('Failed to load knowledge base embedding model:', error);
+        alert('加载知识库绑定的 Embedding 模型失败');
+      } finally {
+        setLoadingModel(false);
       }
     };
 
-    loadEmbeddingModels();
-  }, []);
+    loadKBEmbeddingModel();
+  }, [knowledgeBaseId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!selectedModelId) {
-      alert('请选择 Embedding 模型');
+    if (!embeddingModel) {
+      alert('Embedding 模型未加载');
       return;
     }
 
@@ -55,7 +68,7 @@ export default function IndexModal({ documentIds, onClose, onSuccess, isReindex 
 
       const indexData: any = {
         document_ids: documentIds,
-        embedding_model_id: selectedModelId,
+        embedding_model_id: embeddingModel.model_id,
         chunk_size: chunkSize,
         overlap_size: overlapSize,
       };
@@ -103,29 +116,22 @@ export default function IndexModal({ documentIds, onClose, onSuccess, isReindex 
             </p>
           </div>
 
-          {/* Embedding 模型选择 */}
+          {/* Embedding 模型显示 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Embedding 模型 <span className="text-red-500">*</span>
+              Embedding 模型
             </label>
-            <select
-              value={selectedModelId}
-              onChange={(e) => setSelectedModelId(e.target.value)}
-              className="input"
-              required
-            >
-              {embeddingModels.length === 0 ? (
-                <option value="">暂无可用的 Embedding 模型</option>
-              ) : (
-                embeddingModels.map((model) => (
-                  <option key={model.model_id} value={model.model_id}>
-                    {model.name}
-                  </option>
-                ))
-              )}
-            </select>
+            {loadingModel ? (
+              <div className="input bg-gray-50 text-gray-400">加载中...</div>
+            ) : embeddingModel ? (
+              <div className="input bg-gray-50 text-gray-600">
+                {embeddingModel.name}
+              </div>
+            ) : (
+              <div className="input bg-red-50 text-red-600">未找到绑定的 Embedding 模型</div>
+            )}
             <p className="mt-1 text-xs text-gray-500">
-              选择用于文档向量化的 Embedding 模型
+              使用知识库创建时绑定的 Embedding 模型进行文档向量化
             </p>
           </div>
 
@@ -210,7 +216,7 @@ export default function IndexModal({ documentIds, onClose, onSuccess, isReindex 
             <button
               type="submit"
               className="btn btn-primary"
-              disabled={indexing || embeddingModels.length === 0}
+              disabled={indexing || !embeddingModel || loadingModel}
             >
               {indexing ? (isReindex ? '重新索引中...' : '索引中...') : (isReindex ? '重新索引' : '开始索引')}
             </button>

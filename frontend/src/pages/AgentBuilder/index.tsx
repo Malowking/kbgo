@@ -29,7 +29,6 @@ export default function AgentBuilder() {
   // Available options
   const [kbList, setKbList] = useState<KnowledgeBase[]>([]);
   const [models, setModels] = useState<Model[]>([]);
-  const [embeddingModels, setEmbeddingModels] = useState<Model[]>([]);
   const [rerankModels, setRerankModels] = useState<Model[]>([]);
   const [mcpServices, setMcpServices] = useState<MCPRegistry[]>([]);
   const [selectedMcpTools, setSelectedMcpTools] = useState<Record<string, string[]>>({});
@@ -72,11 +71,9 @@ export default function AgentBuilder() {
 
       // 包含 LLM 和多模态模型
       const llmAndMultimodalModels = allModels.filter(m => m.type === 'llm' || m.type === 'multimodal');
-      const embeddingModels = allModels.filter(m => m.type === 'embedding');
       const rerankModels = allModels.filter(m => m.type === 'rerank' || m.type === 'reranker');
 
       setModels(llmAndMultimodalModels);
-      setEmbeddingModels(embeddingModels);
       setRerankModels(rerankModels);
 
       // Set default model if available
@@ -472,24 +469,6 @@ export default function AgentBuilder() {
 
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Embedding 模型
-                        </label>
-                        <select
-                          value={config.embedding_model_id || ''}
-                          onChange={(e) => setConfig(prev => ({ ...prev, embedding_model_id: e.target.value }))}
-                          className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="">选择模型</option>
-                          {embeddingModels.map((model) => (
-                            <option key={model.model_id} value={model.model_id}>
-                              {model.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
                           Rerank 模型
                         </label>
                         <select
@@ -504,6 +483,9 @@ export default function AgentBuilder() {
                             </option>
                           ))}
                         </select>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Embedding 模型将自动使用知识库绑定的模型
+                        </p>
                       </div>
                     </>
                   )}

@@ -14,7 +14,6 @@ export default function Chat() {
   const [currentConvId, setCurrentConvId] = useState<string>('');
   const [kbList, setKbList] = useState<KnowledgeBase[]>([]);
   const [models, setModels] = useState<Model[]>([]);
-  const [embeddingModels, setEmbeddingModels] = useState<Model[]>([]);
   const [rerankModels, setRerankModels] = useState<Model[]>([]);
   const [showSidebar, setShowSidebar] = useState(true);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
@@ -24,7 +23,6 @@ export default function Chat() {
   // Settings
   const [selectedKB, setSelectedKB] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState<string>('');
-  const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState<string>('');
   const [selectedRerankModel, setSelectedRerankModel] = useState<string>('');
   const [enableRetriever, setEnableRetriever] = useState(false);
   const [topK, setTopK] = useState(5);
@@ -70,18 +68,6 @@ export default function Chat() {
       setModels(llmAndMultimodalModels as Model[]);
       if (llmAndMultimodalModels.length > 0 && !selectedModel) {
         setSelectedModel(llmAndMultimodalModels[0].id || llmAndMultimodalModels[0].model_id);
-      }
-
-      // Embedding 模型
-      const embeddingModelsList = response.models?.filter(m =>
-        m.type === 'embedding'
-      ).map(m => ({
-        ...m,
-        id: m.model_id,
-      })) || [];
-      setEmbeddingModels(embeddingModelsList as Model[]);
-      if (embeddingModelsList.length > 0 && !selectedEmbeddingModel) {
-        setSelectedEmbeddingModel(embeddingModelsList[0].id || embeddingModelsList[0].model_id);
       }
 
       // Rerank 模型
@@ -168,7 +154,6 @@ export default function Chat() {
           conv_id: convId,
           question: currentInput,
           model_id: selectedModel,
-          embedding_model_id: selectedEmbeddingModel,
           rerank_model_id: selectedRerankModel,
           knowledge_id: selectedKB,
           enable_retriever: enableRetriever && !!selectedKB,
@@ -376,26 +361,7 @@ export default function Chat() {
                   <h3 className="text-sm font-medium text-gray-700 mb-3">检索参数配置</h3>
 
                   {/* 模型选择行 */}
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1">Embedding 模型</label>
-                      <select
-                        value={selectedEmbeddingModel}
-                        onChange={(e) => setSelectedEmbeddingModel(e.target.value)}
-                        className="input text-sm"
-                      >
-                        {embeddingModels.length === 0 && (
-                          <option value="">无可用的 Embedding 模型</option>
-                        )}
-                        {embeddingModels.map((model) => (
-                          <option key={model.id} value={model.id}>
-                            {model.name}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-xs text-gray-500 mt-1">用于文本向量化</p>
-                    </div>
-
+                  <div className="mb-4">
                     <div>
                       <label className="block text-xs text-gray-600 mb-1">Rerank 模型</label>
                       <select
@@ -413,7 +379,7 @@ export default function Chat() {
                           </option>
                         ))}
                       </select>
-                      <p className="text-xs text-gray-500 mt-1">用于结果重排序（Milvus模式不需要）</p>
+                      <p className="text-xs text-gray-500 mt-1">用于结果重排序（Milvus模式不需要，Embedding 模型自动使用知识库绑定的模型）</p>
                     </div>
                   </div>
 

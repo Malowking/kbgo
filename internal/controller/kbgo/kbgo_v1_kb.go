@@ -9,6 +9,7 @@ import (
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/file_store"
+	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/index"
 	"github.com/Malowking/kbgo/internal/model/do"
@@ -21,22 +22,43 @@ import (
 
 func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *v1.KBCreateRes, err error) {
 	// Log request parameters
-	g.Log().Infof(ctx, "KBCreate request received - Name: %s, Description: %s, Category: %s",
-		req.Name, req.Description, req.Category)
+	g.Log().Infof(ctx, "KBCreate request received - Name: %s, Description: %s, Category: %s, EmbeddingModelId: %s",
+		req.Name, req.Description, req.Category, req.EmbeddingModelId)
 
 	res = &v1.KBCreateRes{}
+
+	// 验证 embedding 模型是否存在且类型为 embedding
+	modelConfig := model.Registry.Get(req.EmbeddingModelId)
+	if modelConfig == nil {
+		return nil, fmt.Errorf("embedding model not found: %s", req.EmbeddingModelId)
+	}
+	if modelConfig.Type != model.ModelTypeEmbedding {
+		return nil, fmt.Errorf("model %s is not an embedding model, type: %s", req.EmbeddingModelId, modelConfig.Type)
+	}
+
+	// 获取模型维度
+	dimension := 1024 // 默认维度
+	if modelConfig.Extra != nil {
+		if dim, ok := modelConfig.Extra["dimension"].(float64); ok {
+			dimension = int(dim)
+		} else if dim, ok := modelConfig.Extra["dimension"].(int); ok {
+			dimension = dim
+		}
+	}
+	g.Log().Infof(ctx, "Using embedding model: %s with dimension: %d", modelConfig.Name, dimension)
 
 	// 生成 UUID 作为知识库 ID (使用与项目其他地方相同的格式)
 	knowledgeId := "kb_" + strings.ReplaceAll(uuid.New().String(), "-", "")
 
 	// 使用 GORM 模型确保自动填充 CreateTime 和 UpdateTime
 	kb := &gormModel.KnowledgeBase{
-		ID:             knowledgeId,
-		Name:           req.Name,
-		Description:    req.Description,
-		Category:       req.Category,
-		CollectionName: knowledgeId, // 使用知识库ID作为默认的CollectionName
-		Status:         1,           // 默认启用
+		ID:               knowledgeId,
+		Name:             req.Name,
+		Description:      req.Description,
+		Category:         req.Category,
+		CollectionName:   knowledgeId,          // 使用知识库ID作为默认的CollectionName
+		EmbeddingModelId: req.EmbeddingModelId, // 保存绑定的 embedding 模型 ID
+		Status:           1,                    // 默认启用
 	}
 
 	err = dao.GetDB().WithContext(ctx).Create(kb).Error
@@ -44,15 +66,15 @@ func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *
 		return nil, err
 	}
 
-	// 创建 Milvus collection
+	// 创建向量库 collection，传入维度参数
 	docIndexSvr := index.GetDocIndexSvr()
-	err = docIndexSvr.GetVectorStore().CreateCollection(ctx, knowledgeId)
+	err = docIndexSvr.GetVectorStore().CreateCollection(ctx, knowledgeId, dimension)
 	if err != nil {
-		// 如果创建 Milvus collection 失败，删除已创建的数据库记录并返回错误
+		// 如果创建向量库 collection 失败，删除已创建的数据库记录并返回错误
 		dao.GetDB().WithContext(ctx).Delete(&gormModel.KnowledgeBase{}, "id = ?", knowledgeId)
-		return nil, fmt.Errorf("创建 Milvus collection 失败: %w", err)
+		return nil, fmt.Errorf("创建向量库 collection 失败: %w", err)
 	}
-	g.Log().Infof(ctx, "成功创建 Milvus collection: %s", knowledgeId)
+	g.Log().Infof(ctx, "成功创建向量库 collection: %s with dimension: %d", knowledgeId, dimension)
 
 	// 如果使用本地存储，则创建对应的文件夹
 	storageType := file_store.GetStorageType()
@@ -63,7 +85,7 @@ func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *
 			err = os.MkdirAll(knowledgeDir, 0755)
 			if err != nil {
 				g.Log().Errorf(ctx, "创建知识库目录失败: %s, 错误: %v", knowledgeDir, err)
-				// 不返回错误，因为数据库记录和 Milvus collection 已创建成功
+				// 不返回错误，因为数据库记录和向量库 collection 已创建成功
 			} else {
 				cwd, _ := os.Getwd()
 				g.Log().Infof(ctx, "成功创建知识库目录: %s 在 %s", knowledgeDir, cwd)
