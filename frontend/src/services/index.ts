@@ -140,7 +140,7 @@ export const chatApi = {
   // 流式聊天（需要特殊处理）
   sendStream: async (
     data: ChatRequest & { files?: File[] },
-    onMessage: (chunk: string, reasoningChunk?: string) => void,
+    onMessage: (chunk: string, reasoningChunk?: string, references?: any[]) => void,
     onError?: (error: Error) => void
   ) => {
     try {
@@ -241,12 +241,31 @@ export const chatApi = {
               // 解析 JSON 数据
               try {
                 const parsed = JSON.parse(dataContent);
-                // 传递 content 和 reasoning_content
-                if (parsed.content || parsed.reasoning_content) {
-                  onMessage(parsed.content || '', parsed.reasoning_content);
+                // 传递 content, reasoning_content 和 references
+                if (parsed.content || parsed.reasoning_content || parsed.references) {
+                  onMessage(
+                    parsed.content || '',
+                    parsed.reasoning_content,
+                    parsed.references
+                  );
                 }
               } catch (parseError) {
                 console.warn('Failed to parse SSE data:', dataContent, parseError);
+              }
+            }
+            // 处理 SSE 格式的 documents: 行
+            else if (trimmed.startsWith('documents:')) {
+              const dataContent = trimmed.substring(10).trim();
+
+              // 解析 JSON 数据
+              try {
+                const parsed = JSON.parse(dataContent);
+                // 传递 document 作为 references
+                if (parsed.document) {
+                  onMessage('', undefined, parsed.document);
+                }
+              } catch (parseError) {
+                console.warn('Failed to parse SSE documents:', dataContent, parseError);
               }
             }
           }
@@ -290,6 +309,14 @@ export const modelApi = {
   // 重新加载模型配置
   reload: () =>
     apiClient.post<void>('/api/v1/model/reload'),
+
+  // 获取重写模型
+  getRewriteModel: () =>
+    apiClient.get<{ rewrite_model: Model | null; configured: boolean }>('/api/v1/model/rewrite'),
+
+  // 设置重写模型
+  setRewriteModel: (modelId: string) =>
+    apiClient.post<{ success: boolean; message: string }>('/api/v1/model/rewrite', { model_id: modelId }),
 };
 
 // MCP API
@@ -375,7 +402,7 @@ export const agentApi = {
   // Agent流式对话
   chatStream: async (
     data: AgentChatRequest & { files?: File[] },
-    onMessage: (chunk: string, reasoningChunk?: string) => void,
+    onMessage: (chunk: string, reasoningChunk?: string, references?: Document[]) => void,
     onError?: (error: Error) => void
   ) => {
     try {
@@ -455,12 +482,31 @@ export const agentApi = {
               // 解析 JSON 数据
               try {
                 const parsed = JSON.parse(dataContent);
-                // 传递 content 和 reasoning_content
-                if (parsed.content || parsed.reasoning_content) {
-                  onMessage(parsed.content || '', parsed.reasoning_content);
+                // 传递 content, reasoning_content 和 references
+                if (parsed.content || parsed.reasoning_content || parsed.references) {
+                  onMessage(
+                    parsed.content || '',
+                    parsed.reasoning_content,
+                    parsed.references
+                  );
                 }
               } catch (parseError) {
                 console.warn('Failed to parse SSE data:', dataContent, parseError);
+              }
+            }
+            // 处理 SSE 格式的 documents: 行
+            else if (trimmed.startsWith('documents:')) {
+              const dataContent = trimmed.substring(10).trim();
+
+              // 解析 JSON 数据
+              try {
+                const parsed = JSON.parse(dataContent);
+                // 传递 document 作为 references
+                if (parsed.document) {
+                  onMessage('', undefined, parsed.document);
+                }
+              } catch (parseError) {
+                console.warn('Failed to parse SSE documents:', dataContent, parseError);
               }
             }
           }

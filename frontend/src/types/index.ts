@@ -74,6 +74,7 @@ export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
   reasoning_content?: string;
+  references?: Document[];
   create_time: string;
   tokens_used?: number;
   latency_ms?: number;
