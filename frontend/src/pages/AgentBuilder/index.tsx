@@ -69,9 +69,13 @@ export default function AgentBuilder() {
       const response = await modelApi.list();
       const allModels = response.models || [];
 
-      // 包含 LLM 和多模态模型
-      const llmAndMultimodalModels = allModels.filter(m => m.type === 'llm' || m.type === 'multimodal');
-      const rerankModels = allModels.filter(m => m.type === 'rerank' || m.type === 'reranker');
+      // 包含 LLM 和多模态模型（仅显示启用的模型）
+      const llmAndMultimodalModels = allModels.filter(m =>
+        (m.type === 'llm' || m.type === 'multimodal') && m.enabled !== false
+      ).sort((a, b) => a.name.localeCompare(b.name));
+      const rerankModels = allModels.filter(m =>
+        (m.type === 'rerank' || m.type === 'reranker') && m.enabled !== false
+      ).sort((a, b) => a.name.localeCompare(b.name));
 
       setModels(llmAndMultimodalModels);
       setRerankModels(rerankModels);

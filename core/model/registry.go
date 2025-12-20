@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"sync"
@@ -43,13 +44,15 @@ type ModelConfig struct {
 
 // ModelRegistry 全局模型注册表（内存缓存）
 type ModelRegistry struct {
-	mu     sync.RWMutex
-	models map[string]*ModelConfig // key = model_id (UUID)
+	mu           sync.RWMutex
+	models       map[string]*ModelConfig // key = model_id (UUID)
+	rewriteModel *ModelConfig            // 重写模型（单例）
 }
 
 // Registry 全局单例
 var Registry = &ModelRegistry{
-	models: make(map[string]*ModelConfig),
+	models:       make(map[string]*ModelConfig),
+	rewriteModel: nil, // 初始为空，等待用户配置
 }
 
 // Get 获取模型配置（并发安全读取）
@@ -97,6 +100,7 @@ func (r *ModelRegistry) Reload(ctx context.Context, db *gormdb.DB) error {
 
 	// 构建新的模型映射
 	newMap := make(map[string]*ModelConfig)
+	var newRewriteModel *ModelConfig // 临时存储重写模型
 
 	for _, m := range models {
 		mc := &ModelConfig{
@@ -115,6 +119,18 @@ func (r *ModelRegistry) Reload(ctx context.Context, db *gormdb.DB) error {
 			var extra map[string]any
 			if err := json.Unmarshal([]byte(m.Extra), &extra); err == nil {
 				mc.Extra = extra
+
+				// 检查是否是重写模型
+				if isRewrite, ok := extra["is_rewrite"].(bool); ok && isRewrite {
+					// 验证重写模型必须是启用的 LLM 类型
+					if m.Enabled && mc.Type == ModelTypeLLM {
+						newRewriteModel = mc
+						g.Log().Infof(ctx, "Found rewrite model in database: %s (%s)", mc.Name, mc.ModelID)
+					} else {
+						g.Log().Warningf(ctx, "Invalid rewrite model config: %s (%s), type=%s, enabled=%v",
+							mc.Name, mc.ModelID, mc.Type, m.Enabled)
+					}
+				}
 			}
 		}
 
@@ -149,9 +165,16 @@ func (r *ModelRegistry) Reload(ctx context.Context, db *gormdb.DB) error {
 	// 原子替换（所有旧请求继续使用旧缓存，新请求使用新缓存）
 	r.mu.Lock()
 	r.models = newMap
+	r.rewriteModel = newRewriteModel // 同步更新重写模型
 	r.mu.Unlock()
 
-	g.Log().Infof(ctx, "Model registry reloaded successfully, total models: %d", len(newMap))
+	if newRewriteModel != nil {
+		g.Log().Infof(ctx, "Model registry reloaded successfully, total models: %d, rewrite model: %s",
+			len(newMap), newRewriteModel.Name)
+	} else {
+		g.Log().Infof(ctx, "Model registry reloaded successfully, total models: %d, no rewrite model configured",
+			len(newMap))
+	}
 	return nil
 }
 
@@ -160,4 +183,51 @@ func (r *ModelRegistry) Count() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return len(r.models)
+}
+
+// GetRewriteModel 获取重写模型配置（并发安全读取）
+func (r *ModelRegistry) GetRewriteModel() *ModelConfig {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.rewriteModel
+}
+
+// SetRewriteModel 设置重写模型（并发安全写入）
+func (r *ModelRegistry) SetRewriteModel(modelID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// 如果 modelID 为空，清除重写模型
+	if modelID == "" {
+		r.rewriteModel = nil
+		return nil
+	}
+
+	// 检查模型是否存在
+	mc, exists := r.models[modelID]
+	if !exists {
+		return fmt.Errorf("model not found: %s", modelID)
+	}
+
+	// 检查模型是否启用
+	if !mc.Enabled {
+		return fmt.Errorf("cannot set disabled model as rewrite model")
+	}
+
+	// 检查模型类型是否为 LLM
+	if mc.Type != ModelTypeLLM {
+		return fmt.Errorf("rewrite model must be LLM type")
+	}
+
+	// 设置重写模型
+	r.rewriteModel = mc
+	g.Log().Infof(context.Background(), "Rewrite model set to: %s (%s)", mc.Name, mc.ModelID)
+	return nil
+}
+
+// HasRewriteModel 检查是否配置了重写模型
+func (r *ModelRegistry) HasRewriteModel() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.rewriteModel != nil
 }

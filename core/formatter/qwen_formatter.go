@@ -25,16 +25,12 @@ func NewQwenFormatter() *QwenFormatter {
 func (f *QwenFormatter) FormatMessages(messages []*schema.Message) ([]openai.ChatCompletionMessage, error) {
 	result := make([]openai.ChatCompletionMessage, 0, len(messages))
 
-	for idx, msg := range messages {
+	for _, msg := range messages {
 		openaiMsg, err := f.formatSingleMessage(msg)
 		if err != nil {
 			g.Log().Errorf(context.Background(), "Failed to convert message: %v", err)
 			continue
 		}
-
-		// 调试日志：打印消息格式
-		g.Log().Debugf(context.Background(), "[Qwen Formatter] Message[%d] Role=%s, HasContent=%v, HasMultiContent=%v, ToolCallID=%s",
-			idx, openaiMsg.Role, openaiMsg.Content != "", len(openaiMsg.MultiContent) > 0, openaiMsg.ToolCallID)
 
 		result = append(result, openaiMsg)
 	}

@@ -96,6 +96,11 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 		return "", "", fmt.Errorf("model not found: %s", modelID)
 	}
 
+	// 检查模型是否已启用，如果禁用则直接返回提示消息
+	if !mc.Enabled {
+		return "This model has been disabled", "", nil
+	}
+
 	// 根据模型类型选择格式适配器
 	var msgFormatter formatter.MessageFormatter
 	if IsQwenModel(mc.Name) {
@@ -250,6 +255,25 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
 		return nil, fmt.Errorf("model not found: %s", modelID)
+	}
+
+	// 检查模型是否已启用，如果禁用则返回固定消息流
+	if !mc.Enabled {
+		// 创建 Pipe 用于流式传输
+		streamReader, streamWriter := CreateStreamPipe(ctx, convID)
+
+		// 发送禁用消息
+		go func() {
+			defer streamWriter.Close()
+
+			// 发送固定消息
+			streamWriter.Send(&schema.Message{
+				Role:    schema.Assistant,
+				Content: "This model has been disabled",
+			}, nil)
+		}()
+
+		return streamReader, nil
 	}
 
 	// 根据模型类型选择格式适配器
@@ -656,6 +680,14 @@ func (x *Chat) GenerateWithTools(ctx context.Context, modelID string, messages [
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
 		return nil, fmt.Errorf("model not found: %s", modelID)
+	}
+
+	// 检查模型是否已启用，如果禁用则返回固定消息
+	if !mc.Enabled {
+		return &schema.Message{
+			Role:    schema.Assistant,
+			Content: "This model has been disabled",
+		}, nil
 	}
 
 	// 根据模型类型选择格式适配器

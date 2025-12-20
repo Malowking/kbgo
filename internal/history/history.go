@@ -335,17 +335,12 @@ func (h *Manager) processImageContent(mediaURL string) (schema.ChatMessagePart, 
 			},
 		}, nil
 	}
-
-	// 调试日志：打印原始路径和当前工作目录
 	cwd, _ := os.Getwd()
-	g.Log().Debugf(context.Background(), "[processImageContent] mediaURL=%s, cwd=%s", mediaURL, cwd)
-
 	// 检查文件路径是否为绝对路径，如果是相对路径则使用当前工作目录
 	filePath := mediaURL
 	if !filepath.IsAbs(mediaURL) {
 		// 相对路径，使用当前工作目录拼接
 		filePath = filepath.Join(cwd, mediaURL)
-		g.Log().Debugf(context.Background(), "[processImageContent] Converted to absolute path: %s", filePath)
 	}
 
 	// 检查文件是否存在

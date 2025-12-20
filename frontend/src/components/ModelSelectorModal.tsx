@@ -29,13 +29,13 @@ export default function ModelSelectorModal({
     try {
       setLoading(true);
       const response = await modelApi.list();
-      // 过滤出 LLM 和多模态模型，并统一 ID 字段
+      // 过滤出 LLM 和多模态模型，仅显示启用的模型，并统一 ID 字段
       const filteredModels = response.models?.filter(m =>
-        modelTypes.includes(m.type as 'llm' | 'multimodal')
+        modelTypes.includes(m.type as 'llm' | 'multimodal') && m.enabled !== false
       ).map(m => ({
         ...m,
         id: m.id || m.model_id, // 统一使用 id 字段
-      })) || [];
+      })).sort((a, b) => a.name.localeCompare(b.name)) || [];
       setModels(filteredModels);
     } catch (error) {
       console.error('Failed to fetch models:', error);

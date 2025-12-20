@@ -599,10 +599,50 @@ func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query
 			return nil, fmt.Errorf("failed to query chunk status: %w", err)
 		}
 
-		// 过滤结果
+		// 收集document_ids以查询文档名称
+		documentIDsMap := make(map[string]bool)
+		for _, doc := range results {
+			if docID, ok := doc.MetaData[DocumentId].(string); ok && docID != "" {
+				documentIDsMap[docID] = true
+			}
+		}
+
+		// 查询文档名称
+		docNameMap := make(map[string]string)
+		if len(documentIDsMap) > 0 {
+			documentIDs := make([]string, 0, len(documentIDsMap))
+			for docID := range documentIDsMap {
+				documentIDs = append(documentIDs, docID)
+			}
+
+			// 使用 gorm 查询文档名称
+			var documents []struct {
+				ID       string
+				FileName string `gorm:"column:file_name"`
+			}
+			err := dao.GetDB().WithContext(ctx).
+				Table("knowledge_documents").
+				Select("id, file_name").
+				Where("id IN ?", documentIDs).
+				Find(&documents).Error
+
+			if err == nil {
+				for _, doc := range documents {
+					docNameMap[doc.ID] = doc.FileName
+				}
+			}
+		}
+
+		// 过滤结果并添加文档名称
 		filtered := make([]*schema.Document, 0, len(results))
 		for _, doc := range results {
 			if activeIDs.Contains(doc.ID) {
+				// 添加文档名称到metadata
+				if docID, ok := doc.MetaData[DocumentId].(string); ok {
+					if docName, exists := docNameMap[docID]; exists {
+						doc.MetaData["document_name"] = docName
+					}
+				}
 				filtered = append(filtered, doc)
 			}
 		}

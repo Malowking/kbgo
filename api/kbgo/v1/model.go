@@ -202,3 +202,28 @@ type DeleteModelRes struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 }
+
+// SetRewriteModelReq 设置重写模型请求
+type SetRewriteModelReq struct {
+	g.Meta  `path:"/v1/model/rewrite" method:"post" tags:"model" summary:"Set rewrite model for query rewriting"`
+	ModelID string `json:"model_id" v:"required"` // 模型ID，传空字符串表示取消重写模型
+}
+
+// SetRewriteModelRes 设置重写模型响应
+type SetRewriteModelRes struct {
+	g.Meta  `mime:"application/json"`
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+// GetRewriteModelReq 获取重写模型请求
+type GetRewriteModelReq struct {
+	g.Meta `path:"/v1/model/rewrite" method:"get" tags:"model" summary:"Get current rewrite model"`
+}
+
+// GetRewriteModelRes 获取重写模型响应
+type GetRewriteModelRes struct {
+	g.Meta       `mime:"application/json"`
+	RewriteModel *model.ModelConfig `json:"rewrite_model"` // 重写模型配置，未配置时为null
+	Configured   bool               `json:"configured"`    // 是否已配置重写模型
+}

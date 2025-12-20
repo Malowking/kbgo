@@ -35,12 +35,7 @@ func SteamResponse(ctx context.Context, streamReader schema.StreamReaderInterfac
 		Id:      uuid.NewString(),
 		Created: time.Now().Unix(),
 	}
-	if len(docs) > 0 {
-		sd.Document = docs
-		marshal, _ := sonic.Marshal(sd)
-		writeSSEDocuments(httpResp, string(marshal))
-	}
-	sd.Document = nil // 置空，发一次就够了
+
 	// 处理流式响应
 	for {
 		chunk, err := streamReader.Recv()
@@ -62,6 +57,16 @@ func SteamResponse(ctx context.Context, streamReader schema.StreamReaderInterfac
 		// 发送数据事件
 		writeSSEData(httpResp, string(marshal))
 	}
+
+	// 在流式响应结束后，发送知识库检索结果作为最后一条消息
+	if len(docs) > 0 {
+		sd.Document = docs
+		sd.Content = ""
+		sd.ReasoningContent = ""
+		marshal, _ := sonic.Marshal(sd)
+		writeSSEDocuments(httpResp, string(marshal))
+	}
+
 	// 发送结束事件
 	writeSSEDone(httpResp)
 	return nil

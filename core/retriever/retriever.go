@@ -2,10 +2,8 @@ package retriever
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"sync"
-	"time"
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/config"
@@ -52,13 +50,26 @@ func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 		used        = ""          // 记录已经使用过的关键词
 	)
 
-	// 从注册表获取 LLM 模型配置
-	llmModels := model.Registry.GetByType(model.ModelTypeLLM)
-	if len(llmModels) == 0 {
-		return nil, fmt.Errorf("no LLM models registered in registry")
+	// 检查是否配置了重写模型
+	if !model.Registry.HasRewriteModel() {
+		g.Log().Debugf(ctx, "未配置重写模型，跳过查询重写，直接使用原始查询")
+		// 直接使用原始查询进行检索
+		reqCopy := req.Copy()
+		reqCopy.optQuery = req.Query
+		return retrieveDoOnce(ctx, conf, reqCopy)
 	}
 
-	g.Log().Infof(ctx, "Found %d LLM models for query rewrite", len(llmModels))
+	// 从注册表获取重写模型配置
+	rewriteModel := model.Registry.GetRewriteModel()
+	if rewriteModel == nil {
+		g.Log().Warningf(ctx, "重写模型未正确配置，跳过查询重写")
+		// 直接使用原始查询进行检索
+		reqCopy := req.Copy()
+		reqCopy.optQuery = req.Query
+		return retrieveDoOnce(ctx, conf, reqCopy)
+	}
+
+	g.Log().Infof(ctx, "使用重写模型: %s (ID: %s)", rewriteModel.Name, rewriteModel.ModelID)
 
 	// 确定重写次数，默认为3次
 	rewriteAttempts := *req.RewriteAttempts
@@ -70,13 +81,9 @@ func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 	// 第一步：串行生成多个优化查询
 	optimizedQueries := make([]string, 0, rewriteAttempts)
 
-	// 配置重试机制
-	retryConfig := &model.LLMRetryConfig{
-		MaxRetries:    3,                      // 每次重写最多尝试3个不同的模型
-		RetryDelay:    300 * time.Millisecond, // 重试延迟300ms
-		ModelType:     model.ModelTypeLLM,
-		ExcludeModels: []string{},
-	}
+	// 创建模型服务（使用重写模型）
+	modelFormatter := formatter.NewOpenAIFormatter()
+	modelService := model.NewModelService(rewriteModel.APIKey, rewriteModel.BaseURL, modelFormatter)
 
 	for i := 0; i < rewriteAttempts; i++ {
 		// 生成优化查询消息
@@ -86,41 +93,25 @@ func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 			continue
 		}
 
-		// 使用重试机制调用LLM进行查询重写
-		result, err := model.RetryWithDifferentLLM(ctx, retryConfig, func(ctx context.Context, modelID string) (interface{}, error) {
-			// 获取模型配置
-			mc := model.Registry.Get(modelID)
-			if mc == nil {
-				return nil, fmt.Errorf("模型不存在: %s", modelID)
-			}
+		// 使用重写模型进行查询重写
+		g.Log().Infof(ctx, "使用重写模型 %s 进行查询重写，尝试 %d/%d", rewriteModel.Name, i+1, rewriteAttempts)
 
-			// 创建模型服务
-			modelFormatter := formatter.NewOpenAIFormatter()
-			modelService := model.NewModelService(mc.APIKey, mc.BaseURL, modelFormatter)
-
-			// 调用LLM进行查询重写
-			resp, err := modelService.ChatCompletion(ctx, model.ChatCompletionParams{
-				ModelName:   mc.Name,
-				Messages:    optMessages,
-				Temperature: 0.7,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("ChatCompletion failed: %w", err)
-			}
-
-			if len(resp.Choices) == 0 {
-				return nil, fmt.Errorf("ChatCompletion returned no choices")
-			}
-
-			return resp.Choices[0].Message.Content, nil
+		resp, err := modelService.ChatCompletion(ctx, model.ChatCompletionParams{
+			ModelName:   rewriteModel.Name,
+			Messages:    optMessages,
+			Temperature: 0.7,
 		})
-
 		if err != nil {
 			g.Log().Errorf(ctx, "Query rewrite failed at attempt %d: %v", i+1, err)
 			continue
 		}
 
-		optimizedQuery := result.(string)
+		if len(resp.Choices) == 0 {
+			g.Log().Errorf(ctx, "ChatCompletion returned no choices at attempt %d", i+1)
+			continue
+		}
+
+		optimizedQuery := resp.Choices[0].Message.Content
 		used += optimizedQuery + " "
 
 		g.Log().Infof(ctx, "Rewrite attempt %d: %s", i+1, optimizedQuery)

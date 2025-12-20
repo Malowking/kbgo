@@ -40,7 +40,10 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
       const response = await modelApi.list();
       const allModels = response.models || [];
 
-      const rerank = allModels.filter(m => m.type === 'rerank' || m.type === 'reranker');
+      // 仅显示启用的 rerank 模型
+      const rerank = allModels.filter(m =>
+        (m.type === 'rerank' || m.type === 'reranker') && m.enabled !== false
+      ).sort((a, b) => a.name.localeCompare(b.name));
 
       setRerankModels(rerank);
 
@@ -228,18 +231,26 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
               </div>
 
               {enableRewrite && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    重写尝试次数
-                  </label>
-                  <input
-                    type="number"
-                    value={rewriteAttempts}
-                    onChange={(e) => setRewriteAttempts(parseInt(e.target.value) || 3)}
-                    min={1}
-                    max={10}
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                <div className="space-y-3">
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                    <p className="text-xs text-purple-800">
+                      💡 查询重写将使用在「模型管理」页面配置的重写模型。如未配置重写模型，将跳过重写逻辑。
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      重写尝试次数
+                    </label>
+                    <input
+                      type="number"
+                      value={rewriteAttempts}
+                      onChange={(e) => setRewriteAttempts(parseInt(e.target.value) || 3)}
+                      min={1}
+                      max={10}
+                      className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
                 </div>
               )}
             </div>

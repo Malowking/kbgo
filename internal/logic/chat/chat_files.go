@@ -540,20 +540,6 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 	return streamReader, nil
 }
 
-// formatDocumentsForQwen 格式化文档为可读的字符串
-func formatDocumentsForQwen(docs []*schema.Document) string {
-	if len(docs) == 0 {
-		return ""
-	}
-
-	var builder strings.Builder
-	builder.WriteString("参考资料:\n")
-	for i, doc := range docs {
-		builder.WriteString(fmt.Sprintf("[%d] %s\n", i+1, doc.Content))
-	}
-	return builder.String()
-}
-
 // IsQwenModel 判断是否为Qwen模型
 func IsQwenModel(modelName string) bool {
 	return strings.HasPrefix(strings.ToLower(modelName), "qwen")

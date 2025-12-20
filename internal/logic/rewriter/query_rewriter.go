@@ -56,6 +56,12 @@ func (r *QueryRewriter) RewriteQuery(ctx context.Context, currentQuery string, c
 		return currentQuery, nil
 	}
 
+	// 检查是否配置了重写模型
+	if !coreModel.Registry.HasRewriteModel() {
+		g.Log().Debugf(ctx, "未配置重写模型，跳过查询重写")
+		return currentQuery, nil
+	}
+
 	// 如果没有历史对话，不需要重写
 	if len(chatHistory) == 0 {
 		g.Log().Debugf(ctx, "没有历史对话，跳过查询重写")
@@ -227,16 +233,13 @@ AI: 学习深度学习需要掌握数学基础、Python编程...
 		{Role: schema.User, Content: userPrompt},
 	}
 
-	// 获取模型配置（使用聊天相同的模型）
-	modelID := config.ModelID
-	if modelID == "" {
-		return "", fmt.Errorf("ModelID 不能为空")
+	// 获取重写模型配置（从内存中获取）
+	mc := coreModel.Registry.GetRewriteModel()
+	if mc == nil {
+		return "", fmt.Errorf("重写模型未配置")
 	}
 
-	mc := coreModel.Registry.Get(modelID)
-	if mc == nil {
-		return "", fmt.Errorf("模型不存在: %s", modelID)
-	}
+	g.Log().Debugf(ctx, "使用重写模型: %s (%s)", mc.Name, mc.ModelID)
 
 	// 选择格式适配器
 	var msgFormatter formatter.MessageFormatter

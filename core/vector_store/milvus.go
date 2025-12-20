@@ -10,6 +10,7 @@ import (
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/internal/dao"
+	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	milvusModel "github.com/Malowking/kbgo/internal/model/milvus"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
@@ -351,7 +352,8 @@ type milvusRetriever struct {
 	client         *milvusclient.Client
 	collectionName string
 	vectorField    string
-	config         interface{} // 使用 interface{} 避免循环导入
+	config         interface{}
+	store          *MilvusStore
 }
 
 // Retrieve 实现检索功能
@@ -494,94 +496,8 @@ func (r *milvusRetriever) Retrieve(ctx context.Context, query string, opts ...Op
 		return []*schema.Document{}, nil
 	}
 
-	// 转换搜索结果为schema.Document - 复用原有转换逻辑
-	return r.convertResultsToDocuments(ctx, results[0].Fields, results[0].Scores)
-}
-
-// convertResultsToDocuments 转换搜索结果为文档
-func (r *milvusRetriever) convertResultsToDocuments(ctx context.Context, columns []column.Column, scores []float32) ([]*schema.Document, error) {
-	if len(columns) == 0 {
-		return nil, nil
-	}
-
-	// 确定文档数量
-	numDocs := columns[0].Len()
-	result := make([]*schema.Document, numDocs)
-	for i := range result {
-		result[i] = &schema.Document{
-			MetaData: make(map[string]any),
-		}
-	}
-
-	// 设置分数
-	for i := 0; i < numDocs && i < len(scores); i++ {
-		result[i].Score = scores[i]
-	}
-
-	// 处理各列数据
-	for _, col := range columns {
-		switch col.Name() {
-		case "id":
-			for i := 0; i < col.Len(); i++ {
-				val, err := col.Get(i)
-				if err != nil {
-					return nil, fmt.Errorf("failed to get id: %w", err)
-				}
-				if str, ok := val.(string); ok {
-					result[i].ID = str
-				}
-			}
-		case "text":
-			for i := 0; i < col.Len(); i++ {
-				val, err := col.Get(i)
-				if err != nil {
-					return nil, fmt.Errorf("failed to get text: %w", err)
-				}
-				if str, ok := val.(string); ok {
-					result[i].Content = str
-				}
-			}
-		case "metadata":
-			for i := 0; i < col.Len(); i++ {
-				val, err := col.Get(i)
-				if err != nil {
-					continue
-				}
-				if val == nil {
-					continue
-				}
-
-				// 处理JSON格式的metadata
-				switch v := val.(type) {
-				case string:
-					var metadata map[string]any
-					if err := json.Unmarshal([]byte(v), &metadata); err == nil {
-						for k, mv := range metadata {
-							result[i].MetaData[k] = mv
-						}
-					}
-				case []byte:
-					var metadata map[string]any
-					if err := json.Unmarshal(v, &metadata); err == nil {
-						for k, mv := range metadata {
-							result[i].MetaData[k] = mv
-						}
-					}
-				}
-			}
-		default:
-			// 其他字段添加到metadata
-			for i := 0; i < col.Len(); i++ {
-				val, err := col.Get(i)
-				if err != nil {
-					continue
-				}
-				result[i].MetaData[col.Name()] = val
-			}
-		}
-	}
-
-	return result, nil
+	// 这个方法包含了查询文档名称和权限控制的完整逻辑
+	return r.store.ConvertSearchResultsToDocuments(ctx, results[0].Fields, results[0].Scores)
 }
 
 // GetType 返回检索器类型
@@ -649,6 +565,7 @@ func (m *MilvusStore) NewMilvusRetriever(ctx context.Context, conf interface{}, 
 		collectionName: collectionName,
 		vectorField:    vectorField,
 		config:         conf,
+		store:          m,
 	}, nil
 }
 
@@ -772,10 +689,46 @@ func (m *MilvusStore) ConvertSearchResultsToDocuments(ctx context.Context, colum
 			return nil, fmt.Errorf("failed to query chunk status: %w", err)
 		}
 
-		// Filter documents to only include active chunks
+		// Collect document_ids from metadata to query document names
+		documentIDsMap := make(map[string]bool)
+		for _, doc := range result {
+			if docID, ok := doc.MetaData[DocumentId].(string); ok && docID != "" {
+				documentIDsMap[docID] = true
+			}
+		}
+
+		// Query document names if we have document IDs
+		docNameMap := make(map[string]string)
+		if len(documentIDsMap) > 0 {
+			documentIDs := make([]string, 0, len(documentIDsMap))
+			for docID := range documentIDsMap {
+				documentIDs = append(documentIDs, docID)
+			}
+
+			// Query document names from database
+			var documents []gormModel.KnowledgeDocuments
+			err := dao.GetDB().WithContext(ctx).
+				Select("id, file_name").
+				Where("id IN ?", documentIDs).
+				Find(&documents).Error
+
+			if err == nil {
+				for _, doc := range documents {
+					docNameMap[doc.ID] = doc.FileName
+				}
+			}
+		}
+
+		// Filter documents to only include active chunks and add document names
 		filtered := make([]*schema.Document, 0, len(result))
 		for _, doc := range result {
 			if activeIDs.Contains(doc.ID) {
+				// Add document name to metadata if available
+				if docID, ok := doc.MetaData[DocumentId].(string); ok {
+					if docName, exists := docNameMap[docID]; exists {
+						doc.MetaData["document_name"] = docName
+					}
+				}
 				filtered = append(filtered, doc)
 			}
 		}

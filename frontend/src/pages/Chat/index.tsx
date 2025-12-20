@@ -58,25 +58,25 @@ export default function Chat() {
     try {
       const response = await modelApi.list();
 
-      // LLM 和多模态模型
+      // LLM 和多模态模型（仅显示启用的模型）
       const llmAndMultimodalModels = response.models?.filter(m =>
-        m.type === 'llm' || m.type === 'multimodal'
+        (m.type === 'llm' || m.type === 'multimodal') && m.enabled !== false
       ).map(m => ({
         ...m,
         id: m.model_id,
-      })) || [];
+      })).sort((a, b) => a.name.localeCompare(b.name)) || [];
       setModels(llmAndMultimodalModels as Model[]);
       if (llmAndMultimodalModels.length > 0 && !selectedModel) {
         setSelectedModel(llmAndMultimodalModels[0].id || llmAndMultimodalModels[0].model_id);
       }
 
-      // Rerank 模型
+      // Rerank 模型（仅显示启用的模型）
       const rerankModelsList = response.models?.filter(m =>
-        m.type === 'reranker'
+        m.type === 'reranker' && m.enabled !== false
       ).map(m => ({
         ...m,
         id: m.model_id,
-      })) || [];
+      })).sort((a, b) => a.name.localeCompare(b.name)) || [];
       setRerankModels(rerankModelsList as Model[]);
       if (rerankModelsList.length > 0 && !selectedRerankModel) {
         setSelectedRerankModel(rerankModelsList[0].id || rerankModelsList[0].model_id);
@@ -137,6 +137,7 @@ export default function Chat() {
       // 默认使用流式响应
       let accumulatedContent = '';
       let accumulatedReasoning = '';
+      let receivedReferences: any[] | undefined;
 
       setMessages((prev) => [
         ...prev,
@@ -164,11 +165,15 @@ export default function Chat() {
           stream: true,
           files: currentFiles, // 传递文件
         },
-        (chunk, reasoningChunk) => {
+        (chunk, reasoningChunk, references) => {
           // 累积内容和思考过程
           accumulatedContent += chunk;
           if (reasoningChunk) {
             accumulatedReasoning += reasoningChunk;
+          }
+          // 保存references（通常在最后一条消息中返回）
+          if (references) {
+            receivedReferences = references;
           }
 
           setMessages((prev) => {
@@ -179,6 +184,7 @@ export default function Chat() {
                 ...newMessages[lastIndex],
                 content: accumulatedContent,
                 reasoning_content: accumulatedReasoning || undefined,
+                references: receivedReferences,
               };
             }
             return newMessages;

@@ -239,3 +239,189 @@ func (c *ControllerV1) DeleteModel(ctx context.Context, req *v1.DeleteModelReq) 
 		Message: "Model deleted and registry reloaded successfully",
 	}, nil
 }
+
+// SetRewriteModel 设置重写模型
+func (c *ControllerV1) SetRewriteModel(ctx context.Context, req *v1.SetRewriteModelReq) (res *v1.SetRewriteModelRes, err error) {
+	g.Log().Infof(ctx, "SetRewriteModel request received - ModelID: %s", req.ModelID)
+
+	db := dao.GetDB()
+
+	// 如果 ModelID 为空，表示取消重写模型
+	if req.ModelID == "" {
+		// 清空内存中的重写模型
+		if err := model.Registry.SetRewriteModel(""); err != nil {
+			g.Log().Errorf(ctx, "Failed to clear rewrite model: %v", err)
+			return nil, err
+		}
+
+		// 从数据库中移除所有模型的 is_rewrite 标记
+		// 查询所有有 is_rewrite 标记的模型
+		var models []gormModel.AIModel
+		if err := db.Find(&models).Error; err != nil {
+			g.Log().Errorf(ctx, "Failed to query models: %v", err)
+			return nil, gerror.Newf("Failed to query models: %v", err)
+		}
+
+		// 逐个移除 is_rewrite 标记
+		for _, m := range models {
+			if m.Extra == "" || m.Extra == "{}" {
+				continue
+			}
+
+			var extra map[string]interface{}
+			if err := gjson.Unmarshal([]byte(m.Extra), &extra); err != nil {
+				continue
+			}
+
+			// 检查是否有 is_rewrite 标记
+			if _, exists := extra["is_rewrite"]; exists {
+				// 删除 is_rewrite 标记
+				delete(extra, "is_rewrite")
+
+				// 序列化回 JSON
+				extraBytes, err := gjson.Marshal(extra)
+				if err != nil {
+					g.Log().Warningf(ctx, "Failed to marshal extra for model %s: %v", m.ModelID, err)
+					continue
+				}
+
+				// 更新数据库
+				if err := db.Model(&gormModel.AIModel{}).Where("model_id = ?", m.ModelID).
+					Update("extra", string(extraBytes)).Error; err != nil {
+					g.Log().Warningf(ctx, "Failed to update model %s: %v", m.ModelID, err)
+				}
+			}
+		}
+
+		// 重新加载模型注册表
+		if err := model.Registry.Reload(ctx, db); err != nil {
+			g.Log().Errorf(ctx, "Failed to reload model registry: %v", err)
+		}
+
+		g.Log().Info(ctx, "Rewrite model cleared successfully")
+		return &v1.SetRewriteModelRes{
+			Success: true,
+			Message: "Rewrite model cleared successfully",
+		}, nil
+	}
+
+	// 检查模型是否存在
+	existingModel, err := dao.AIModel.GetByID(ctx, req.ModelID)
+	if err != nil {
+		g.Log().Errorf(ctx, "Failed to get model: %v", err)
+		return nil, gerror.Newf("Failed to get model: %v", err)
+	}
+	if existingModel == nil {
+		g.Log().Errorf(ctx, "Model not found: %s", req.ModelID)
+		return nil, gerror.Newf("Model not found: %s", req.ModelID)
+	}
+
+	// 检查模型类型是否为 LLM
+	if existingModel.ModelType != "llm" {
+		return nil, gerror.New("Rewrite model must be LLM type")
+	}
+
+	// 检查模型是否启用
+	if !existingModel.Enabled {
+		return nil, gerror.New("Cannot set disabled model as rewrite model")
+	}
+
+	// 1. 先移除所有模型的 is_rewrite 标记
+	var models []gormModel.AIModel
+	if err := db.Find(&models).Error; err != nil {
+		g.Log().Errorf(ctx, "Failed to query models: %v", err)
+		return nil, gerror.Newf("Failed to query models: %v", err)
+	}
+
+	for _, m := range models {
+		if m.Extra == "" || m.Extra == "{}" {
+			continue
+		}
+
+		var extra map[string]interface{}
+		if err := gjson.Unmarshal([]byte(m.Extra), &extra); err != nil {
+			continue
+		}
+
+		// 检查是否有 is_rewrite 标记
+		if _, exists := extra["is_rewrite"]; exists {
+			// 删除 is_rewrite 标记
+			delete(extra, "is_rewrite")
+
+			// 序列化回 JSON
+			extraBytes, err := gjson.Marshal(extra)
+			if err != nil {
+				g.Log().Warningf(ctx, "Failed to marshal extra for model %s: %v", m.ModelID, err)
+				continue
+			}
+
+			// 更新数据库
+			if err := db.Model(&gormModel.AIModel{}).Where("model_id = ?", m.ModelID).
+				Update("extra", string(extraBytes)).Error; err != nil {
+				g.Log().Warningf(ctx, "Failed to update model %s: %v", m.ModelID, err)
+			}
+		}
+	}
+
+	// 2. 为指定模型添加 is_rewrite 标记
+	// 解析现有的 extra JSON
+	var extra map[string]interface{}
+	if existingModel.Extra != "" && existingModel.Extra != "{}" {
+		if err := gjson.Unmarshal([]byte(existingModel.Extra), &extra); err != nil {
+			g.Log().Warningf(ctx, "Failed to parse existing extra: %v, using empty map", err)
+			extra = make(map[string]interface{})
+		}
+	} else {
+		extra = make(map[string]interface{})
+	}
+
+	// 添加 is_rewrite 标记
+	extra["is_rewrite"] = true
+
+	// 序列化回 JSON
+	extraBytes, err := gjson.Marshal(extra)
+	if err != nil {
+		g.Log().Errorf(ctx, "Failed to marshal extra: %v", err)
+		return nil, gerror.Newf("Failed to marshal extra: %v", err)
+	}
+	existingModel.Extra = string(extraBytes)
+
+	// 更新数据库
+	if err := dao.AIModel.Update(ctx, existingModel); err != nil {
+		g.Log().Errorf(ctx, "Failed to update model: %v", err)
+		return nil, gerror.Newf("Failed to update model: %v", err)
+	}
+
+	// 3. 更新内存中的重写模型
+	if err := model.Registry.SetRewriteModel(req.ModelID); err != nil {
+		g.Log().Errorf(ctx, "Failed to set rewrite model in registry: %v", err)
+		return nil, err
+	}
+
+	// 4. 重新加载模型注册表（确保数据库和内存一致）
+	if err := model.Registry.Reload(ctx, db); err != nil {
+		g.Log().Errorf(ctx, "Failed to reload model registry: %v", err)
+		return &v1.SetRewriteModelRes{
+			Success: true,
+			Message: "Rewrite model set successfully, but failed to reload registry. Please call /v1/model/reload manually.",
+		}, nil
+	}
+
+	g.Log().Infof(ctx, "Rewrite model set successfully: %s", req.ModelID)
+	return &v1.SetRewriteModelRes{
+		Success: true,
+		Message: "Rewrite model set successfully",
+	}, nil
+}
+
+// GetRewriteModel 获取当前重写模型
+func (c *ControllerV1) GetRewriteModel(ctx context.Context, req *v1.GetRewriteModelReq) (res *v1.GetRewriteModelRes, err error) {
+	g.Log().Info(ctx, "GetRewriteModel request received")
+
+	rewriteModel := model.Registry.GetRewriteModel()
+
+	return &v1.GetRewriteModelRes{
+		RewriteModel: rewriteModel,
+		Configured:   rewriteModel != nil,
+	}, nil
+}

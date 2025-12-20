@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, Server, CheckCircle, XCircle, Plus, Edit2, Trash2 } from 'lucide-react';
+import { RefreshCw, Server, CheckCircle, XCircle, Plus, Edit2, Trash2, Sparkles, X } from 'lucide-react';
 import { modelApi } from '@/services';
 import type { Model } from '@/types';
 import CreateModelModal from './CreateModelModal';
@@ -11,9 +11,11 @@ export default function Models() {
   const [filterType, setFilterType] = useState<string>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingModel, setEditingModel] = useState<Model | null>(null);
+  const [rewriteModel, setRewriteModel] = useState<Model | null>(null);
 
   useEffect(() => {
     fetchModels();
+    fetchRewriteModel();
   }, []);
 
   const fetchModels = async () => {
@@ -25,12 +27,21 @@ export default function Models() {
         ...m,
         id: m.model_id,
         status: m.enabled ? 'active' : 'inactive',
-      }));
+      })).sort((a, b) => a.name.localeCompare(b.name));
       setModels(modelsWithId as Model[]);
     } catch (error) {
       console.error('Failed to fetch models:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchRewriteModel = async () => {
+    try {
+      const response = await modelApi.getRewriteModel();
+      setRewriteModel(response.rewrite_model);
+    } catch (error) {
+      console.error('Failed to fetch rewrite model:', error);
     }
   };
 
@@ -70,6 +81,38 @@ export default function Models() {
   const handleModalClose = () => {
     setShowCreateModal(false);
     setEditingModel(null);
+  };
+
+  const handleSetRewriteModel = async (modelId: string, modelName: string) => {
+    if (!confirm(`确定要将 "${modelName}" 设为查询重写模型吗？\n\n重写模型用于对话中的指代消解，建议选择小参数量的非思考模型以获得更快的响应速度。`)) return;
+
+    try {
+      await modelApi.setRewriteModel(modelId);
+      await fetchRewriteModel();
+      await fetchModels();
+      alert('重写模型设置成功');
+    } catch (error: any) {
+      console.error('Failed to set rewrite model:', error);
+      alert(`设置失败: ${error.message || '未知错误'}`);
+    }
+  };
+
+  const handleClearRewriteModel = async () => {
+    if (!confirm('确定要取消重写模型配置吗？\n\n取消后，系统将跳过查询重写逻辑。')) return;
+
+    try {
+      await modelApi.setRewriteModel('');
+      await fetchRewriteModel();
+      await fetchModels();
+      alert('重写模型已取消');
+    } catch (error: any) {
+      console.error('Failed to clear rewrite model:', error);
+      alert(`取消失败: ${error.message || '未知错误'}`);
+    }
+  };
+
+  const isRewriteModel = (modelId: string) => {
+    return rewriteModel?.model_id === modelId;
   };
 
   const getModelDescription = (model: Model): string => {
@@ -177,6 +220,52 @@ export default function Models() {
         ))}
       </div>
 
+      {/* Rewrite Model Card */}
+      {rewriteModel ? (
+        <div className="card bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <div className="flex items-center space-x-2 mb-2">
+                <Sparkles className="w-5 h-5 text-purple-600" />
+                <h3 className="text-lg font-semibold text-gray-900">查询重写模型</h3>
+              </div>
+              <p className="text-sm text-gray-600 mb-3">
+                用于对话中的指代消解和查询补全，提升多轮对话的理解能力
+              </p>
+              <div className="flex items-center space-x-4">
+                <div>
+                  <span className="text-xs text-gray-500">当前模型：</span>
+                  <span className="ml-2 text-sm font-medium text-gray-900">{rewriteModel.name}</span>
+                </div>
+                <div>
+                  <span className="text-xs text-gray-500">提供商：</span>
+                  <span className="ml-2 text-sm text-gray-700">{rewriteModel.provider}</span>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={handleClearRewriteModel}
+              className="p-2 rounded-lg hover:bg-red-100 text-red-600 transition-colors"
+              title="取消重写模型"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="card bg-gray-50 border-gray-200 border-dashed">
+          <div className="flex items-center space-x-3">
+            <Sparkles className="w-5 h-5 text-gray-400" />
+            <div>
+              <h3 className="text-sm font-medium text-gray-700">未配置查询重写模型</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                查询重写用于对话中的指代消解。在下方LLM模型列表中选择一个模型设为重写模型。
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Models List */}
       {loading ? (
         <div className="text-center py-12">
@@ -193,9 +282,10 @@ export default function Models() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {filteredModels.map((model) => {
             const description = getModelDescription(model);
+            const isRewrite = isRewriteModel(model.id || model.model_id);
 
             return (
-            <div key={model.id} className="card hover:shadow-md transition-shadow">
+            <div key={model.id} className={`card hover:shadow-md transition-shadow ${isRewrite ? 'ring-2 ring-purple-300 bg-purple-50/30' : ''}`}>
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
                   <div className="flex items-center space-x-2 mb-2">
@@ -206,6 +296,12 @@ export default function Models() {
                       <CheckCircle className="w-5 h-5 text-green-600" />
                     ) : (
                       <XCircle className="w-5 h-5 text-gray-400" />
+                    )}
+                    {isRewrite && (
+                      <span className="flex items-center space-x-1 px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium">
+                        <Sparkles className="w-3 h-3" />
+                        <span>重写模型</span>
+                      </span>
                     )}
                   </div>
                   <div className="flex items-center space-x-2 mb-2">
@@ -227,6 +323,15 @@ export default function Models() {
 
                 {/* Actions */}
                 <div className="flex space-x-2">
+                  {model.type === 'llm' && model.status === 'active' && !isRewrite && (
+                    <button
+                      onClick={() => handleSetRewriteModel(model.id || model.model_id, model.name)}
+                      className="p-2 rounded hover:bg-purple-100 text-purple-600"
+                      title="设为重写模型"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                    </button>
+                  )}
                   <button
                     onClick={() => handleEdit(model)}
                     className="p-2 rounded hover:bg-gray-100 text-blue-600"
