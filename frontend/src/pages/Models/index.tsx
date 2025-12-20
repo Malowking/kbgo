@@ -62,14 +62,26 @@ export default function Models() {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`确定要删除模型 "${name}" 吗？`)) return;
+    if (!confirm(`确定要删除模型 "${name}" 吗？\n\n注意：如果该模型正被知识库或Agent使用，将无法删除。`)) return;
 
     try {
-      await modelApi.delete(id);
+      const response = await modelApi.delete(id);
+
+      // 检查响应中的success字段
+      if (response.success === false) {
+        // 后端返回了无法删除的提示
+        alert(response.message || '无法删除该模型');
+      } else {
+        // 删除成功
+        alert('删除成功');
+      }
+
       fetchModels();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to delete model:', error);
-      alert('删除失败');
+      // 显示详细错误信息
+      const errorMessage = error.response?.data?.message || error.message || '删除失败';
+      alert(`删除失败：\n${errorMessage}`);
     }
   };
 

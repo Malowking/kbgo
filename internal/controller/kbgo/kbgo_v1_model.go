@@ -2,6 +2,7 @@ package kbgo
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/model"
@@ -217,6 +218,81 @@ func (c *ControllerV1) DeleteModel(ctx context.Context, req *v1.DeleteModelReq) 
 		return nil, gerror.Newf("Model not found: %s", req.ModelID)
 	}
 
+	// 根据模型类型检查绑定关系
+	db := dao.GetDB()
+	switch existingModel.ModelType {
+	case "embedding":
+		// 检查是否有知识库绑定了此embedding模型
+		var count int64
+		if err := db.Model(&gormModel.KnowledgeBase{}).
+			Where("embedding_model_id = ?", req.ModelID).
+			Count(&count).Error; err != nil {
+			g.Log().Errorf(ctx, "Failed to check knowledge base bindings: %v", err)
+			return nil, gerror.Newf("Failed to check knowledge base bindings: %v", err)
+		}
+		if count > 0 {
+			g.Log().Infof(ctx, "Cannot delete embedding model %s: %d knowledge bases are using it", req.ModelID, count)
+			return &v1.DeleteModelRes{
+				Success: false,
+				Message: fmt.Sprintf("无法删除该Embedding模型，有 %d 个知识库正在使用此模型", count),
+			}, nil
+		}
+
+	case "llm", "multimodal":
+		// 检查是否有Agent预设绑定了此模型
+		var presets []gormModel.AgentPreset
+		if err := db.Find(&presets).Error; err != nil {
+			g.Log().Errorf(ctx, "Failed to query agent presets: %v", err)
+			return nil, gerror.Newf("Failed to query agent presets: %v", err)
+		}
+
+		// 遍历所有预设，检查config中的model_id
+		boundCount := 0
+		for _, preset := range presets {
+			var config map[string]interface{}
+			if err := gjson.Unmarshal([]byte(preset.Config), &config); err != nil {
+				continue
+			}
+			if modelID, ok := config["model_id"].(string); ok && modelID == req.ModelID {
+				boundCount++
+			}
+		}
+		if boundCount > 0 {
+			g.Log().Infof(ctx, "Cannot delete model %s: %d agent presets are using it", req.ModelID, boundCount)
+			return &v1.DeleteModelRes{
+				Success: false,
+				Message: fmt.Sprintf("无法删除该模型，有 %d 个Agent预设正在使用此模型", boundCount),
+			}, nil
+		}
+
+	case "rerank", "reranker":
+		// 检查是否有Agent预设绑定了此rerank模型
+		var presets []gormModel.AgentPreset
+		if err := db.Find(&presets).Error; err != nil {
+			g.Log().Errorf(ctx, "Failed to query agent presets: %v", err)
+			return nil, gerror.Newf("Failed to query agent presets: %v", err)
+		}
+
+		// 遍历所有预设，检查config中的rerank_model_id
+		boundCount := 0
+		for _, preset := range presets {
+			var config map[string]interface{}
+			if err := gjson.Unmarshal([]byte(preset.Config), &config); err != nil {
+				continue
+			}
+			if rerankModelID, ok := config["rerank_model_id"].(string); ok && rerankModelID == req.ModelID {
+				boundCount++
+			}
+		}
+		if boundCount > 0 {
+			g.Log().Infof(ctx, "Cannot delete rerank model %s: %d agent presets are using it", req.ModelID, boundCount)
+			return &v1.DeleteModelRes{
+				Success: false,
+				Message: fmt.Sprintf("无法删除该Rerank模型，有 %d 个Agent预设正在使用此模型", boundCount),
+			}, nil
+		}
+	}
+
 	// 删除模型
 	if err := dao.AIModel.Delete(ctx, req.ModelID); err != nil {
 		g.Log().Errorf(ctx, "Failed to delete model: %v", err)
@@ -224,7 +300,6 @@ func (c *ControllerV1) DeleteModel(ctx context.Context, req *v1.DeleteModelReq) 
 	}
 
 	// 重新加载模型注册表
-	db := dao.GetDB()
 	if err := model.Registry.Reload(ctx, db); err != nil {
 		g.Log().Errorf(ctx, "Failed to reload model registry: %v", err)
 		return &v1.DeleteModelRes{
