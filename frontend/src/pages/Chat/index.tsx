@@ -32,6 +32,26 @@ export default function Chat() {
   const [mcpServices, setMcpServices] = useState<MCPRegistry[]>([]);
   const [selectedMCPService, setSelectedMCPService] = useState<string>('');
 
+  // 当选择知识库时，自动启用检索并展开高级设置
+  useEffect(() => {
+    if (selectedKB) {
+      setEnableRetriever(true);
+      setShowAdvancedSettings(true);
+    } else {
+      setEnableRetriever(false);
+    }
+  }, [selectedKB]);
+
+  // 当选择MCP服务时，自动启用MCP并展开高级设置
+  useEffect(() => {
+    if (selectedMCPService) {
+      setUseMCP(true);
+      setShowAdvancedSettings(true);
+    } else {
+      setUseMCP(false);
+    }
+  }, [selectedMCPService]);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -326,38 +346,21 @@ export default function Chat() {
               {/* 知识库配置 */}
               <div>
                 <h3 className="text-sm font-medium text-gray-700 mb-3">知识库配置</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">选择知识库</label>
-                    <select
-                      value={selectedKB}
-                      onChange={(e) => setSelectedKB(e.target.value)}
-                      className="input text-sm"
-                    >
-                      <option value="">不使用知识库</option>
-                      {kbList.map((kb) => (
-                        <option key={kb.id} value={kb.id}>
-                          {kb.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">启用检索</label>
-                    <label className="flex items-center space-x-2 mt-2">
-                      <input
-                        type="checkbox"
-                        checked={enableRetriever}
-                        onChange={(e) => setEnableRetriever(e.target.checked)}
-                        disabled={!selectedKB}
-                        className="rounded border-gray-300 text-primary-600"
-                      />
-                      <span className="text-sm text-gray-700">
-                        {enableRetriever ? '已启用' : '未启用'}
-                      </span>
-                    </label>
-                  </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">选择知识库</label>
+                  <select
+                    value={selectedKB}
+                    onChange={(e) => setSelectedKB(e.target.value)}
+                    className="input text-sm"
+                  >
+                    <option value="">不使用知识库</option>
+                    {kbList.map((kb) => (
+                      <option key={kb.id} value={kb.id}>
+                        {kb.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">选择知识库后将自动启用知识检索</p>
                 </div>
               </div>
 
@@ -438,39 +441,21 @@ export default function Chat() {
               {/* MCP 配置 */}
               <div>
                 <h3 className="text-sm font-medium text-gray-700 mb-3">MCP 服务配置</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">选择 MCP 服务</label>
-                    <select
-                      value={selectedMCPService}
-                      onChange={(e) => setSelectedMCPService(e.target.value)}
-                      className="input text-sm"
-                    >
-                      <option value="">不使用 MCP 服务</option>
-                      {mcpServices.map((service) => (
-                        <option key={service.id} value={service.id}>
-                          {service.name} - {service.description || '无描述'}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-gray-500 mt-1">选择要使用的 MCP 服务</p>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">启用 MCP</label>
-                    <label className="flex items-center space-x-2 mt-2">
-                      <input
-                        type="checkbox"
-                        checked={useMCP}
-                        onChange={(e) => setUseMCP(e.target.checked)}
-                        disabled={!selectedMCPService}
-                        className="rounded border-gray-300 text-primary-600"
-                      />
-                      <span className="text-sm text-gray-700">
-                        {useMCP ? '已启用' : '未启用'}
-                      </span>
-                    </label>
-                  </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">选择 MCP 服务</label>
+                  <select
+                    value={selectedMCPService}
+                    onChange={(e) => setSelectedMCPService(e.target.value)}
+                    className="input text-sm"
+                  >
+                    <option value="">不使用 MCP 服务</option>
+                    {mcpServices.map((service) => (
+                      <option key={service.id} value={service.id}>
+                        {service.name} - {service.description || '无描述'}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">选择 MCP 服务后将自动启用</p>
                 </div>
               </div>
             </div>

@@ -42,6 +42,20 @@ export default function AgentBuilder() {
     fetchMcpServices();
   }, []);
 
+  // 当选择知识库时，自动启用知识检索
+  useEffect(() => {
+    if (config.knowledge_id) {
+      setConfig(prev => ({ ...prev, enable_retriever: true }));
+    }
+  }, [config.knowledge_id]);
+
+  // 当选择MCP工具时，自动启用MCP
+  useEffect(() => {
+    if (Object.keys(selectedMcpTools).length > 0) {
+      setConfig(prev => ({ ...prev, use_mcp: true }));
+    }
+  }, [selectedMcpTools]);
+
   const fetchPresets = async () => {
     try {
       setLoading(true);
@@ -392,39 +406,27 @@ export default function AgentBuilder() {
                 </h3>
 
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="enable_retriever"
-                      checked={config.enable_retriever || false}
-                      onChange={(e) => setConfig(prev => ({ ...prev, enable_retriever: e.target.checked }))}
-                      className="w-4 h-4 text-blue-500 rounded focus:ring-2 focus:ring-blue-500"
-                    />
-                    <label htmlFor="enable_retriever" className="text-sm text-gray-700">
-                      启用知识检索
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      知识库
                     </label>
+                    <select
+                      value={config.knowledge_id || ''}
+                      onChange={(e) => setConfig(prev => ({ ...prev, knowledge_id: e.target.value }))}
+                      className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">不使用知识库</option>
+                      {kbList.map((kb) => (
+                        <option key={kb.id} value={kb.id}>
+                          {kb.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">选择知识库后将自动启用知识检索</p>
                   </div>
 
-                  {config.enable_retriever && (
+                  {config.enable_retriever && config.knowledge_id && (
                     <>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          知识库
-                        </label>
-                        <select
-                          value={config.knowledge_id || ''}
-                          onChange={(e) => setConfig(prev => ({ ...prev, knowledge_id: e.target.value }))}
-                          className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="">选择知识库</option>
-                          {kbList.map((kb) => (
-                            <option key={kb.id} value={kb.id}>
-                              {kb.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -504,53 +506,41 @@ export default function AgentBuilder() {
                 </h3>
 
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="use_mcp"
-                      checked={config.use_mcp || false}
-                      onChange={(e) => setConfig(prev => ({ ...prev, use_mcp: e.target.checked }))}
-                      className="w-4 h-4 text-blue-500 rounded focus:ring-2 focus:ring-blue-500"
-                    />
-                    <label htmlFor="use_mcp" className="text-sm text-gray-700">
-                      启用 MCP 工具
-                    </label>
-                  </div>
-
-                  {config.use_mcp && mcpServices.length > 0 && (
-                    <div className="space-y-4">
-                      {mcpServices.map((service) => (
-                        <div key={service.id} className="border rounded-lg p-4">
-                          <h4 className="font-medium mb-2">{service.name}</h4>
-                          <p className="text-sm text-gray-600 mb-3">{service.description}</p>
-                          {service.tools && service.tools.length > 0 && (
-                            <div className="space-y-2">
-                              <p className="text-sm font-medium text-gray-700">可用工具：</p>
-                              <div className="flex flex-wrap gap-2">
-                                {service.tools.map((tool) => (
-                                  <label
-                                    key={tool.name}
-                                    className="flex items-center gap-2 px-3 py-1 border rounded-full cursor-pointer hover:bg-gray-50"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={selectedMcpTools[service.name]?.includes(tool.name) || false}
-                                      onChange={() => toggleMcpTool(service.name, tool.name)}
-                                      className="w-3 h-3 text-blue-500 rounded"
-                                    />
-                                    <span className="text-sm">{tool.name}</span>
-                                  </label>
-                                ))}
+                  {mcpServices.length > 0 ? (
+                    <>
+                      <p className="text-sm text-gray-600">选择要使用的 MCP 工具，选择后将自动启用</p>
+                      <div className="space-y-4">
+                        {mcpServices.map((service) => (
+                          <div key={service.id} className="border rounded-lg p-4">
+                            <h4 className="font-medium mb-2">{service.name}</h4>
+                            <p className="text-sm text-gray-600 mb-3">{service.description}</p>
+                            {service.tools && service.tools.length > 0 && (
+                              <div className="space-y-2">
+                                <p className="text-sm font-medium text-gray-700">可用工具：</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {service.tools.map((tool) => (
+                                    <label
+                                      key={tool.name}
+                                      className="flex items-center gap-2 px-3 py-1 border rounded-full cursor-pointer hover:bg-gray-50"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedMcpTools[service.name]?.includes(tool.name) || false}
+                                        onChange={() => toggleMcpTool(service.name, tool.name)}
+                                        className="w-3 h-3 text-blue-500 rounded"
+                                      />
+                                      <span className="text-sm">{tool.name}</span>
+                                    </label>
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {config.use_mcp && mcpServices.length === 0 && (
-                    <p className="text-sm text-gray-500">暂无可用的 MCP 服务</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-500">暂无可用的 MCP 服务，请先在 MCP 服务页面添加服务</p>
                   )}
                 </div>
               </div>

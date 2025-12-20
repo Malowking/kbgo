@@ -61,7 +61,7 @@ type HealthResponse struct {
 func NewFileParseLoader(ctx context.Context, chunkSize, chunkOverlap int, separator string) (*FileParseLoader, error) {
 	// 从配置中读取 file_parse 服务地址和超时时间
 	fileParseURL := g.Cfg().MustGet(ctx, "fileParse.url", "http://localhost:8002").String()
-	timeout := g.Cfg().MustGet(ctx, "fileParse.timeout", 120).Int()
+	timeout := g.Cfg().MustGet(ctx, "fileParse.timeout", 600).Int() // 增加默认超时时间到600秒(10分钟)
 
 	// 处理分隔符 - 必须是数组，不能为 nil
 	var separators []string
@@ -80,9 +80,21 @@ func NewFileParseLoader(ctx context.Context, chunkSize, chunkOverlap int, separa
 		chunkOverlap = 200
 	}
 
-	// 使用 gf 的轻量级 HTTP 客户端
+	// 使用 gf 的轻量级 HTTP 客户端，配置长连接和超时
 	client := g.Client()
-	client.SetTimeout(time.Duration(timeout) * time.Second)
+	client.SetTimeout(time.Duration(timeout) * time.Second) // 整体请求超时时间
+
+	// 配置底层HTTP Transport以支持长时间连接和大文件传输
+	client.Transport = &http.Transport{
+		MaxIdleConns:        100,              // 最大空闲连接数
+		MaxIdleConnsPerHost: 10,               // 每个host的最大空闲连接数
+		IdleConnTimeout:     90 * time.Second, // 空闲连接超时时间
+		DisableKeepAlives:   false,            // 启用 Keep-Alive
+		DisableCompression:  false,            // 启用压缩
+		// 增加读写超时时间，避免大文件传输时超时
+		ResponseHeaderTimeout: time.Duration(timeout) * time.Second, // 等待响应头超时时间
+		// ExpectContinueTimeout: 1 * time.Second, // 如果服务器支持100-continue
+	}
 
 	return &FileParseLoader{
 		ctx:          ctx,

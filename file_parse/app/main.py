@@ -107,5 +107,10 @@ if __name__ == "__main__":
         host=settings.HOST,
         port=settings.PORT,
         reload=settings.DEBUG,
-        log_level=settings.LOG_LEVEL.lower()
+        log_level=settings.LOG_LEVEL.lower(),
+        # 大文件支持配置
+        timeout_keep_alive=settings.TIMEOUT_KEEP_ALIVE,  # Keep-Alive超时时间
+        timeout_graceful_shutdown=settings.TIMEOUT_GRACEFUL_SHUTDOWN,  # 优雅关闭超时时间
+        limit_concurrency=settings.LIMIT_CONCURRENCY,  # 最大并发连接数
+        backlog=settings.BACKLOG,  # 最大排队连接数
     )

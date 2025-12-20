@@ -83,7 +83,8 @@ retriever:
 # 文档解析服务配置（Python file_parse 服务）
 fileParse:
   url: "http://kbgo-file-parse:8002"  # file_parse 服务地址
-  timeout: 120                         # 请求超时时间（秒），默认 120 秒
+  timeout: 600                        # 请求超时时间（秒），默认 600 秒（10分钟）
+                                      # 对于大文件（30MB+），建议设置为600秒或更长
 
 # Redis 缓存配置
 redis:
