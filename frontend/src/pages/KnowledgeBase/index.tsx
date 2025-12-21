@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Search, Edit2, Trash2, Power, PowerOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { knowledgeBaseApi } from '@/services';
 import { useAppStore } from '@/store';
 import type { KnowledgeBase } from '@/types';
 import { formatDate } from '@/lib/utils';
+import { logger } from '@/lib/logger';
+import { showSuccess, showError } from '@/lib/toast';
 import CreateKBModal from './CreateKBModal';
 
 export default function KnowledgeBasePage() {
@@ -16,44 +18,47 @@ export default function KnowledgeBasePage() {
   const [editingKB, setEditingKB] = useState<KnowledgeBase | null>(null);
   const { setCurrentKB } = useAppStore();
 
-  useEffect(() => {
-    fetchKBList();
-  }, []);
-
-  const fetchKBList = async () => {
+  const fetchKBList = useCallback(async () => {
     try {
       setLoading(true);
       const response = await knowledgeBaseApi.list();
       setKbList(response.list || []);
     } catch (error) {
-      console.error('Failed to fetch knowledge bases:', error);
+      logger.error('Failed to fetch knowledge bases:', error);
+      showError('加载知识库列表失败');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('确定要删除这个知识库吗?')) return;
+  useEffect(() => {
+    fetchKBList();
+  }, [fetchKBList]);
+
+  const handleDelete = useCallback(async (id: string) => {
+    if (!window.confirm('确定要删除这个知识库吗?')) return;
 
     try {
       await knowledgeBaseApi.delete(id);
+      showSuccess('删除成功');
       fetchKBList();
     } catch (error) {
-      console.error('Failed to delete knowledge base:', error);
-      alert('删除失败');
+      logger.error('Failed to delete knowledge base:', error);
+      showError('删除失败');
     }
-  };
+  }, [fetchKBList]);
 
-  const handleToggleStatus = async (kb: KnowledgeBase) => {
+  const handleToggleStatus = useCallback(async (kb: KnowledgeBase) => {
     try {
       const newStatus = kb.status === 1 ? 2 : 1;
       await knowledgeBaseApi.updateStatus(kb.id, newStatus);
+      showSuccess(newStatus === 1 ? '已启用' : '已禁用');
       fetchKBList();
     } catch (error) {
-      console.error('Failed to update status:', error);
-      alert('状态更新失败');
+      logger.error('Failed to update status:', error);
+      showError('状态更新失败');
     }
-  };
+  }, [fetchKBList]);
 
   const handleEdit = (kb: KnowledgeBase) => {
     setEditingKB(kb);
@@ -65,9 +70,12 @@ export default function KnowledgeBasePage() {
     setEditingKB(null);
   };
 
-  const filteredKBList = kbList.filter((kb) =>
-    kb.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    kb.description.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredKBList = useMemo(() =>
+    kbList.filter((kb) =>
+      kb.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      kb.description.toLowerCase().includes(searchQuery.toLowerCase())
+    ),
+    [kbList, searchQuery]
   );
 
   return (

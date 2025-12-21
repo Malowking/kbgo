@@ -1,8 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Plus, Edit2, Trash2, Save, X, Bot, Settings, Database, MessageSquare, ChevronDown } from 'lucide-react';
 import { agentApi, knowledgeBaseApi, modelApi, mcpApi } from '@/services';
 import type { AgentPresetItem, AgentConfig, KnowledgeBase, Model, MCPRegistry } from '@/types';
 import ModelSelectorModal from '@/components/ModelSelectorModal';
+import { logger } from '@/lib/logger';
+import { showError, showWarning, showSuccess } from '@/lib/toast';
+import { USER } from '@/config/constants';
+import { getLLMModels, getRerankModels } from '@/lib/model-utils';
 
 export default function AgentBuilder() {
   const [presets, setPresets] = useState<AgentPresetItem[]>([]);
@@ -33,8 +37,6 @@ export default function AgentBuilder() {
   const [mcpServices, setMcpServices] = useState<MCPRegistry[]>([]);
   const [selectedMcpTools, setSelectedMcpTools] = useState<Record<string, string[]>>({});
 
-  const USER_ID = 'user_001'; // TODO: Get from auth context
-
   useEffect(() => {
     fetchPresets();
     fetchKBList();
@@ -56,61 +58,56 @@ export default function AgentBuilder() {
     }
   }, [selectedMcpTools]);
 
-  const fetchPresets = async () => {
+  const fetchPresets = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await agentApi.list({ user_id: USER_ID, page: 1, page_size: 100 });
+      const response = await agentApi.list({ user_id: USER.ID, page: 1, page_size: 100 });
       setPresets(response.list || []);
     } catch (error) {
-      console.error('Failed to fetch agent presets:', error);
-      alert('获取Agent列表失败');
+      logger.error('Failed to fetch agent presets:', error);
+      showError('获取Agent列表失败');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchKBList = async () => {
+  const fetchKBList = useCallback(async () => {
     try {
       const response = await knowledgeBaseApi.list();
       setKbList(response.list || []);
     } catch (error) {
-      console.error('Failed to fetch knowledge bases:', error);
+      logger.error('Failed to fetch knowledge bases:', error);
     }
-  };
+  }, []);
 
-  const fetchModels = async () => {
+  const fetchModels = useCallback(async () => {
     try {
       const response = await modelApi.list();
-      const allModels = response.models || [];
 
-      // 包含 LLM 和多模态模型（仅显示启用的模型）
-      const llmAndMultimodalModels = allModels.filter(m =>
-        (m.type === 'llm' || m.type === 'multimodal') && m.enabled !== false
-      ).sort((a, b) => a.name.localeCompare(b.name));
-      const rerankModels = allModels.filter(m =>
-        (m.type === 'rerank' || m.type === 'reranker') && m.enabled !== false
-      ).sort((a, b) => a.name.localeCompare(b.name));
+      // 使用工具函数获取 LLM 和多模态模型（仅显用的模型）
+      const llmAndMultimodalModels = getLLMModels(response.models || [], true);
+      const rerankModelsList = getRerankModels(response.models || [], true);
 
       setModels(llmAndMultimodalModels);
-      setRerankModels(rerankModels);
+      setRerankModels(rerankModelsList);
 
       // Set default model if available
       if (llmAndMultimodalModels.length > 0 && !config.model_id) {
         setConfig(prev => ({ ...prev, model_id: llmAndMultimodalModels[0].model_id }));
       }
     } catch (error) {
-      console.error('Failed to fetch models:', error);
+      logger.error('Failed to fetch models:', error);
     }
-  };
+  }, [config.model_id]);
 
-  const fetchMcpServices = async () => {
+  const fetchMcpServices = useCallback(async () => {
     try {
       const response = await mcpApi.list({ status: 1 }); // Only active services
       setMcpServices(response.list || []);
     } catch (error) {
-      console.error('Failed to fetch MCP services:', error);
+      logger.error('Failed to fetch MCP services:', error);
     }
-  };
+  }, []);
 
   const handleCreate = () => {
     setShowForm(true);
@@ -118,7 +115,7 @@ export default function AgentBuilder() {
     resetForm();
   };
 
-  const handleEdit = async (presetId: string) => {
+  const handleEdit = useCallback(async (presetId: string) => {
     try {
       const preset = await agentApi.get(presetId);
       setEditingPresetId(presetId);
@@ -134,35 +131,35 @@ export default function AgentBuilder() {
 
       setShowForm(true);
     } catch (error) {
-      console.error('Failed to fetch preset:', error);
-      alert('获取Agent详情失败');
+      logger.error('Failed to fetch preset:', error);
+      showError('获取Agent详情失败');
     }
-  };
+  }, []);
 
-  const handleDelete = async (presetId: string) => {
-    if (!confirm('确定要删除这个Agent预设吗？')) return;
+  const handleDelete = useCallback(async (presetId: string) => {
+    if (!window.confirm('确定要删除这个Agent预设吗？')) return;
 
     try {
-      await agentApi.delete(presetId, USER_ID);
-      alert('删除成功');
+      await agentApi.delete(presetId, USER.ID);
+      showSuccess('删除成功');
       fetchPresets();
     } catch (error) {
-      console.error('Failed to delete preset:', error);
-      alert('删除失败');
+      logger.error('Failed to delete preset:', error);
+      showError('删除失败');
     }
-  };
+  }, [fetchPresets]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!presetName.trim() || !config.model_id) {
-      alert('请填写预设名称并选择模型');
+      showWarning('请填写预设名称并选择模型');
       return;
     }
 
     // 如果是编辑模式，提示用户会清除历史对话
     if (editingPresetId) {
-      const confirmed = confirm(
+      const confirmed = window.confirm(
         '修改配置后，将会清除该 Agent 的历史对话记录。\n\n确定要继续吗？'
       );
       if (!confirmed) {
@@ -180,7 +177,7 @@ export default function AgentBuilder() {
 
       if (editingPresetId) {
         await agentApi.update(editingPresetId, {
-          user_id: USER_ID,
+          user_id: USER.ID,
           preset_name: presetName,
           description,
           config: configData,
@@ -191,31 +188,31 @@ export default function AgentBuilder() {
         try {
           await deleteAgentConversations(editingPresetId);
         } catch (deleteError) {
-          console.error('Failed to delete conversations:', deleteError);
+          logger.error('Failed to delete conversations:', deleteError);
           // 删除对话失败不阻断流程，只是警告
         }
 
-        alert('更新成功');
+        showSuccess('更新成功');
       } else {
         await agentApi.create({
-          user_id: USER_ID,
+          user_id: USER.ID,
           preset_name: presetName,
           description,
           config: configData,
           is_public: isPublic,
         });
-        alert('创建成功');
+        showSuccess('创建成功');
       }
 
       setShowForm(false);
       fetchPresets();
     } catch (error) {
-      console.error('Failed to save preset:', error);
-      alert('保存失败');
+      logger.error('Failed to save preset:', error);
+      showError('保存失败');
     } finally {
       setLoading(false);
     }
-  };
+  }, [presetName, config, editingPresetId, selectedMcpTools, description, isPublic, fetchPresets]);
 
   const handleCancel = () => {
     setShowForm(false);
@@ -266,7 +263,7 @@ export default function AgentBuilder() {
   const deleteAgentConversations = async (presetId: string) => {
     // TODO: 实现删除该 Agent 的所有对话
     // 这里可以调用批量删除 API，根据 agent_preset_id 筛选
-    console.log('Deleting conversations for preset:', presetId);
+    logger.info('Deleting conversations for preset:', presetId);
     // 暂时不实现，因为后端可能需要添加按 preset_id 删除的接口
   };
 

@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import Layout from '@/components/Layout';
 import KnowledgeBase from '@/pages/KnowledgeBase';
 import KnowledgeBaseDetail from '@/pages/KnowledgeBase/Detail';
@@ -13,6 +14,33 @@ import AgentChat from '@/pages/AgentChat';
 function App() {
   return (
     <BrowserRouter>
+      {/* Toast 通知容器 */}
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: '#fff',
+            color: '#333',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            borderRadius: '8px',
+            padding: '12px 16px',
+          },
+          success: {
+            iconTheme: {
+              primary: '#10b981',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            iconTheme: {
+              primary: '#ef4444',
+              secondary: '#fff',
+            },
+          },
+        }}
+      />
+
       <Routes>
         {/* Full Screen Pages without Layout */}
         <Route path="/agent-chat" element={<AgentChat />} />

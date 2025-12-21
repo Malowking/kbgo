@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Search, PlayCircle, Settings as SettingsIcon, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { modelApi } from '@/services';
+import { getRerankModels } from '@/lib/model-utils';
+import { logger } from '@/lib/logger';
+import { showError, showWarning } from '@/lib/toast';
 import type { Model } from '@/types';
 
 interface RetrieverTestTabProps {
@@ -31,20 +34,13 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
   const [enableRewrite, setEnableRewrite] = useState(false);
   const [rewriteAttempts, setRewriteAttempts] = useState(3);
 
-  useEffect(() => {
-    fetchModels();
-  }, []);
-
-  const fetchModels = async () => {
+  const fetchModels = useCallback(async () => {
     try {
       const response = await modelApi.list();
       const allModels = response.models || [];
 
-      // 仅显示启用的 rerank 模型
-      const rerank = allModels.filter(m =>
-        (m.type === 'rerank' || m.type === 'reranker') && m.enabled !== false
-      ).sort((a, b) => a.name.localeCompare(b.name));
-
+      // 使用工具函数获取启用的 rerank 模型
+      const rerank = getRerankModels(allModels, true);
       setRerankModels(rerank);
 
       // Set default rerank model
@@ -52,13 +48,17 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
         setRerankModelId(rerank[0].model_id);
       }
     } catch (error) {
-      console.error('Failed to fetch models:', error);
+      logger.error('Failed to fetch models:', error);
     }
-  };
+  }, [rerankModelId]);
 
-  const handleTest = async () => {
+  useEffect(() => {
+    fetchModels();
+  }, [fetchModels]);
+
+  const handleTest = useCallback(async () => {
     if (!question.trim()) {
-      alert('请输入查询问题');
+      showWarning('请输入查询问题');
       return;
     }
 
@@ -98,12 +98,12 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
         throw new Error(data.message || '召回测试失败');
       }
     } catch (error: any) {
-      console.error('Retriever test failed:', error);
-      alert('召回测试失败: ' + (error.message || '未知错误'));
+      logger.error('Retriever test failed:', error);
+      showError('召回测试失败: ' + (error.message || '未知错误'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [question, kbId, rerankModelId, topK, score, retrieveMode, enableRewrite, rewriteAttempts]);
 
   return (
     <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Server, CheckCircle, XCircle, Plus, Edit2, Trash2, Sparkles, X } from 'lucide-react';
 import { modelApi } from '@/services';
 import type { Model } from '@/types';
 import CreateModelModal from './CreateModelModal';
+import { logger } from '@/lib/logger';
+import { showSuccess, showError, showInfo } from '@/lib/toast';
 
 export default function Models() {
   const [models, setModels] = useState<Model[]>([]);
@@ -13,12 +15,7 @@ export default function Models() {
   const [editingModel, setEditingModel] = useState<Model | null>(null);
   const [rewriteModel, setRewriteModel] = useState<Model | null>(null);
 
-  useEffect(() => {
-    fetchModels();
-    fetchRewriteModel();
-  }, []);
-
-  const fetchModels = async () => {
+  const fetchModels = useCallback(async () => {
     try {
       setLoading(true);
       const response = await modelApi.list();
@@ -30,39 +27,44 @@ export default function Models() {
       })).sort((a, b) => a.name.localeCompare(b.name));
       setModels(modelsWithId as Model[]);
     } catch (error) {
-      console.error('Failed to fetch models:', error);
+      logger.error('Failed to fetch models:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchRewriteModel = async () => {
+  const fetchRewriteModel = useCallback(async () => {
     try {
       const response = await modelApi.getRewriteModel();
       setRewriteModel(response.rewrite_model);
     } catch (error) {
-      console.error('Failed to fetch rewrite model:', error);
+      logger.error('Failed to fetch rewrite model:', error);
     }
-  };
+  }, []);
 
-  const handleReload = async () => {
-    if (!confirm('确定要重新加载模型配置吗?')) return;
+  useEffect(() => {
+    fetchModels();
+    fetchRewriteModel();
+  }, [fetchModels, fetchRewriteModel]);
+
+  const handleReload = useCallback(async () => {
+    if (!window.confirm('确定要重新加载模型配置吗?')) return;
 
     try {
       setReloading(true);
       await modelApi.reload();
       await fetchModels();
-      alert('模型配置已重新加载');
+      showSuccess('模型配置已重新加载');
     } catch (error) {
-      console.error('Failed to reload models:', error);
-      alert('重新加载失败');
+      logger.error('Failed to reload models:', error);
+      showError('重新加载失败');
     } finally {
       setReloading(false);
     }
-  };
+  }, [fetchModels]);
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`确定要删除模型 "${name}" 吗？\n\n注意：如果该模型正被知识库或Agent使用，将无法删除。`)) return;
+  const handleDelete = useCallback(async (id: string, name: string) => {
+    if (!window.confirm(`确定要删除模型 "${name}" 吗？\n\n注意：如果该模型正被知识库或Agent使用，将无法删除。`)) return;
 
     try {
       const response = await modelApi.delete(id);
@@ -70,58 +72,58 @@ export default function Models() {
       // 检查响应中的success字段
       if (response.success === false) {
         // 后端返回了无法删除的提示
-        alert(response.message || '无法删除该模型');
+        showInfo(response.message || '无法删除该模型');
       } else {
         // 删除成功
-        alert('删除成功');
+        showSuccess('删除成功');
       }
 
       fetchModels();
     } catch (error: any) {
-      console.error('Failed to delete model:', error);
+      logger.error('Failed to delete model:', error);
       // 显示详细错误信息
       const errorMessage = error.response?.data?.message || error.message || '删除失败';
-      alert(`删除失败：\n${errorMessage}`);
+      showError(`删除失败：${errorMessage}`);
     }
-  };
+  }, [fetchModels]);
 
-  const handleEdit = (model: Model) => {
+  const handleEdit = useCallback((model: Model) => {
     setEditingModel(model);
     setShowCreateModal(true);
-  };
+  }, []);
 
-  const handleModalClose = () => {
+  const handleModalClose = useCallback(() => {
     setShowCreateModal(false);
     setEditingModel(null);
-  };
+  }, []);
 
-  const handleSetRewriteModel = async (modelId: string, modelName: string) => {
-    if (!confirm(`确定要将 "${modelName}" 设为查询重写模型吗？\n\n重写模型用于对话中的指代消解，建议选择小参数量的非思考模型以获得更快的响应速度。`)) return;
+  const handleSetRewriteModel = useCallback(async (modelId: string, modelName: string) => {
+    if (!window.confirm(`确定要将 "${modelName}" 设为查询重写模型吗？\n\n重写模型用于对话中的指代消解，建议选择小参数量的非思考模型以获得更快的响应速度。`)) return;
 
     try {
       await modelApi.setRewriteModel(modelId);
       await fetchRewriteModel();
       await fetchModels();
-      alert('重写模型设置成功');
+      showSuccess('重写模型设置成功');
     } catch (error: any) {
-      console.error('Failed to set rewrite model:', error);
-      alert(`设置失败: ${error.message || '未知错误'}`);
+      logger.error('Failed to set rewrite model:', error);
+      showError(`设置失败: ${error.message || '未知错误'}`);
     }
-  };
+  }, [fetchModels, fetchRewriteModel]);
 
-  const handleClearRewriteModel = async () => {
-    if (!confirm('确定要取消重写模型配置吗？\n\n取消后，系统将跳过查询重写逻辑。')) return;
+  const handleClearRewriteModel = useCallback(async () => {
+    if (!window.confirm('确定要取消重写模型配置吗？\n\n取消后，系统将跳过查询重写逻辑。')) return;
 
     try {
       await modelApi.setRewriteModel('');
       await fetchRewriteModel();
       await fetchModels();
-      alert('重写模型已取消');
+      showSuccess('重写模型已取消');
     } catch (error: any) {
-      console.error('Failed to clear rewrite model:', error);
-      alert(`取消失败: ${error.message || '未知错误'}`);
+      logger.error('Failed to clear rewrite model:', error);
+      showError(`取消失败: ${error.message || '未知错误'}`);
     }
-  };
+  }, [fetchModels, fetchRewriteModel]);
 
   const isRewriteModel = (modelId: string) => {
     return rewriteModel?.model_id === modelId;
@@ -136,7 +138,7 @@ export default function Models() {
         return model.config.description as string;
       }
     } catch (e) {
-      console.error('Failed to parse model description:', e);
+      logger.error('Failed to parse model description:', e);
     }
     return '';
   };
@@ -255,13 +257,6 @@ export default function Models() {
                 </div>
               </div>
             </div>
-            <button
-              onClick={handleClearRewriteModel}
-              className="p-2 rounded-lg hover:bg-red-100 text-red-600 transition-colors"
-              title="取消重写模型"
-            >
-              <X className="w-5 h-5" />
-            </button>
           </div>
         </div>
       ) : (

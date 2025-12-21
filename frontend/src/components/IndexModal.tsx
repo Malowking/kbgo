@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { documentApi, modelApi, knowledgeBaseApi } from '@/services';
 import type { Model } from '@/types';
+import { showSuccess, showError, showWarning } from '@/lib/toast';
 
 interface IndexModalProps {
   documentIds: string[];
@@ -31,8 +32,7 @@ export default function IndexModal({ documentIds, knowledgeBaseId, onClose, onSu
         const embeddingModelId = kb.embeddingModelId;
 
         if (!embeddingModelId) {
-          console.error('Knowledge base has no embedding model bound');
-          alert('该知识库未绑定 Embedding 模型');
+          showError('该知识库未绑定 Embedding 模型');
           return;
         }
 
@@ -40,8 +40,7 @@ export default function IndexModal({ documentIds, knowledgeBaseId, onClose, onSu
         const modelResponse = await modelApi.get(embeddingModelId);
         setEmbeddingModel(modelResponse.model);
       } catch (error) {
-        console.error('Failed to load knowledge base embedding model:', error);
-        alert('加载知识库绑定的 Embedding 模型失败');
+        showError('加载知识库绑定的 Embedding 模型失败');
       } finally {
         setLoadingModel(false);
       }
@@ -54,12 +53,12 @@ export default function IndexModal({ documentIds, knowledgeBaseId, onClose, onSu
     e.preventDefault();
 
     if (!embeddingModel) {
-      alert('Embedding 模型未加载');
+      showWarning('Embedding 模型未加载');
       return;
     }
 
     if (useSeparator && !separator.trim()) {
-      alert('请输入自定义分隔符');
+      showWarning('请输入自定义分隔符');
       return;
     }
 
@@ -80,12 +79,11 @@ export default function IndexModal({ documentIds, knowledgeBaseId, onClose, onSu
 
       await documentApi.index(indexData);
 
-      alert(isReindex ? '文档重新索引成功' : '文档索引成功');
+      showSuccess(isReindex ? '文档重新索引成功' : '文档索引成功');
       onSuccess();
       onClose();
     } catch (error) {
-      console.error('Failed to index documents:', error);
-      alert(isReindex ? '重新索引失败' : '索引失败');
+      showError(isReindex ? '重新索引失败' : '索引失败');
     } finally {
       setIndexing(false);
     }

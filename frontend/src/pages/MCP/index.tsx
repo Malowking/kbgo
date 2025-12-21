@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Plus,
   Search,
@@ -16,6 +16,8 @@ import {
 import { mcpApi } from '@/services';
 import type { MCPRegistry, MCPTool, MCPStats } from '@/types';
 import { formatDate } from '@/lib/utils';
+import { logger } from '@/lib/logger';
+import { showSuccess, showError } from '@/lib/toast';
 import CreateMCPModal from './CreateMCPModal';
 
 export default function MCPPage() {
@@ -28,58 +30,61 @@ export default function MCPPage() {
   const [mcpTools, setMcpTools] = useState<Record<string, MCPTool[]>>({});
   const [mcpStats, setMcpStats] = useState<Record<string, MCPStats>>({});
 
-  useEffect(() => {
-    fetchMCPList();
-  }, []);
-
-  const fetchMCPList = async () => {
+  const fetchMCPList = useCallback(async () => {
     try {
       setLoading(true);
       const response = await mcpApi.list({ page: 1, page_size: 100 });
       setMcpList(response.list || []);
     } catch (error) {
-      console.error('Failed to fetch MCP services:', error);
+      logger.error('Failed to fetch MCP services:', error);
+      showError('加载MCP服务列表失败');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('确定要删除这个MCP服务吗？')) return;
+  useEffect(() => {
+    fetchMCPList();
+  }, [fetchMCPList]);
+
+  const handleDelete = useCallback(async (id: string) => {
+    if (!window.confirm('确定要删除这个MCP服务吗？')) return;
 
     try {
       await mcpApi.delete(id);
+      showSuccess('删除成功');
       fetchMCPList();
     } catch (error) {
-      console.error('Failed to delete MCP service:', error);
-      alert('删除失败');
+      logger.error('Failed to delete MCP service:', error);
+      showError('删除失败');
     }
-  };
+  }, [fetchMCPList]);
 
-  const handleToggleStatus = async (mcp: MCPRegistry) => {
+  const handleToggleStatus = useCallback(async (mcp: MCPRegistry) => {
     try {
       const newStatus = mcp.status === 1 ? 0 : 1;
       await mcpApi.updateStatus(mcp.id, newStatus);
+      showSuccess(newStatus === 1 ? '已启用' : '已禁用');
       fetchMCPList();
     } catch (error) {
-      console.error('Failed to update status:', error);
-      alert('状态更新失败');
+      logger.error('Failed to update status:', error);
+      showError('状态更新失败');
     }
-  };
+  }, [fetchMCPList]);
 
-  const handleTest = async (id: string) => {
+  const handleTest = useCallback(async (id: string) => {
     try {
       const result = await mcpApi.test(id);
       if (result.success) {
-        alert('连接测试成功！');
+        showSuccess('连接测试成功！');
       } else {
-        alert(`连接测试失败：${result.message}`);
+        showError(`连接测试失败：${result.message}`);
       }
     } catch (error) {
-      console.error('Failed to test MCP service:', error);
-      alert('连接测试失败');
+      logger.error('Failed to test MCP service:', error);
+      showError('连接测试失败');
     }
-  };
+  }, []);
 
   const handleEdit = (mcp: MCPRegistry) => {
     setEditingMCP(mcp);
@@ -91,7 +96,7 @@ export default function MCPPage() {
     setEditingMCP(null);
   };
 
-  const handleToggleExpand = async (mcpId: string) => {
+  const handleToggleExpand = useCallback(async (mcpId: string) => {
     if (expandedMCP === mcpId) {
       setExpandedMCP(null);
     } else {
@@ -102,7 +107,7 @@ export default function MCPPage() {
           const toolsResponse = await mcpApi.listTools(mcpId);
           setMcpTools(prev => ({ ...prev, [mcpId]: toolsResponse.tools || [] }));
         } catch (error) {
-          console.error('Failed to load tools:', error);
+          logger.error('Failed to load tools:', error);
         }
       }
       if (!mcpStats[mcpId]) {
@@ -110,15 +115,18 @@ export default function MCPPage() {
           const statsResponse = await mcpApi.stats(mcpId);
           setMcpStats(prev => ({ ...prev, [mcpId]: statsResponse }));
         } catch (error) {
-          console.error('Failed to load stats:', error);
+          logger.error('Failed to load stats:', error);
         }
       }
     }
-  };
+  }, [expandedMCP, mcpTools, mcpStats]);
 
-  const filteredMCPList = mcpList.filter((mcp) =>
-    mcp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    mcp.description.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredMCPList = useMemo(() =>
+    mcpList.filter((mcp) =>
+      mcp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      mcp.description.toLowerCase().includes(searchQuery.toLowerCase())
+    ),
+    [mcpList, searchQuery]
   );
 
   return (

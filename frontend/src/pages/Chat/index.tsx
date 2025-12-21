@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Paperclip, Plus, List, Settings, ChevronDown } from 'lucide-react';
 import { chatApi, conversationApi, knowledgeBaseApi, modelApi, mcpApi } from '@/services';
 import { generateId } from '@/lib/utils';
@@ -6,6 +6,10 @@ import type { Message, KnowledgeBase, Model, MCPRegistry } from '@/types';
 import ChatMessage from './ChatMessage';
 import ConversationSidebar from './ConversationSidebar';
 import ModelSelectorModal from '@/components/ModelSelectorModal';
+import { logger } from '@/lib/logger';
+import { showError, showWarning } from '@/lib/toast';
+import { CHAT_CONFIG } from '@/config/constants';
+import { getLLMModels, getRerankModels } from '@/lib/model-utils';
 
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -25,9 +29,9 @@ export default function Chat() {
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [selectedRerankModel, setSelectedRerankModel] = useState<string>('');
   const [enableRetriever, setEnableRetriever] = useState(false);
-  const [topK, setTopK] = useState(5);
-  const [score, setScore] = useState(0.2);
-  const [retrieveMode, setRetrieveMode] = useState<'milvus' | 'rerank' | 'rrf'>('rrf');
+  const [topK, setTopK] = useState<number>(CHAT_CONFIG.DEFAULT_TOP_K);
+  const [score, setScore] = useState<number>(CHAT_CONFIG.DEFAULT_SCORE);
+  const [retrieveMode, setRetrieveMode] = useState<'milvus' | 'rerank' | 'rrf'>(CHAT_CONFIG.DEFAULT_RETRIEVE_MODE);
   const [useMCP, setUseMCP] = useState(false);
   const [mcpServices, setMcpServices] = useState<MCPRegistry[]>([]);
   const [selectedMCPService, setSelectedMCPService] = useState<string>('');
@@ -65,55 +69,45 @@ export default function Chat() {
     scrollToBottom();
   }, [messages]);
 
-  const fetchKBList = async () => {
+  const fetchKBList = useCallback(async () => {
     try {
       const response = await knowledgeBaseApi.list();
       setKbList(response.list || []);
     } catch (error) {
-      console.error('Failed to fetch knowledge bases:', error);
+      logger.error('Failed to fetch knowledge bases:', error);
     }
-  };
+  }, []);
 
-  const fetchModels = async () => {
+  const fetchModels = useCallback(async () => {
     try {
       const response = await modelApi.list();
 
-      // LLM 和多模态模型（仅显示启用的模型）
-      const llmAndMultimodalModels = response.models?.filter(m =>
-        (m.type === 'llm' || m.type === 'multimodal') && m.enabled !== false
-      ).map(m => ({
-        ...m,
-        id: m.model_id,
-      })).sort((a, b) => a.name.localeCompare(b.name)) || [];
-      setModels(llmAndMultimodalModels as Model[]);
+      // 使用工具函数获取 LLM 和多模态模型（仅显示启用的模型）
+      const llmAndMultimodalModels = getLLMModels(response.models || [], true);
+      setModels(llmAndMultimodalModels);
       if (llmAndMultimodalModels.length > 0 && !selectedModel) {
         setSelectedModel(llmAndMultimodalModels[0].id || llmAndMultimodalModels[0].model_id);
       }
 
-      // Rerank 模型（仅显示启用的模型）
-      const rerankModelsList = response.models?.filter(m =>
-        m.type === 'reranker' && m.enabled !== false
-      ).map(m => ({
-        ...m,
-        id: m.model_id,
-      })).sort((a, b) => a.name.localeCompare(b.name)) || [];
-      setRerankModels(rerankModelsList as Model[]);
+      // 使用工具函数获取 Rerank 模型（仅显示启用的模型）
+      const rerankModelsList = getRerankModels(response.models || [], true);
+      setRerankModels(rerankModelsList);
       if (rerankModelsList.length > 0 && !selectedRerankModel) {
         setSelectedRerankModel(rerankModelsList[0].id || rerankModelsList[0].model_id);
       }
     } catch (error) {
-      console.error('Failed to fetch models:', error);
+      logger.error('Failed to fetch models:', error);
     }
-  };
+  }, [selectedModel, selectedRerankModel]);
 
-  const fetchMCPServices = async () => {
+  const fetchMCPServices = useCallback(async () => {
     try {
       const response = await mcpApi.list({ status: 1 }); // 只获取启用的服务
       setMcpServices(response.list || []);
     } catch (error) {
-      console.error('Failed to fetch MCP services:', error);
+      logger.error('Failed to fetch MCP services:', error);
     }
-  };
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -124,9 +118,9 @@ export default function Chat() {
     setCurrentConvId(generateId());
   };
 
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     if (!input.trim() || !selectedModel) {
-      alert('请输入消息并选择模型');
+      showWarning('请输入消息并选择模型');
       return;
     }
 
@@ -211,18 +205,18 @@ export default function Chat() {
           });
         },
         (error) => {
-          console.error('Stream error:', error);
-          alert('发送失败: ' + error.message);
+          logger.error('Stream error:', error);
+          showError('发送失败: ' + error.message);
           setLoading(false);
         }
       );
     } catch (error) {
-      console.error('Failed to send message:', error);
-      alert('发送失败: ' + (error as Error).message);
+      logger.error('Failed to send message:', error);
+      showError('发送失败: ' + (error as Error).message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [input, selectedModel, currentConvId, attachedFiles, selectedRerankModel, selectedKB, enableRetriever, topK, score, retrieveMode, useMCP, selectedMCPService]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -246,30 +240,30 @@ export default function Chat() {
     setAttachedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleLoadConversation = async (convId: string) => {
+  const handleLoadConversation = useCallback(async (convId: string) => {
     try {
       setLoading(true);
       const conversation = await conversationApi.get(convId);
       setCurrentConvId(convId);
       setMessages(conversation.messages || []);
     } catch (error) {
-      console.error('Failed to load conversation:', error);
-      alert('加载对话失败: ' + (error as Error).message);
+      logger.error('Failed to load conversation:', error);
+      showError('加载对话失败: ' + (error as Error).message);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleDeleteConversation = async (convId: string) => {
+  const handleDeleteConversation = useCallback(async (convId: string) => {
     try {
       await conversationApi.delete(convId);
       if (convId === currentConvId) {
         handleNewConversation();
       }
     } catch (error) {
-      console.error('Failed to delete conversation:', error);
+      logger.error('Failed to delete conversation:', error);
     }
-  };
+  }, [currentConvId]);
 
   const handleModelSelect = (model: Model) => {
     setSelectedModel(model.id || model.model_id);

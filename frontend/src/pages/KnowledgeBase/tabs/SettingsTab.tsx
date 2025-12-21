@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Save, Edit2 } from 'lucide-react';
 import { knowledgeBaseApi } from '@/services';
 import type { KnowledgeBase } from '@/types';
 import { formatDate } from '@/lib/utils';
+import { logger } from '@/lib/logger';
+import { showSuccess, showError, showWarning } from '@/lib/toast';
 
 interface SettingsTabProps {
   kb: KnowledgeBase;
@@ -19,9 +21,9 @@ export default function SettingsTab({ kb, onUpdate }: SettingsTabProps) {
   const [category, setCategory] = useState(kb.category || '');
   const [status, setStatus] = useState(kb.status);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!name.trim()) {
-      alert('知识库名称不能为空');
+      showWarning('知识库名称不能为空');
       return;
     }
 
@@ -33,16 +35,16 @@ export default function SettingsTab({ kb, onUpdate }: SettingsTabProps) {
         category: category.trim() || undefined,
         status,
       });
-      alert('保存成功');
+      showSuccess('保存成功');
       setEditing(false);
       onUpdate();
     } catch (error) {
-      console.error('Failed to update knowledge base:', error);
-      alert('保存失败');
+      logger.error('Failed to update knowledge base:', error);
+      showError('保存失败');
     } finally {
       setLoading(false);
     }
-  };
+  }, [kb.id, name, description, category, status, onUpdate]);
 
   const handleCancel = () => {
     setName(kb.name);

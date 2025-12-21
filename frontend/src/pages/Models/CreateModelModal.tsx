@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { X, ChevronDown, ChevronUp } from 'lucide-react';
 import { modelApi } from '@/services';
 import type { Model } from '@/types';
+import { logger } from '@/lib/logger';
+import { showError, showWarning } from '@/lib/toast';
 
 interface CreateModelModalProps {
   model?: Model | null;
@@ -91,7 +93,7 @@ export default function CreateModelModal({ model, onClose, onSuccess }: CreateMo
     e.preventDefault();
 
     if (!formData.model_name.trim()) {
-      alert('请输入模型名称');
+      showWarning('请输入模型名称');
       return;
     }
 
@@ -159,8 +161,8 @@ export default function CreateModelModal({ model, onClose, onSuccess }: CreateMo
       onSuccess(); // 先刷新数据
       onClose(); // 再关闭模态框
     } catch (error) {
-      console.error('Failed to save model:', error);
-      alert('保存失败');
+      logger.error('Failed to save model:', error);
+      showError('保存失败');
     } finally {
       setLoading(false);
     }

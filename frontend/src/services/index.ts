@@ -1,4 +1,5 @@
 import { apiClient } from './api';
+import { handleSSEStream, handleSSEStreamWithFormData } from '@/lib/sse-client';
 import type {
   KnowledgeBase,
   CreateKBRequest,
@@ -137,149 +138,66 @@ export const chatApi = {
   send: (data: ChatRequest) =>
     apiClient.post<ChatResponse>('/api/v1/chat', data),
 
-  // 流式聊天（需要特殊处理）
+  // 流式聊天（使用 SSE 客户端）
   sendStream: async (
     data: ChatRequest & { files?: File[] },
     onMessage: (chunk: string, reasoningChunk?: string, references?: any[]) => void,
     onError?: (error: Error) => void
   ) => {
-    try {
-      // 判断是否有文件需要上传
-      const hasFiles = data.files && data.files.length > 0;
+    const hasFiles = data.files && data.files.length > 0;
 
-      let response: Response;
+    // 准备回调函数
+    let lastReferences: any[] | undefined;
 
-      if (hasFiles) {
-        // 使用 FormData 上传文件
-        const formData = new FormData();
-        formData.append('conv_id', data.conv_id || '');
-        formData.append('question', data.question);
-        formData.append('model_id', data.model_id);
-        formData.append('stream', 'true');
+    const handleChunk = (content: string) => {
+      onMessage(content, '', lastReferences);
+    };
 
-        if (data.embedding_model_id) {
-          formData.append('embedding_model_id', data.embedding_model_id);
-        }
-        if (data.rerank_model_id) {
-          formData.append('rerank_model_id', data.rerank_model_id);
-        }
-        if (data.knowledge_id) {
-          formData.append('knowledge_id', data.knowledge_id);
-        }
-        if (data.enable_retriever !== undefined) {
-          formData.append('enable_retriever', data.enable_retriever.toString());
-        }
-        if (data.top_k !== undefined) {
-          formData.append('top_k', data.top_k.toString());
-        }
-        if (data.score !== undefined) {
-          formData.append('score', data.score.toString());
-        }
-        if (data.retrieve_mode) {
-          formData.append('retrieve_mode', data.retrieve_mode);
-        }
-        if (data.use_mcp !== undefined) {
-          formData.append('use_mcp', data.use_mcp.toString());
-        }
+    const handleReasoning = (reasoning: string) => {
+      onMessage('', reasoning, lastReferences);
+    };
 
-        // 添加文件
-        data.files!.forEach(file => {
-          formData.append('files', file);
-        });
+    const handleReferences = (references: any[]) => {
+      lastReferences = references;
+      onMessage('', '', references);
+    };
 
-        response = await fetch('/api/v1/chat', {
-          method: 'POST',
-          body: formData,
-        });
-      } else {
-        // 使用 JSON 格式
-        response = await fetch('/api/v1/chat', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ ...data, stream: true }),
-        });
-      }
+    if (hasFiles) {
+      // 使用 FormData 上传文件
+      const formData = new FormData();
+      formData.append('conv_id', data.conv_id || '');
+      formData.append('question', data.question);
+      formData.append('model_id', data.model_id);
+      formData.append('stream', 'true');
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      if (data.embedding_model_id) formData.append('embedding_model_id', data.embedding_model_id);
+      if (data.rerank_model_id) formData.append('rerank_model_id', data.rerank_model_id);
+      if (data.knowledge_id) formData.append('knowledge_id', data.knowledge_id);
+      if (data.enable_retriever !== undefined) formData.append('enable_retriever', data.enable_retriever.toString());
+      if (data.top_k !== undefined) formData.append('top_k', data.top_k.toString());
+      if (data.score !== undefined) formData.append('score', data.score.toString());
+      if (data.retrieve_mode) formData.append('retrieve_mode', data.retrieve_mode);
+      if (data.use_mcp !== undefined) formData.append('use_mcp', data.use_mcp.toString());
 
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
+      // 添加文件
+      data.files!.forEach(file => {
+        formData.append('files', file);
+      });
 
-      if (!reader) {
-        throw new Error('Response body is null');
-      }
-
-      let buffer = '';
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-
-          // 按行分割处理 SSE 消息
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || ''; // 保留最后一个不完整的行
-
-          for (const line of lines) {
-            const trimmed = line.trim();
-
-            // 处理 SSE 格式的 data: 行
-            if (trimmed.startsWith('data:')) {
-              const dataContent = trimmed.substring(5).trim();
-
-              // 检查是否是结束标记
-              if (dataContent === '[DONE]') {
-                continue;
-              }
-
-              // 解析 JSON 数据
-              try {
-                const parsed = JSON.parse(dataContent);
-                // 传递 content, reasoning_content 和 references
-                if (parsed.content || parsed.reasoning_content || parsed.references) {
-                  onMessage(
-                    parsed.content || '',
-                    parsed.reasoning_content,
-                    parsed.references
-                  );
-                }
-              } catch (parseError) {
-                console.warn('Failed to parse SSE data:', dataContent, parseError);
-              }
-            }
-            // 处理 SSE 格式的 documents: 行
-            else if (trimmed.startsWith('documents:')) {
-              const dataContent = trimmed.substring(10).trim();
-
-              // 解析 JSON 数据
-              try {
-                const parsed = JSON.parse(dataContent);
-                // 传递 document 作为 references
-                if (parsed.document) {
-                  onMessage('', undefined, parsed.document);
-                }
-              } catch (parseError) {
-                console.warn('Failed to parse SSE documents:', dataContent, parseError);
-              }
-            }
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-    } catch (error) {
-      console.error('Stream error:', error);
-      if (onError) {
-        onError(error as Error);
-      } else {
-        throw error;
-      }
+      await handleSSEStreamWithFormData('/api/v1/chat', formData, {
+        onChunk: handleChunk,
+        onReasoning: handleReasoning,
+        onReferences: handleReferences,
+        onError,
+      });
+    } else {
+      // 使用 JSON 格式
+      await handleSSEStream('/api/v1/chat', { ...data, stream: true }, {
+        onChunk: handleChunk,
+        onReasoning: handleReasoning,
+        onReferences: handleReferences,
+        onError,
+      });
     }
   },
 };
@@ -399,128 +317,59 @@ export const agentApi = {
   chat: (data: AgentChatRequest) =>
     apiClient.post<AgentChatResponse>('/api/v1/agent/chat', data),
 
-  // Agent流式对话
+  // Agent流式对话（使用 SSE 客户端）
   chatStream: async (
     data: AgentChatRequest & { files?: File[] },
     onMessage: (chunk: string, reasoningChunk?: string, references?: Document[]) => void,
     onError?: (error: Error) => void
   ) => {
-    try {
-      // 判断是否有文件需要上传
-      const hasFiles = data.files && data.files.length > 0;
+    const hasFiles = data.files && data.files.length > 0;
 
-      let response: Response;
+    // 准备回调函数
+    let lastReferences: any[] | undefined;
 
-      if (hasFiles) {
-        // 使用 FormData 上传文件
-        const formData = new FormData();
-        formData.append('preset_id', data.preset_id);
-        formData.append('user_id', data.user_id);
-        formData.append('question', data.question);
-        formData.append('stream', 'true');
+    const handleChunk = (content: string) => {
+      onMessage(content, '', lastReferences);
+    };
 
-        if (data.conv_id) {
-          formData.append('conv_id', data.conv_id);
-        }
+    const handleReasoning = (reasoning: string) => {
+      onMessage('', reasoning, lastReferences);
+    };
 
-        // 添加文件
-        data.files!.forEach(file => {
-          formData.append('files', file);
-        });
+    const handleReferences = (references: any[]) => {
+      lastReferences = references;
+      onMessage('', '', references);
+    };
 
-        response = await fetch('/api/v1/agent/chat', {
-          method: 'POST',
-          body: formData,
-        });
-      } else {
-        // 使用 JSON 格式
-        response = await fetch('/api/v1/agent/chat', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ ...data, stream: true }),
-        });
-      }
+    if (hasFiles) {
+      // 使用 FormData 上传文件
+      const formData = new FormData();
+      formData.append('preset_id', data.preset_id);
+      formData.append('user_id', data.user_id);
+      formData.append('question', data.question);
+      formData.append('stream', 'true');
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      if (data.conv_id) formData.append('conv_id', data.conv_id);
 
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
+      // 添加文件
+      data.files!.forEach(file => {
+        formData.append('files', file);
+      });
 
-      if (!reader) {
-        throw new Error('Response body is null');
-      }
-
-      let buffer = '';
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-
-          // 按行分割处理 SSE 消息
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || ''; // 保留最后一个不完整的行
-
-          for (const line of lines) {
-            const trimmed = line.trim();
-
-            // 处理 SSE 格式的 data: 行
-            if (trimmed.startsWith('data:')) {
-              const dataContent = trimmed.substring(5).trim();
-
-              // 检查是否是结束标记
-              if (dataContent === '[DONE]') {
-                continue;
-              }
-
-              // 解析 JSON 数据
-              try {
-                const parsed = JSON.parse(dataContent);
-                // 传递 content, reasoning_content 和 references
-                if (parsed.content || parsed.reasoning_content || parsed.references) {
-                  onMessage(
-                    parsed.content || '',
-                    parsed.reasoning_content,
-                    parsed.references
-                  );
-                }
-              } catch (parseError) {
-                console.warn('Failed to parse SSE data:', dataContent, parseError);
-              }
-            }
-            // 处理 SSE 格式的 documents: 行
-            else if (trimmed.startsWith('documents:')) {
-              const dataContent = trimmed.substring(10).trim();
-
-              // 解析 JSON 数据
-              try {
-                const parsed = JSON.parse(dataContent);
-                // 传递 document 作为 references
-                if (parsed.document) {
-                  onMessage('', undefined, parsed.document);
-                }
-              } catch (parseError) {
-                console.warn('Failed to parse SSE documents:', dataContent, parseError);
-              }
-            }
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-    } catch (error) {
-      console.error('Stream error:', error);
-      if (onError) {
-        onError(error as Error);
-      } else {
-        throw error;
-      }
+      await handleSSEStreamWithFormData('/api/v1/agent/chat', formData, {
+        onChunk: handleChunk,
+        onReasoning: handleReasoning,
+        onReferences: handleReferences,
+        onError,
+      });
+    } else {
+      // 使用 JSON 格式
+      await handleSSEStream('/api/v1/agent/chat', { ...data, stream: true }, {
+        onChunk: handleChunk,
+        onReasoning: handleReasoning,
+        onReferences: handleReferences,
+        onError,
+      });
     }
   },
 };

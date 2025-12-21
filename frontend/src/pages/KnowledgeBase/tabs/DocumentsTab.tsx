@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Upload, Search, Trash2, RefreshCw, FileText, CheckSquare, Square } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { documentApi } from '@/services';
 import type { Document } from '@/types';
 import { formatDate, formatBytes } from '@/lib/utils';
+import { logger } from '@/lib/logger';
+import { showSuccess, showError } from '@/lib/toast';
 import UploadModal from '../UploadModal';
 import IndexModal from '@/components/IndexModal';
 
@@ -22,13 +24,7 @@ export default function DocumentsTab({ kbId }: DocumentsTabProps) {
   const [pendingDocumentIds, setPendingDocumentIds] = useState<string[]>([]);
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (kbId) {
-      fetchDocuments();
-    }
-  }, [kbId]);
-
-  const fetchDocuments = async () => {
+  const fetchDocuments = useCallback(async () => {
     if (!kbId) return;
 
     try {
@@ -36,26 +32,33 @@ export default function DocumentsTab({ kbId }: DocumentsTabProps) {
       const response = await documentApi.list({ knowledge_id: kbId });
       setDocuments(response.data || []);
     } catch (error) {
-      console.error('Failed to fetch documents:', error);
+      logger.error('Failed to fetch documents:', error);
+      showError('加载文档失败');
       setDocuments([]);
-      alert('加载文档失败');
     } finally {
       setLoading(false);
     }
-  };
+  }, [kbId]);
 
-  const handleDelete = async (docIds: string[]) => {
-    if (!confirm(`确定要删除选中的 ${docIds.length} 个文档吗?`)) return;
+  useEffect(() => {
+    if (kbId) {
+      fetchDocuments();
+    }
+  }, [kbId, fetchDocuments]);
+
+  const handleDelete = useCallback(async (docIds: string[]) => {
+    if (!window.confirm(`确定要删除选中的 ${docIds.length} 个文档吗?`)) return;
 
     try {
       await documentApi.delete(docIds);
+      showSuccess('删除成功');
       fetchDocuments();
       setSelectedDocs(new Set());
     } catch (error) {
-      console.error('Failed to delete documents:', error);
-      alert('删除失败');
+      logger.error('Failed to delete documents:', error);
+      showError('删除失败');
     }
-  };
+  }, [fetchDocuments]);
 
   const handleUploadSuccess = (documentIds: string[]) => {
     // 上传成功后，打开索引模态框
@@ -70,13 +73,13 @@ export default function DocumentsTab({ kbId }: DocumentsTabProps) {
     setShowReindexModal(true);
   };
 
-  const handleIndexSuccess = () => {
+  const handleIndexSuccess = useCallback(() => {
     // 索引成功后刷新文档列表
     fetchDocuments();
     setSelectedDocs(new Set());
-  };
+  }, [fetchDocuments]);
 
-  const handleSelectDoc = (docId: string) => {
+  const handleSelectDoc = useCallback((docId: string) => {
     const newSelected = new Set(selectedDocs);
     if (newSelected.has(docId)) {
       newSelected.delete(docId);
@@ -84,19 +87,22 @@ export default function DocumentsTab({ kbId }: DocumentsTabProps) {
       newSelected.add(docId);
     }
     setSelectedDocs(newSelected);
-  };
+  }, [selectedDocs]);
 
-  const handleSelectAll = () => {
+  const filteredDocuments = useMemo(() =>
+    documents.filter((doc) =>
+      doc.fileName.toLowerCase().includes(searchQuery.toLowerCase())
+    ),
+    [documents, searchQuery]
+  );
+
+  const handleSelectAll = useCallback(() => {
     if (selectedDocs.size === filteredDocuments.length && filteredDocuments.length > 0) {
       setSelectedDocs(new Set());
     } else {
       setSelectedDocs(new Set(filteredDocuments.map(doc => doc.id)));
     }
-  };
-
-  const filteredDocuments = documents.filter((doc) =>
-    doc.fileName.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  }, [selectedDocs, filteredDocuments]);
 
   return (
     <div className="p-6 space-y-6">
