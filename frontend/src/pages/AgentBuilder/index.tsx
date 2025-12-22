@@ -514,21 +514,76 @@ export default function AgentBuilder() {
                             {service.tools && service.tools.length > 0 && (
                               <div className="space-y-2">
                                 <p className="text-sm font-medium text-gray-700">可用工具：</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {service.tools.map((tool) => (
-                                    <label
-                                      key={tool.name}
-                                      className="flex items-center gap-2 px-3 py-1 border rounded-full cursor-pointer hover:bg-gray-50"
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={selectedMcpTools[service.name]?.includes(tool.name) || false}
-                                        onChange={() => toggleMcpTool(service.name, tool.name)}
-                                        className="w-3 h-3 text-blue-500 rounded"
-                                      />
-                                      <span className="text-sm">{tool.name}</span>
-                                    </label>
-                                  ))}
+                                <div className="space-y-3">
+                                  {service.tools.map((tool) => {
+                                    const isSelected = selectedMcpTools[service.name]?.includes(tool.name) || false;
+                                    const requiredParams = tool.inputSchema?.required || [];
+                                    const allParams = tool.inputSchema?.properties || {};
+                                    const paramNames = Object.keys(allParams);
+
+                                    return (
+                                      <label
+                                        key={tool.name}
+                                        className={`block p-3 border rounded-lg cursor-pointer transition-all ${
+                                          isSelected
+                                            ? 'bg-blue-50 border-blue-300 shadow-sm'
+                                            : 'bg-white border-gray-200 hover:bg-gray-50'
+                                        }`}
+                                      >
+                                        <div className="flex items-start gap-3">
+                                          <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => toggleMcpTool(service.name, tool.name)}
+                                            className="mt-1 w-4 h-4 text-blue-500 rounded focus:ring-2 focus:ring-blue-500"
+                                          />
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 mb-1">
+                                              <span className="font-medium text-gray-900">{tool.name}</span>
+                                              {paramNames.length > 0 && (
+                                                <span className="text-xs text-gray-500">
+                                                  ({paramNames.length} 参数)
+                                                </span>
+                                              )}
+                                            </div>
+                                            {tool.description && (
+                                              <p className="text-sm text-gray-600 mb-2">{tool.description}</p>
+                                            )}
+                                            {paramNames.length > 0 && (
+                                              <div className="mt-2 space-y-1">
+                                                <p className="text-xs font-medium text-gray-700">参数：</p>
+                                                <div className="flex flex-wrap gap-1">
+                                                  {paramNames.map((paramName) => {
+                                                    const paramInfo = allParams[paramName];
+                                                    const isRequired = requiredParams.includes(paramName);
+                                                    return (
+                                                      <span
+                                                        key={paramName}
+                                                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
+                                                          isRequired
+                                                            ? 'bg-red-100 text-red-700'
+                                                            : 'bg-gray-100 text-gray-700'
+                                                        }`}
+                                                        title={paramInfo?.description || paramInfo?.type}
+                                                      >
+                                                        {paramName}
+                                                        {isRequired && <span className="ml-1">*</span>}
+                                                        {paramInfo?.type && (
+                                                          <span className="ml-1 text-gray-500">
+                                                            :{paramInfo.type}
+                                                          </span>
+                                                        )}
+                                                      </span>
+                                                    );
+                                                  })}
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </label>
+                                    );
+                                  })}
                                 </div>
                               </div>
                             )}

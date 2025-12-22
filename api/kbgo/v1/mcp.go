@@ -76,14 +76,15 @@ type MCPRegistryGetListRes struct {
 }
 
 type MCPRegistryItem struct {
-	Id          string `json:"id" dc:"MCP registry ID"`
-	Name        string `json:"name" dc:"Service name"`
-	Description string `json:"description" dc:"Service description"`
-	Endpoint    string `json:"endpoint" dc:"SSE endpoint URL"`
-	Timeout     int    `json:"timeout" dc:"Timeout in seconds"`
-	Status      int8   `json:"status" dc:"Status: 1-enabled, 0-disabled"`
-	CreateTime  string `json:"create_time" dc:"Create time"`
-	UpdateTime  string `json:"update_time" dc:"Update time"`
+	Id          string        `json:"id" dc:"MCP registry ID"`
+	Name        string        `json:"name" dc:"Service name"`
+	Description string        `json:"description" dc:"Service description"`
+	Endpoint    string        `json:"endpoint" dc:"SSE endpoint URL"`
+	Timeout     int           `json:"timeout" dc:"Timeout in seconds"`
+	Status      int8          `json:"status" dc:"Status: 1-enabled, 0-disabled"`
+	Tools       []MCPToolInfo `json:"tools,omitempty" dc:"Available tools"`
+	CreateTime  string        `json:"create_time" dc:"Create time"`
+	UpdateTime  string        `json:"update_time" dc:"Update time"`
 }
 
 // MCPRegistryUpdateStatusReq Update MCP service status request

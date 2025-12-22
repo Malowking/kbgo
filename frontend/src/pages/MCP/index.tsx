@@ -285,25 +285,88 @@ export default function MCPPage() {
                     {tools.length === 0 ? (
                       <p className="text-sm text-gray-500">没有可用工具</p>
                     ) : (
-                      <div className="space-y-2">
-                        {tools.map((tool, index) => (
-                          <div key={index} className="bg-gray-50 rounded p-3">
-                            <div className="flex items-start justify-between">
-                              <div>
-                                <h5 className="text-sm font-medium text-gray-900">{tool.name}</h5>
-                                <p className="text-xs text-gray-600 mt-1">{tool.description}</p>
+                      <div className="space-y-3">
+                        {tools.map((tool, index) => {
+                          const requiredParams = tool.inputSchema?.required || [];
+                          const allParams = tool.inputSchema?.properties || {};
+                          const paramNames = Object.keys(allParams);
+
+                          return (
+                            <div key={index} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                              <div className="flex items-start justify-between mb-2">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <h5 className="text-sm font-semibold text-gray-900">{tool.name}</h5>
+                                    {paramNames.length > 0 && (
+                                      <span className="text-xs text-gray-500">
+                                        ({paramNames.length} 参数)
+                                      </span>
+                                    )}
+                                  </div>
+                                  {tool.description && (
+                                    <p className="text-sm text-gray-600">{tool.description}</p>
+                                  )}
+                                </div>
                               </div>
+
+                              {paramNames.length > 0 && (
+                                <div className="mt-3 space-y-2">
+                                  <p className="text-xs font-medium text-gray-700">参数详情：</p>
+                                  <div className="space-y-1">
+                                    {paramNames.map((paramName) => {
+                                      const paramInfo = allParams[paramName];
+                                      const isRequired = requiredParams.includes(paramName);
+
+                                      return (
+                                        <div key={paramName} className="flex items-start gap-2 text-xs">
+                                          <span className={`inline-flex items-center px-2 py-1 rounded font-medium ${
+                                            isRequired
+                                              ? 'bg-red-100 text-red-700'
+                                              : 'bg-blue-100 text-blue-700'
+                                          }`}>
+                                            {paramName}
+                                            {isRequired && <span className="ml-1">*</span>}
+                                          </span>
+
+                                          {paramInfo?.type && (
+                                            <span className="px-2 py-1 bg-gray-200 text-gray-700 rounded">
+                                              {paramInfo.type}
+                                            </span>
+                                          )}
+
+                                          {paramInfo?.description && (
+                                            <span className="text-gray-600 flex-1">
+                                              {paramInfo.description}
+                                            </span>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+
+                                  {requiredParams.length > 0 && (
+                                    <p className="text-xs text-gray-500 mt-2">
+                                      * 表示必填参数
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+
+                              {tool.inputSchema?.type && (
+                                <div className="mt-3 pt-3 border-t border-gray-300">
+                                  <details className="text-xs">
+                                    <summary className="cursor-pointer text-gray-600 hover:text-gray-900 font-medium">
+                                      完整 Schema
+                                    </summary>
+                                    <pre className="mt-2 p-2 bg-white rounded text-xs overflow-x-auto border border-gray-200">
+                                      {JSON.stringify(tool.inputSchema, null, 2)}
+                                    </pre>
+                                  </details>
+                                </div>
+                              )}
                             </div>
-                            {tool.inputSchema && (
-                              <div className="mt-2 text-xs">
-                                <span className="text-gray-500">参数：</span>
-                                <code className="ml-2 text-gray-700">
-                                  {tool.inputSchema.required?.join(', ') || '无'}
-                                </code>
-                              </div>
-                            )}
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>

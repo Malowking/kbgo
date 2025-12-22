@@ -176,6 +176,15 @@ func (c *ControllerV1) MCPRegistryGetList(ctx context.Context, req *v1.MCPRegist
 
 	items := make([]*v1.MCPRegistryItem, 0, len(registries))
 	for _, r := range registries {
+		// 解析 Tools JSON 字符串
+		var tools []v1.MCPToolInfo
+		if r.Tools != "" && r.Tools != "[]" {
+			if err := json.Unmarshal([]byte(r.Tools), &tools); err != nil {
+				g.Log().Warningf(ctx, "Failed to unmarshal tools for MCP %s: %v", r.ID, err)
+				tools = []v1.MCPToolInfo{} // 解析失败时使用空数组
+			}
+		}
+
 		items = append(items, &v1.MCPRegistryItem{
 			Id:          r.ID,
 			Name:        r.Name,
@@ -183,6 +192,7 @@ func (c *ControllerV1) MCPRegistryGetList(ctx context.Context, req *v1.MCPRegist
 			Endpoint:    r.Endpoint,
 			Timeout:     r.Timeout,
 			Status:      r.Status,
+			Tools:       tools,
 			CreateTime:  r.CreateTime.Format(time.RFC3339),
 			UpdateTime:  r.UpdateTime.Format(time.RFC3339),
 		})

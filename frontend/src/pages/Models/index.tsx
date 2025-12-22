@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Server, CheckCircle, XCircle, Plus, Edit2, Trash2, Sparkles, X } from 'lucide-react';
+import { RefreshCw, Server, CheckCircle, XCircle, Plus, Edit2, Trash2, Sparkles } from 'lucide-react';
 import { modelApi } from '@/services';
 import type { Model } from '@/types';
 import CreateModelModal from './CreateModelModal';
@@ -108,20 +108,6 @@ export default function Models() {
     } catch (error: any) {
       logger.error('Failed to set rewrite model:', error);
       showError(`设置失败: ${error.message || '未知错误'}`);
-    }
-  }, [fetchModels, fetchRewriteModel]);
-
-  const handleClearRewriteModel = useCallback(async () => {
-    if (!window.confirm('确定要取消重写模型配置吗？\n\n取消后，系统将跳过查询重写逻辑。')) return;
-
-    try {
-      await modelApi.setRewriteModel('');
-      await fetchRewriteModel();
-      await fetchModels();
-      showSuccess('重写模型已取消');
-    } catch (error: any) {
-      logger.error('Failed to clear rewrite model:', error);
-      showError(`取消失败: ${error.message || '未知错误'}`);
     }
   }, [fetchModels, fetchRewriteModel]);
 
