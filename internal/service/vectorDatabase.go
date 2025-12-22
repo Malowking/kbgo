@@ -2,9 +2,9 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/core/vector_store"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gctx"
@@ -36,14 +36,14 @@ func initializeVectorStore(ctx context.Context) (vector_store.VectorStore, error
 	case "milvus":
 		store, err := vector_store.InitializeMilvusStore(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to initialize Milvus vector store: %w", err)
+			return nil, errors.Newf(errors.ErrVectorStoreInit, "failed to initialize Milvus vector store: %v", err)
 		}
 		g.Log().Info(ctx, "Milvus vector store initialized successfully")
 		return store, nil
 	case "pgvector":
 		store, err := vector_store.InitializePostgresStore(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to initialize PostgreSQL vector store: %w", err)
+			return nil, errors.Newf(errors.ErrVectorStoreInit, "failed to initialize PostgreSQL vector store: %v", err)
 		}
 		g.Log().Info(ctx, "PostgreSQL vector store initialized successfully")
 		return store, nil
@@ -52,6 +52,6 @@ func initializeVectorStore(ctx context.Context) (vector_store.VectorStore, error
 	//case "weaviate":
 	//	return initializeWeaviateClient(ctx)
 	default:
-		return nil, fmt.Errorf("unsupported vector database type: %s. Supported types: milvus, postgresql", dbType)
+		return nil, errors.Newf(errors.ErrInvalidParameter, "unsupported vector database type: %s. Supported types: milvus, postgresql", dbType)
 	}
 }

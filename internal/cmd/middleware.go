@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/Malowking/kbgo/core/errors"
+
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -88,12 +90,28 @@ func MiddlewareHandlerResponse(r *ghttp.Request) {
 	}
 
 	var (
-		msg  string
-		err  = r.GetError()
-		res  = r.GetHandlerResponse()
-		code = gerror.Code(err)
+		msg      string
+		err      = r.GetError()
+		res      = r.GetHandlerResponse()
+		code     = gerror.Code(err)
+		httpCode = http.StatusOK
 	)
 	if err != nil {
+		// 优先处理自定义业务错误
+		if appErr := errors.GetAppError(err); appErr != nil {
+			httpCode = appErr.Code.HTTPStatusCode()
+			r.Response.WriteJson(ghttp.DefaultHandlerResponse{
+				Code:    int(appErr.Code),
+				Message: appErr.Message,
+				Data:    res,
+			})
+			if httpCode != http.StatusOK {
+				r.Response.WriteStatus(httpCode)
+			}
+			return
+		}
+
+		// 处理GoFrame标准错误
 		if code == gcode.CodeNil {
 			code = gcode.CodeInternalError
 		}

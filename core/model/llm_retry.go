@@ -2,10 +2,10 @@ package model
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"time"
 
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -42,7 +42,7 @@ func RetryWithDifferentLLM(ctx context.Context, config *LLMRetryConfig, callFunc
 	// 获取所有指定类型的模型
 	allModels := Registry.GetByType(config.ModelType)
 	if len(allModels) == 0 {
-		return nil, fmt.Errorf("没有可用的%s类型模型", config.ModelType)
+		return nil, errors.Newf(errors.ErrModelNotFound, "没有可用的%s类型模型", config.ModelType)
 	}
 
 	// 过滤掉排除的模型
@@ -61,7 +61,7 @@ func RetryWithDifferentLLM(ctx context.Context, config *LLMRetryConfig, callFunc
 	}
 
 	if len(availableModels) == 0 {
-		return nil, fmt.Errorf("过滤后没有可用的%s类型模型", config.ModelType)
+		return nil, errors.Newf(errors.ErrModelNotFound, "过滤后没有可用的%s类型模型", config.ModelType)
 	}
 
 	// 随机打乱模型顺序，避免总是使用同一个模型
@@ -114,7 +114,7 @@ func RetryWithDifferentLLM(ctx context.Context, config *LLMRetryConfig, callFunc
 	}
 
 	// 所有模型都失败了
-	return nil, fmt.Errorf("所有%s模型都失败了，最后错误: %w", config.ModelType, lastErr)
+	return nil, errors.Newf(errors.ErrLLMCallFailed, "所有%s模型都失败了，最后错误: %v", config.ModelType, lastErr)
 }
 
 // SelectRandomLLMModel 随机选择一个LLM模型
@@ -122,7 +122,7 @@ func RetryWithDifferentLLM(ctx context.Context, config *LLMRetryConfig, callFunc
 func SelectRandomLLMModel(ctx context.Context, modelType ModelType) (string, error) {
 	models := Registry.GetByType(modelType)
 	if len(models) == 0 {
-		return "", fmt.Errorf("没有可用的%s类型模型", modelType)
+		return "", errors.Newf(errors.ErrModelNotFound, "没有可用的%s类型模型", modelType)
 	}
 
 	// 随机选择一个模型
@@ -189,5 +189,5 @@ func RetryWithSameModel(ctx context.Context, modelName string, config *SingleMod
 	}
 
 	// 所有重试都失败了
-	return nil, fmt.Errorf("模型 %s 调用失败，错误: %w", modelName, lastErr)
+	return nil, errors.Newf(errors.ErrLLMCallFailed, "模型 %s 调用失败，错误: %v", modelName, lastErr)
 }

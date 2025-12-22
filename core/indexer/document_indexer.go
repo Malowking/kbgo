@@ -11,6 +11,7 @@ import (
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/config"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/core/file_store"
 	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/core/vector_store"
@@ -104,8 +105,6 @@ func (s *DocumentIndexer) BatchDocumentIndex(ctx context.Context, req *BatchInde
 
 			if err != nil {
 				g.Log().Errorf(ctx, "Document indexing failed, documentId=%s, err=%v", documentId, err)
-			} else {
-				g.Log().Infof(ctx, "Document indexed successfully, documentId=%s", documentId)
 			}
 		})
 	}
@@ -162,9 +161,8 @@ func (s *DocumentIndexer) DocumentIndex(ctx context.Context, req *IndexReq) erro
 
 	// Execute Pipeline
 	for _, step := range pipeline {
-		g.Log().Debugf(ctx, "Executing step: %s, documentId=%s", step.name, req.DocumentId)
 		if err := step.fn(idxCtx); err != nil {
-			return fmt.Errorf("%s failed: %w", step.name, err)
+			return errors.Newf(errors.ErrIndexingFailed, "%s failed: %v", step.name, err)
 		}
 	}
 
@@ -216,27 +214,25 @@ func (s *DocumentIndexer) stepPrepareFile(idxCtx *indexContext) error {
 			g.Log().Errorf(idxCtx.ctx, "Failed to download file from RustFS, documentId=%s, bucket=%s, location=%s, err=%v",
 				idxCtx.documentId, idxCtx.doc.RustfsBucket, idxCtx.doc.RustfsLocation, err)
 			knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))
-			return err
+			return errors.Newf(errors.ErrFileReadFailed, "failed to download file from RustFS: %v", err)
 		}
 		g.Log().Infof(idxCtx.ctx, "File downloaded and overwritten from RustFS to %s, documentId=%s", localFilePath, idxCtx.documentId)
 		idxCtx.localFilePath = localFilePath
 	} else {
 		// Local storage: Directly use the local_file_path stored in database (relative path)
 		if idxCtx.doc.LocalFilePath == "" {
-			err := fmt.Errorf("Local file path is empty, documentId=%s", idxCtx.documentId)
 			g.Log().Errorf(idxCtx.ctx, "Local file path is empty, documentId=%s", idxCtx.documentId)
 			knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))
-			return err
+			return errors.Newf(errors.ErrFileReadFailed, "local file path is empty, documentId=%s", idxCtx.documentId)
 		}
 		idxCtx.localFilePath = idxCtx.doc.LocalFilePath
 	}
 
 	// Check if file exists
 	if idxCtx.localFilePath == "" || !fileExists(idxCtx.localFilePath) {
-		err := fmt.Errorf("File does not exist, path=%s", idxCtx.localFilePath)
 		g.Log().Errorf(idxCtx.ctx, "File does not exist, documentId=%s, path=%s", idxCtx.documentId, idxCtx.localFilePath)
 		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))
-		return err
+		return errors.Newf(errors.ErrFileReadFailed, "file does not exist, path=%s", idxCtx.localFilePath)
 	}
 
 	return nil
@@ -262,11 +258,11 @@ func (s *DocumentIndexer) stepParseDocument(idxCtx *indexContext) error {
 			strings.Contains(errMsg, "timeout") ||
 			strings.Contains(errMsg, "unreachable") {
 			// 对于服务未启动或超时错误，不修改状态，直接返回
-			return fmt.Errorf("file_parse service unavailable: %w", err)
+			return errors.Newf(errors.ErrDocumentParseFailed, "file_parse service unavailable: %v", err)
 		}
 		// 其他错误（如文件解析失败），标记为失败
 		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))
-		return err
+		return errors.Newf(errors.ErrDocumentParseFailed, "failed to parse document: %v", err)
 	}
 
 	idxCtx.chunks = chunks
@@ -311,7 +307,7 @@ func (s *DocumentIndexer) stepSaveChunks(idxCtx *indexContext) error {
 	if err != nil {
 		g.Log().Errorf(idxCtx.ctx, "Failed to save chunks to database, documentId=%s, err=%v", idxCtx.documentId, err)
 		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusIndexing))
-		return fmt.Errorf("Failed to save chunks to database: %w", err)
+		return errors.Newf(errors.ErrIndexingFailed, "failed to save chunks to database: %v", err)
 	}
 
 	return nil
@@ -322,19 +318,17 @@ func (s *DocumentIndexer) stepVectorizeAndStore(idxCtx *indexContext) error {
 	// 从 Registry 获取 embedding 模型信息
 	modelConfig := model.Registry.Get(idxCtx.modelID)
 	if modelConfig == nil {
-		err := fmt.Errorf("embedding model not found in registry: %s", idxCtx.modelID)
 		g.Log().Errorf(idxCtx.ctx, "Failed to get embedding model, documentId=%s, modelID=%s", idxCtx.documentId, idxCtx.modelID)
 		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))
-		return err
+		return errors.Newf(errors.ErrModelNotFound, "embedding model not found in registry: %s", idxCtx.modelID)
 	}
 
 	// 验证模型类型
 	if modelConfig.Type != model.ModelTypeEmbedding {
-		err := fmt.Errorf("model %s is not an embedding model, got type: %s", idxCtx.modelID, modelConfig.Type)
 		g.Log().Errorf(idxCtx.ctx, "Invalid model type, documentId=%s, modelID=%s, type=%s",
 			idxCtx.documentId, idxCtx.modelID, modelConfig.Type)
 		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))
-		return err
+		return errors.Newf(errors.ErrModelConfigInvalid, "model %s is not an embedding model, got type: %s", idxCtx.modelID, modelConfig.Type)
 	}
 
 	// 创建动态配置，使用从 Registry 获取的模型信息覆盖静态配置
@@ -356,7 +350,7 @@ func (s *DocumentIndexer) stepVectorizeAndStore(idxCtx *indexContext) error {
 	if err != nil {
 		g.Log().Errorf(idxCtx.ctx, "Failed to create vector embedder, documentId=%s, err=%v", idxCtx.documentId, err)
 		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusIndexing))
-		return fmt.Errorf("Failed to create vector embedder: %w", err)
+		return errors.Newf(errors.ErrEmbeddingFailed, "failed to create vector embedder: %v", err)
 	}
 
 	// Set context, pass necessary information
@@ -370,7 +364,7 @@ func (s *DocumentIndexer) stepVectorizeAndStore(idxCtx *indexContext) error {
 	if err != nil {
 		g.Log().Errorf(idxCtx.ctx, "Failed to vectorize and store, documentId=%s, err=%v", idxCtx.documentId, err)
 		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusIndexing))
-		return fmt.Errorf("Failed to vectorize and store: %w", err)
+		return errors.Newf(errors.ErrVectorInsert, "failed to vectorize and store: %v", err)
 	}
 
 	g.Log().Infof(idxCtx.ctx, "Vectorization completed, documentId=%s, collectionName=%s, chunks count=%d, successfully stored=%d",

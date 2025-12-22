@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
@@ -104,7 +105,7 @@ func (b *MultimodalMessageBuilder) buildChatMessagePart(file *MultimodalFile, us
 		if useBase64 {
 			data, err := os.ReadFile(file.FilePath)
 			if err != nil {
-				return schema.ChatMessagePart{}, fmt.Errorf("failed to read image file: %w", err)
+				return schema.ChatMessagePart{}, errors.Newf(errors.ErrFileReadFailed, "failed to read image file %s: %v", file.FilePath, err)
 			}
 			base64Data := base64.StdEncoding.EncodeToString(data)
 			return schema.ChatMessagePart{
@@ -139,7 +140,7 @@ func (b *MultimodalMessageBuilder) buildImageInputPart(file *MultimodalFile, use
 		// 读取文件并转换为base64
 		data, err := os.ReadFile(file.FilePath)
 		if err != nil {
-			return schema.MessageInputPart{}, fmt.Errorf("failed to read image file: %w", err)
+			return schema.MessageInputPart{}, errors.Newf(errors.ErrFileReadFailed, "failed to read image file %s: %v", file.FilePath, err)
 		}
 
 		base64Data := base64.StdEncoding.EncodeToString(data)
@@ -179,7 +180,7 @@ func (b *MultimodalMessageBuilder) buildAudioInputPart(file *MultimodalFile, use
 	if useBase64 {
 		data, err := os.ReadFile(file.FilePath)
 		if err != nil {
-			return schema.MessageInputPart{}, fmt.Errorf("failed to read audio file: %w", err)
+			return schema.MessageInputPart{}, errors.Newf(errors.ErrFileReadFailed, "failed to read audio file %s: %v", file.FilePath, err)
 		}
 
 		base64Data := base64.StdEncoding.EncodeToString(data)

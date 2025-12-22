@@ -5,11 +5,11 @@ import (
 	"fmt"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/internal/dao"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/encoding/gjson"
-	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -58,7 +58,7 @@ func (c *ControllerV1) GetModel(ctx context.Context, req *v1.GetModelReq) (res *
 	mc := model.Registry.Get(req.ModelID)
 	if mc == nil {
 		g.Log().Errorf(ctx, "Model not found: %s", req.ModelID)
-		return nil, gerror.Newf("Model not found: %s", req.ModelID)
+		return nil, errors.Newf(errors.ErrModelNotFound, "Model not found: %s", req.ModelID)
 	}
 
 	return &v1.GetModelRes{
@@ -91,7 +91,7 @@ func (c *ControllerV1) RegisterModel(ctx context.Context, req *v1.RegisterModelR
 		extraBytes, err := gjson.Marshal(extra)
 		if err != nil {
 			g.Log().Errorf(ctx, "Failed to marshal extra config: %v", err)
-			return nil, gerror.Newf("Failed to marshal extra config: %v", err)
+			return nil, errors.Newf(errors.ErrInvalidParameter, "Failed to marshal extra config: %v", err)
 		}
 		extraJSON = string(extraBytes)
 	}
@@ -110,7 +110,7 @@ func (c *ControllerV1) RegisterModel(ctx context.Context, req *v1.RegisterModelR
 	// 保存到数据库
 	if err := dao.AIModel.Create(ctx, aiModel); err != nil {
 		g.Log().Errorf(ctx, "Failed to create model: %v", err)
-		return nil, gerror.Newf("Failed to create model: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseInsert, "Failed to create model: %v", err)
 	}
 
 	// 重新加载模型注册表
@@ -141,11 +141,11 @@ func (c *ControllerV1) UpdateModel(ctx context.Context, req *v1.UpdateModelReq) 
 	existingModel, err := dao.AIModel.GetByID(ctx, req.ModelID)
 	if err != nil {
 		g.Log().Errorf(ctx, "Failed to get model: %v", err)
-		return nil, gerror.Newf("Failed to get model: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "Failed to get model: %v", err)
 	}
 	if existingModel == nil {
 		g.Log().Errorf(ctx, "Model not found: %s", req.ModelID)
-		return nil, gerror.Newf("Model not found: %s", req.ModelID)
+		return nil, errors.Newf(errors.ErrModelNotFound, "Model not found: %s", req.ModelID)
 	}
 
 	// 只更新传入的字段（使用指针判断是否传值）
@@ -175,7 +175,7 @@ func (c *ControllerV1) UpdateModel(ctx context.Context, req *v1.UpdateModelReq) 
 		var extraTest interface{}
 		if err := gjson.Unmarshal([]byte(*req.Extra), &extraTest); err != nil {
 			g.Log().Errorf(ctx, "Invalid JSON format for extra field: %v", err)
-			return nil, gerror.Newf("Invalid JSON format for extra field: %v", err)
+			return nil, errors.Newf(errors.ErrInvalidParameter, "Invalid JSON format for extra field: %v", err)
 		}
 		existingModel.Extra = *req.Extra
 	}
@@ -183,7 +183,7 @@ func (c *ControllerV1) UpdateModel(ctx context.Context, req *v1.UpdateModelReq) 
 	// 保存更新
 	if err := dao.AIModel.Update(ctx, existingModel); err != nil {
 		g.Log().Errorf(ctx, "Failed to update model: %v", err)
-		return nil, gerror.Newf("Failed to update model: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseUpdate, "Failed to update model: %v", err)
 	}
 
 	// 重新加载模型注册表
@@ -211,11 +211,11 @@ func (c *ControllerV1) DeleteModel(ctx context.Context, req *v1.DeleteModelReq) 
 	existingModel, err := dao.AIModel.GetByID(ctx, req.ModelID)
 	if err != nil {
 		g.Log().Errorf(ctx, "Failed to get model: %v", err)
-		return nil, gerror.Newf("Failed to get model: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "Failed to get model: %v", err)
 	}
 	if existingModel == nil {
 		g.Log().Errorf(ctx, "Model not found: %s", req.ModelID)
-		return nil, gerror.Newf("Model not found: %s", req.ModelID)
+		return nil, errors.Newf(errors.ErrModelNotFound, "Model not found: %s", req.ModelID)
 	}
 
 	// 根据模型类型检查绑定关系
@@ -228,7 +228,7 @@ func (c *ControllerV1) DeleteModel(ctx context.Context, req *v1.DeleteModelReq) 
 			Where("embedding_model_id = ?", req.ModelID).
 			Count(&count).Error; err != nil {
 			g.Log().Errorf(ctx, "Failed to check knowledge base bindings: %v", err)
-			return nil, gerror.Newf("Failed to check knowledge base bindings: %v", err)
+			return nil, errors.Newf(errors.ErrDatabaseQuery, "Failed to check knowledge base bindings: %v", err)
 		}
 		if count > 0 {
 			g.Log().Infof(ctx, "Cannot delete embedding model %s: %d knowledge bases are using it", req.ModelID, count)
@@ -243,7 +243,7 @@ func (c *ControllerV1) DeleteModel(ctx context.Context, req *v1.DeleteModelReq) 
 		var presets []gormModel.AgentPreset
 		if err := db.Find(&presets).Error; err != nil {
 			g.Log().Errorf(ctx, "Failed to query agent presets: %v", err)
-			return nil, gerror.Newf("Failed to query agent presets: %v", err)
+			return nil, errors.Newf(errors.ErrDatabaseQuery, "Failed to query agent presets: %v", err)
 		}
 
 		// 遍历所有预设，检查config中的model_id
@@ -270,7 +270,7 @@ func (c *ControllerV1) DeleteModel(ctx context.Context, req *v1.DeleteModelReq) 
 		var presets []gormModel.AgentPreset
 		if err := db.Find(&presets).Error; err != nil {
 			g.Log().Errorf(ctx, "Failed to query agent presets: %v", err)
-			return nil, gerror.Newf("Failed to query agent presets: %v", err)
+			return nil, errors.Newf(errors.ErrDatabaseQuery, "Failed to query agent presets: %v", err)
 		}
 
 		// 遍历所有预设，检查config中的rerank_model_id
@@ -296,7 +296,7 @@ func (c *ControllerV1) DeleteModel(ctx context.Context, req *v1.DeleteModelReq) 
 	// 删除模型
 	if err := dao.AIModel.Delete(ctx, req.ModelID); err != nil {
 		g.Log().Errorf(ctx, "Failed to delete model: %v", err)
-		return nil, gerror.Newf("Failed to delete model: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseDelete, "Failed to delete model: %v", err)
 	}
 
 	// 重新加载模型注册表
@@ -334,7 +334,7 @@ func (c *ControllerV1) SetRewriteModel(ctx context.Context, req *v1.SetRewriteMo
 		var models []gormModel.AIModel
 		if err := db.Find(&models).Error; err != nil {
 			g.Log().Errorf(ctx, "Failed to query models: %v", err)
-			return nil, gerror.Newf("Failed to query models: %v", err)
+			return nil, errors.Newf(errors.ErrDatabaseQuery, "Failed to query models: %v", err)
 		}
 
 		// 逐个移除 is_rewrite 标记
@@ -384,28 +384,28 @@ func (c *ControllerV1) SetRewriteModel(ctx context.Context, req *v1.SetRewriteMo
 	existingModel, err := dao.AIModel.GetByID(ctx, req.ModelID)
 	if err != nil {
 		g.Log().Errorf(ctx, "Failed to get model: %v", err)
-		return nil, gerror.Newf("Failed to get model: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "Failed to get model: %v", err)
 	}
 	if existingModel == nil {
 		g.Log().Errorf(ctx, "Model not found: %s", req.ModelID)
-		return nil, gerror.Newf("Model not found: %s", req.ModelID)
+		return nil, errors.Newf(errors.ErrModelNotFound, "Model not found: %s", req.ModelID)
 	}
 
 	// 检查模型类型是否为 LLM
 	if existingModel.ModelType != "llm" {
-		return nil, gerror.New("Rewrite model must be LLM type")
+		return nil, errors.New(errors.ErrInvalidParameter, "Rewrite model must be LLM type")
 	}
 
 	// 检查模型是否启用
 	if !existingModel.Enabled {
-		return nil, gerror.New("Cannot set disabled model as rewrite model")
+		return nil, errors.New(errors.ErrInvalidParameter, "Cannot set disabled model as rewrite model")
 	}
 
 	// 1. 先移除所有模型的 is_rewrite 标记
 	var models []gormModel.AIModel
 	if err := db.Find(&models).Error; err != nil {
 		g.Log().Errorf(ctx, "Failed to query models: %v", err)
-		return nil, gerror.Newf("Failed to query models: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "Failed to query models: %v", err)
 	}
 
 	for _, m := range models {
@@ -457,14 +457,14 @@ func (c *ControllerV1) SetRewriteModel(ctx context.Context, req *v1.SetRewriteMo
 	extraBytes, err := gjson.Marshal(extra)
 	if err != nil {
 		g.Log().Errorf(ctx, "Failed to marshal extra: %v", err)
-		return nil, gerror.Newf("Failed to marshal extra: %v", err)
+		return nil, errors.Newf(errors.ErrInvalidParameter, "Failed to marshal extra: %v", err)
 	}
 	existingModel.Extra = string(extraBytes)
 
 	// 更新数据库
 	if err := dao.AIModel.Update(ctx, existingModel); err != nil {
 		g.Log().Errorf(ctx, "Failed to update model: %v", err)
-		return nil, gerror.Newf("Failed to update model: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseUpdate, "Failed to update model: %v", err)
 	}
 
 	// 3. 更新内存中的重写模型

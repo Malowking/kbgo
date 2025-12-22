@@ -1,13 +1,13 @@
 package vector_store
 
 import (
-	"fmt"
+	"github.com/Malowking/kbgo/core/errors"
 )
 
 // NewVectorStore 根据配置创建向量存储实例
 func NewVectorStore(config *VectorStoreConfig) (VectorStore, error) {
 	if config == nil {
-		return nil, fmt.Errorf("config cannot be nil")
+		return nil, errors.New(errors.ErrInvalidParameter, "config cannot be nil")
 	}
 
 	switch config.Type {
@@ -16,6 +16,6 @@ func NewVectorStore(config *VectorStoreConfig) (VectorStore, error) {
 	case VectorStoreTypePostgreSQL:
 		return NewPostgresStore(config)
 	default:
-		return nil, fmt.Errorf("unsupported vector store type: %s", config.Type)
+		return nil, errors.Newf(errors.ErrInvalidParameter, "unsupported vector store type: %s", config.Type)
 	}
 }

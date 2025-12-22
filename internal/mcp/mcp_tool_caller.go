@@ -8,6 +8,7 @@ import (
 	"time"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/chat"
 	"github.com/Malowking/kbgo/internal/mcp/client"
@@ -34,7 +35,7 @@ func NewMCPToolCaller(ctx context.Context) (*MCPToolCaller, error) {
 	// 获取所有启用的MCP服务
 	registries, _, err := dao.MCPRegistry.List(ctx, nil, 1, 100)
 	if err != nil {
-		return nil, fmt.Errorf("获取MCP服务列表失败: %w", err)
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "获取MCP服务列表失败: %v", err)
 	}
 
 	services := make(map[string]*MCPServiceClient)
@@ -258,7 +259,7 @@ func (tc *MCPToolCaller) CallToolsWithLLM(ctx context.Context, modelID string, q
 		response, err := chatInstance.GenerateWithTools(ctx, modelID, messages, llmTools)
 		if err != nil {
 			g.Log().Errorf(ctx, "[MCP工具调用] 第 %d 轮LLM调用失败: %v", iteration+1, err)
-			return nil, nil, "", fmt.Errorf("LLM 调用失败: %w", err)
+			return nil, nil, "", errors.Newf(errors.ErrLLMCallFailed, "LLM 调用失败: %v", err)
 		}
 
 		g.Log().Infof(ctx, "[MCP工具调用] 第 %d 轮LLM响应 - Content长度: %d, ToolCalls数: %d",
@@ -346,17 +347,13 @@ func (tc *MCPToolCaller) CallToolsWithLLM(ctx context.Context, modelID string, q
 				g.Log().Errorf(ctx, "获取最终答案失败: %v", err)
 			} else {
 				finalAnswer = finalResponse.Content
-				g.Log().Debugf(ctx, "获取到最终答案（长度: %d）", len(finalAnswer))
 			}
 			break
 		}
 	}
 
-	// 6. 记录工具调用日志
-	if len(toolCallLogs) > 0 {
-		toolCallLogsJSON, _ := json.Marshal(toolCallLogs)
-		g.Log().Debugf(ctx, "MCP 工具调用日志: %s", string(toolCallLogsJSON))
-	}
+	// 6. 记录工具调用日志（仅用于内部统计）
+	_ = toolCallLogs
 
 	// 7. 记录完成日志
 	if len(allMCPResults) > 0 {
@@ -379,10 +376,8 @@ func (tc *MCPToolCaller) callSingleTool(
 	// 查找服务
 	service, exists := tc.services[serviceName]
 	if !exists {
-		return nil, nil, fmt.Errorf("服务 %s 不存在", serviceName)
+		return nil, nil, errors.Newf(errors.ErrMCPServerNotFound, "服务 %s 不存在", serviceName)
 	}
-
-	g.Log().Debugf(ctx, "调用 MCP 工具: %s.%s，参数: %v", serviceName, toolName, arguments)
 
 	startTime := time.Now()
 

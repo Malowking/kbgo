@@ -9,6 +9,7 @@ import (
 	"time"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/pkg/schema"
@@ -71,7 +72,7 @@ func (h *ChatHandler) selectRandomLLMModel(ctx context.Context) (string, error) 
 	// 获取所有LLM类型的模型
 	llmModels := model.Registry.GetByType(model.ModelTypeLLM)
 	if len(llmModels) == 0 {
-		return "", fmt.Errorf("没有可用的LLM模型")
+		return "", errors.New(errors.ErrModelNotFound, "没有可用的LLM模型")
 	}
 
 	// 随机选择一个模型
@@ -87,7 +88,7 @@ func (h *ChatHandler) getAllMCPTools(ctx context.Context) (map[string][]v1.MCPTo
 	// 获取所有启用的MCP服务
 	registries, _, err := dao.MCPRegistry.List(ctx, nil, 1, 100)
 	if err != nil {
-		return nil, fmt.Errorf("获取MCP服务列表失败: %w", err)
+		return nil, errors.Newf(errors.ErrMCPCallFailed, "获取MCP服务列表失败: %v", err)
 	}
 
 	allTools := make(map[string][]v1.MCPToolInfo)
@@ -103,7 +104,6 @@ func (h *ChatHandler) getAllMCPTools(ctx context.Context) (map[string][]v1.MCPTo
 			var toolInfos []v1.MCPToolInfo
 			if err := json.Unmarshal([]byte(registry.Tools), &toolInfos); err == nil {
 				allTools[registry.Name] = toolInfos
-				g.Log().Debugf(ctx, "从服务 %s 加载了 %d 个工具", registry.Name, len(toolInfos))
 			}
 		}
 	}
@@ -144,7 +144,7 @@ func (h *ChatHandler) selectToolsWithLLM(ctx context.Context, question string) (
 	// 1. 获取所有可用的MCP工具
 	allTools, err := h.getAllMCPTools(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("获取MCP工具列表失败: %w", err)
+		return nil, errors.Newf(errors.ErrMCPCallFailed, "获取MCP工具列表失败: %v", err)
 	}
 
 	if len(allTools) == 0 {
@@ -163,7 +163,7 @@ func (h *ChatHandler) selectToolsWithLLM(ctx context.Context, question string) (
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("工具选择失败: %w", err)
+		return nil, errors.Newf(errors.ErrLLMCallFailed, "工具选择失败: %v", err)
 	}
 
 	return result.(map[string][]string), nil
@@ -174,7 +174,7 @@ func (h *ChatHandler) callLLMForToolSelection(ctx context.Context, modelID strin
 	// 获取模型配置
 	mc := model.Registry.Get(modelID)
 	if mc == nil {
-		return nil, fmt.Errorf("模型不存在: %s", modelID)
+		return nil, errors.Newf(errors.ErrModelNotFound, "模型不存在: %s", modelID)
 	}
 
 	// 构建工具选择的prompt
@@ -200,20 +200,19 @@ func (h *ChatHandler) callLLMForToolSelection(ctx context.Context, modelID strin
 
 	resp, err := mc.Client.CreateChatCompletion(ctx, chatReq)
 	if err != nil {
-		return nil, fmt.Errorf("LLM调用失败: %w", err)
+		return nil, errors.Newf(errors.ErrLLMCallFailed, "LLM调用失败: %v", err)
 	}
 
 	if len(resp.Choices) == 0 {
-		return nil, fmt.Errorf("LLM返回空响应")
+		return nil, errors.New(errors.ErrLLMCallFailed, "LLM返回空响应")
 	}
 
 	responseContent := resp.Choices[0].Message.Content
-	g.Log().Debugf(ctx, "LLM工具选择响应: %s", responseContent)
 
 	// 解析LLM的输出
 	selectedTools, err := h.parseToolSelectionResponse(ctx, responseContent)
 	if err != nil {
-		return nil, fmt.Errorf("解析工具选择响应失败: %w", err)
+		return nil, errors.Newf(errors.ErrInvalidParameter, "解析工具选择响应失败: %v", err)
 	}
 
 	return selectedTools, nil
@@ -227,7 +226,7 @@ func (h *ChatHandler) parseToolSelectionResponse(ctx context.Context, response s
 	var selectedTools map[string][]string
 	if err := json.Unmarshal([]byte(response), &selectedTools); err != nil {
 		g.Log().Errorf(ctx, "JSON解析失败: %v, 原始内容: %s", err, response)
-		return nil, fmt.Errorf("JSON解析失败: %w", err)
+		return nil, errors.Newf(errors.ErrInvalidParameter, "JSON解析失败: %v", err)
 	}
 
 	return h.validateAndLimitTools(ctx, selectedTools), nil

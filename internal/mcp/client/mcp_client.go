@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Malowking/kbgo/core/errors"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
 )
@@ -156,12 +157,12 @@ func (c *MCPClient) ListTools(ctx context.Context) ([]MCPTool, error) {
 	}
 
 	if resp.Error != nil {
-		return nil, fmt.Errorf("MCP error %d: %s - %s", resp.Error.Code, resp.Error.Message, resp.Error.Data)
+		return nil, errors.Newf(errors.ErrMCPCallFailed, "MCP error %d: %s - %s", resp.Error.Code, resp.Error.Message, resp.Error.Data)
 	}
 
 	var result MCPToolsListResult
 	if err := json.Unmarshal(resp.Result, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse tools list result: %v", err)
+		return nil, errors.Newf(errors.ErrMCPCallFailed, "failed to parse tools list result: %v", err)
 	}
 
 	return result.Tools, nil
@@ -185,12 +186,12 @@ func (c *MCPClient) CallTool(ctx context.Context, toolName string, arguments map
 	}
 
 	if resp.Error != nil {
-		return nil, fmt.Errorf("MCP error %d: %s - %s", resp.Error.Code, resp.Error.Message, resp.Error.Data)
+		return nil, errors.Newf(errors.ErrMCPCallFailed, "MCP error %d: %s - %s", resp.Error.Code, resp.Error.Message, resp.Error.Data)
 	}
 
 	var result MCPCallToolResult
 	if err := json.Unmarshal(resp.Result, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse tool call result: %v", err)
+		return nil, errors.Newf(errors.ErrMCPCallFailed, "failed to parse tool call result: %v", err)
 	}
 
 	return &result, nil
@@ -209,13 +210,13 @@ func (c *MCPClient) sendHTTPRequest(ctx context.Context, mcpReq MCPRequest) (*MC
 	// 序列化请求
 	reqBody, err := json.Marshal(mcpReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %v", err)
+		return nil, errors.Newf(errors.ErrMCPCallFailed, "failed to marshal request: %v", err)
 	}
 
 	// 创建HTTP请求
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.registry.Endpoint, bytes.NewReader(reqBody))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %v", err)
+		return nil, errors.Newf(errors.ErrMCPCallFailed, "failed to create request: %v", err)
 	}
 
 	// 设置请求头
@@ -245,20 +246,19 @@ func (c *MCPClient) sendHTTPRequest(ctx context.Context, mcpReq MCPRequest) (*MC
 	// 发送请求
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %v", err)
+		return nil, errors.Newf(errors.ErrMCPCallFailed, "failed to send request: %v", err)
 	}
 	defer resp.Body.Close()
 
 	// 保存 session ID（如果有）
 	if sessionID := resp.Header.Get("mcp-session-id"); sessionID != "" {
 		c.sessionID = sessionID
-		g.Log().Debugf(ctx, "Received MCP session ID: %s", sessionID)
 	}
 
 	// 检查HTTP状态码
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("HTTP error %d: %s", resp.StatusCode, string(body))
+		return nil, errors.Newf(errors.ErrMCPCallFailed, "HTTP error %d: %s", resp.StatusCode, string(body))
 	}
 
 	// 读取SSE响应
@@ -269,7 +269,7 @@ func (c *MCPClient) sendHTTPRequest(ctx context.Context, mcpReq MCPRequest) (*MC
 func (c *MCPClient) sendSSERequest(ctx context.Context, mcpReq MCPRequest) (*MCPResponse, error) {
 	// 确保 SSE 连接已建立
 	if err := c.ensureSSEConnection(ctx); err != nil {
-		return nil, fmt.Errorf("failed to establish SSE connection: %v", err)
+		return nil, errors.Newf(errors.ErrMCPInitFailed, "failed to establish SSE connection: %v", err)
 	}
 
 	// 创建响应通道
@@ -289,7 +289,7 @@ func (c *MCPClient) sendSSERequest(ctx context.Context, mcpReq MCPRequest) (*MCP
 	// 序列化请求
 	reqBody, err := json.Marshal(mcpReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %v", err)
+		return nil, errors.Newf(errors.ErrMCPCallFailed, "failed to marshal request: %v", err)
 	}
 
 	// 发送消息到消息端点
@@ -297,7 +297,7 @@ func (c *MCPClient) sendSSERequest(ctx context.Context, mcpReq MCPRequest) (*MCP
 	messageURL := fmt.Sprintf("%s%s", baseURL, c.messageEndpoint)
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", messageURL, bytes.NewReader(reqBody))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create message request: %v", err)
+		return nil, errors.Newf(errors.ErrMCPCallFailed, "failed to create message request: %v", err)
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -310,17 +310,15 @@ func (c *MCPClient) sendSSERequest(ctx context.Context, mcpReq MCPRequest) (*MCP
 	// 发送消息
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send message: %v", err)
+		return nil, errors.Newf(errors.ErrMCPCallFailed, "failed to send message: %v", err)
 	}
 	defer resp.Body.Close()
 
 	// 检查状态码（SSE模式应该返回202 Accepted）
 	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to send message, status %d: %s", resp.StatusCode, string(body))
+		return nil, errors.Newf(errors.ErrMCPCallFailed, "failed to send message, status %d: %s", resp.StatusCode, string(body))
 	}
-
-	g.Log().Debugf(ctx, "Message sent successfully to SSE endpoint")
 
 	// 等待响应
 	select {
@@ -328,11 +326,11 @@ func (c *MCPClient) sendSSERequest(ctx context.Context, mcpReq MCPRequest) (*MCP
 		if response != nil {
 			return response, nil
 		}
-		return nil, fmt.Errorf("received nil response")
+		return nil, errors.New(errors.ErrMCPCallFailed, "received nil response")
 	case <-ctx.Done():
-		return nil, fmt.Errorf("request timeout: %v", ctx.Err())
+		return nil, errors.Newf(errors.ErrMCPCallFailed, "request timeout: %v", ctx.Err())
 	case <-time.After(30 * time.Second): // 额外的超时保护
-		return nil, fmt.Errorf("SSE response timeout")
+		return nil, errors.New(errors.ErrMCPCallFailed, "SSE response timeout")
 	}
 }
 
@@ -341,17 +339,15 @@ func (c *MCPClient) ensureSSEConnection(ctx context.Context) error {
 	c.connMutex.Lock()
 	defer c.connMutex.Unlock()
 
-	// 如果连接已经建立，直接返回
+	// 如果连接已经建立,直接返回
 	if c.sseConn != nil && c.messageEndpoint != "" {
 		return nil
 	}
 
-	g.Log().Debugf(ctx, "Establishing SSE connection to %s", c.registry.Endpoint)
-
 	// 建立 SSE 连接
 	req, err := http.NewRequestWithContext(ctx, "GET", c.registry.Endpoint, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create SSE request: %v", err)
+		return errors.Newf(errors.ErrMCPInitFailed, "failed to create SSE request: %v", err)
 	}
 
 	req.Header.Set("Accept", "text/event-stream")
@@ -364,12 +360,12 @@ func (c *MCPClient) ensureSSEConnection(ctx context.Context) error {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to connect to SSE endpoint: %v", err)
+		return errors.Newf(errors.ErrMCPInitFailed, "failed to connect to SSE endpoint: %v", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return fmt.Errorf("SSE connection failed with status %d", resp.StatusCode)
+		return errors.Newf(errors.ErrMCPInitFailed, "SSE connection failed with status %d", resp.StatusCode)
 	}
 
 	c.sseConn = resp
@@ -381,13 +377,12 @@ func (c *MCPClient) ensureSSEConnection(ctx context.Context) error {
 		resp.Body.Close()
 		c.sseConn = nil
 		c.sseReader = nil
-		return fmt.Errorf("failed to read SSE endpoint: %v", err)
+		return errors.Newf(errors.ErrMCPInitFailed, "failed to read SSE endpoint: %v", err)
 	}
 
 	// 启动 SSE 响应处理协程
 	go c.handleSSEResponses(ctx)
 
-	g.Log().Debugf(ctx, "SSE connection established, message endpoint: %s", c.messageEndpoint)
 	return nil
 }
 
@@ -412,7 +407,7 @@ func (c *MCPClient) readSSEEndpoint(ctx context.Context) error {
 		}
 	}
 
-	return fmt.Errorf("failed to find message endpoint in SSE stream")
+	return errors.New(errors.ErrMCPInitFailed, "failed to find message endpoint in SSE stream")
 }
 
 // handleSSEResponses 处理 SSE 响应
@@ -426,7 +421,6 @@ func (c *MCPClient) handleSSEResponses(ctx context.Context) {
 		if c.readerDone != nil {
 			close(c.readerDone) // 通知 reader goroutine 已完成
 		}
-		g.Log().Debugf(ctx, "SSE response handler stopped")
 	}()
 
 	var messageData []byte
@@ -454,8 +448,8 @@ func (c *MCPClient) handleSSEResponses(ctx context.Context) {
 			data := strings.TrimPrefix(line, "data: ")
 			messageData = append(messageData, []byte(data)...)
 		} else if strings.HasPrefix(line, "event: ") {
-			event := strings.TrimPrefix(line, "event: ")
-			g.Log().Debugf(ctx, "SSE event: %s", event)
+			// event := strings.TrimPrefix(line, "event: ")
+			// Log if needed
 		}
 	}
 
@@ -463,8 +457,6 @@ func (c *MCPClient) handleSSEResponses(ctx context.Context) {
 		// 只有在不是由于连接关闭导致的错误时才记录
 		if !strings.Contains(err.Error(), "use of closed network connection") {
 			g.Log().Errorf(ctx, "SSE reader error: %v", err)
-		} else {
-			g.Log().Debugf(ctx, "SSE connection closed gracefully")
 		}
 	}
 }
@@ -476,8 +468,6 @@ func (c *MCPClient) processSSEMessage(ctx context.Context, data []byte) {
 		g.Log().Warningf(ctx, "Failed to parse SSE message: %v, data: %s", err, string(data))
 		return
 	}
-
-	g.Log().Debugf(ctx, "Received SSE response for ID: %v", mcpResp.ID)
 
 	// 找到对应的响应通道
 	c.responsesMutex.RLock()
@@ -512,7 +502,7 @@ func (c *MCPClient) Close() error {
 			case <-c.connClosed:
 				// Reader goroutine 已完成
 			case <-timeout:
-				closeErr = fmt.Errorf("timeout waiting for SSE reader to close")
+				closeErr = errors.New(errors.ErrMCPCallFailed, "timeout waiting for SSE reader to close")
 			}
 		}
 	})
@@ -548,16 +538,14 @@ func (c *MCPClient) readSSEResponse(reader io.Reader) (*MCPResponse, error) {
 			messageData = append(messageData, []byte(data)...)
 		} else if strings.HasPrefix(line, "event: ") {
 			// 可以处理不同类型的事件
-			event := strings.TrimPrefix(line, "event: ")
-			g.Log().Debugf(context.Background(), "SSE event: %s", event)
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading SSE stream: %v", err)
+		return nil, errors.Newf(errors.ErrMCPCallFailed, "error reading SSE stream: %v", err)
 	}
 
-	return nil, fmt.Errorf("no valid SSE message received")
+	return nil, errors.New(errors.ErrMCPCallFailed, "no valid SSE message received")
 }
 
 // Ping 测试MCP服务连通性
@@ -574,7 +562,7 @@ func (c *MCPClient) Ping(ctx context.Context) error {
 	}
 
 	if resp.Error != nil {
-		return fmt.Errorf("ping failed: %s", resp.Error.Message)
+		return errors.Newf(errors.ErrMCPCallFailed, "ping failed: %s", resp.Error.Message)
 	}
 
 	return nil
@@ -601,7 +589,7 @@ func (c *MCPClient) Initialize(ctx context.Context, clientInfo map[string]interf
 	}
 
 	if resp.Error != nil {
-		return fmt.Errorf("initialize failed: %s", resp.Error.Message)
+		return errors.Newf(errors.ErrMCPInitFailed, "initialize failed: %s", resp.Error.Message)
 	}
 
 	return nil

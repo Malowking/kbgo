@@ -2,7 +2,6 @@ package common
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"mime/multipart"
 	"os"
@@ -10,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gfile"
 	"github.com/google/uuid"
@@ -152,17 +152,17 @@ func (fu *FileUploader) GetFileType(filename string) FileType {
 // saveFile 保存单个文件（内部方法）
 func (fu *FileUploader) saveFile(file *multipart.FileHeader) (*MultimodalFile, error) {
 	if file == nil {
-		return nil, fmt.Errorf("file is nil")
+		return nil, errors.New(errors.ErrInvalidParameter, "file is nil")
 	}
 
 	// 检查文件名是否为空
 	if file.Filename == "" {
-		return nil, fmt.Errorf("file filename is empty")
+		return nil, errors.New(errors.ErrInvalidParameter, "file filename is empty")
 	}
 
 	// 检查文件大小
 	if file.Size > MaxFileSize {
-		return nil, fmt.Errorf("file size %d exceeds maximum allowed size %d", file.Size, MaxFileSize)
+		return nil, errors.Newf(errors.ErrFileUploadFailed, "file size %d exceeds maximum allowed size %d", file.Size, MaxFileSize)
 	}
 
 	// 获取文件类型
@@ -174,7 +174,7 @@ func (fu *FileUploader) saveFile(file *multipart.FileHeader) (*MultimodalFile, e
 	// 确保目录存在
 	if !gfile.Exists(targetDir) {
 		if err := gfile.Mkdir(targetDir); err != nil {
-			return nil, fmt.Errorf("failed to create directory: %w", err)
+			return nil, errors.Newf(errors.ErrFileUploadFailed, "failed to create directory %s: %v", targetDir, err)
 		}
 	}
 
@@ -190,21 +190,21 @@ func (fu *FileUploader) saveFile(file *multipart.FileHeader) (*MultimodalFile, e
 	// 打开上传的文件
 	src, err := file.Open()
 	if err != nil {
-		return nil, fmt.Errorf("failed to open uploaded file: %w", err)
+		return nil, errors.Newf(errors.ErrFileUploadFailed, "failed to open uploaded file: %v", err)
 	}
 	defer src.Close()
 
 	// 创建目标文件
 	dst, err := os.Create(targetPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create target file: %w", err)
+		return nil, errors.Newf(errors.ErrFileUploadFailed, "failed to create target file %s: %v", targetPath, err)
 	}
 	defer dst.Close()
 
 	// 复制文件内容
 	size, err := io.Copy(dst, src)
 	if err != nil {
-		return nil, fmt.Errorf("failed to copy file content: %w", err)
+		return nil, errors.Newf(errors.ErrFileUploadFailed, "failed to copy file content: %v", err)
 	}
 
 	multiFile := &MultimodalFile{
@@ -226,7 +226,7 @@ func (fu *FileUploader) UploadFiles(ctx context.Context, files []*multipart.File
 
 	// 检查文件数量限制
 	if len(files) > MaxFilesPerRequest {
-		return nil, fmt.Errorf("too many files: %d, maximum allowed: %d", len(files), MaxFilesPerRequest)
+		return nil, errors.Newf(errors.ErrFileUploadFailed, "too many files: %d, maximum allowed: %d", len(files), MaxFilesPerRequest)
 	}
 
 	// 创建任务和结果通道
@@ -243,7 +243,7 @@ func (fu *FileUploader) UploadFiles(ctx context.Context, files []*multipart.File
 
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("context cancelled during file upload")
+			return nil, errors.New(errors.ErrFileUploadFailed, "context cancelled during file upload")
 		case fu.taskQueue <- task:
 			// 任务提交成功
 		default:
@@ -262,7 +262,7 @@ func (fu *FileUploader) UploadFiles(ctx context.Context, files []*multipart.File
 		}
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("context cancelled while waiting for upload results")
+			return nil, errors.New(errors.ErrFileUploadFailed, "context cancelled while waiting for upload results")
 		case result := <-task.Result:
 			results[i] = result
 		}
@@ -300,7 +300,7 @@ func (fu *FileUploader) GetFileURL(relativePath string) string {
 func (fu *FileUploader) DeleteFile(relativePath string) error {
 	fullPath := filepath.Join(fu.baseDir, relativePath)
 	if !gfile.Exists(fullPath) {
-		return fmt.Errorf("file not found: %s", relativePath)
+		return errors.Newf(errors.ErrFileReadFailed, "file not found: %s", relativePath)
 	}
 	return os.Remove(fullPath)
 }

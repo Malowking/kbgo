@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/Malowking/kbgo/core/errors"
 )
 
 // EmbeddingConfig 接口，用于提取embedding配置
@@ -115,14 +116,14 @@ func (e *CustomEmbedder) EmbedStrings(ctx context.Context, texts []string, dimen
 	// 序列化请求
 	jsonData, err := json.Marshal(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "failed to marshal request: %v", err)
 	}
 
 	// 创建HTTP请求
 	url := e.baseURL + "/embeddings"
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "failed to create request: %v", err)
 	}
 
 	// 设置请求头
@@ -132,7 +133,7 @@ func (e *CustomEmbedder) EmbedStrings(ctx context.Context, texts []string, dimen
 	// 发送请求
 	resp, err := e.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "failed to send request: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -140,27 +141,27 @@ func (e *CustomEmbedder) EmbedStrings(ctx context.Context, texts []string, dimen
 	if resp.StatusCode != http.StatusOK {
 		var errResp ErrorResponse
 		if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
-			return nil, fmt.Errorf("HTTP %d: failed to decode error response: %w", resp.StatusCode, err)
+			return nil, errors.Newf(errors.ErrEmbeddingFailed, "HTTP %d: failed to decode error response: %v", resp.StatusCode, err)
 		}
-		return nil, fmt.Errorf("API error (HTTP %d): %s", resp.StatusCode, errResp.Error.Message)
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "API error (HTTP %d): %s", resp.StatusCode, errResp.Error.Message)
 	}
 
 	// 解析响应
 	var embResp EmbeddingResponse
 	if err := json.NewDecoder(resp.Body).Decode(&embResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "failed to decode response: %v", err)
 	}
 
 	// 验证响应数据
 	if len(embResp.Data) != len(texts) {
-		return nil, fmt.Errorf("response data length (%d) doesn't match input length (%d)", len(embResp.Data), len(texts))
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "response data length (%d) doesn't match input length (%d)", len(embResp.Data), len(texts))
 	}
 
 	// 提取embedding向量并转换为float32
 	result := make([][]float32, len(texts))
 	for _, data := range embResp.Data {
 		if data.Index >= len(result) {
-			return nil, fmt.Errorf("invalid embedding index: %d", data.Index)
+			return nil, errors.Newf(errors.ErrEmbeddingFailed, "invalid embedding index: %d", data.Index)
 		}
 		// 将float64向量转换为float32
 		float32Vec := make([]float32, len(data.Embedding))

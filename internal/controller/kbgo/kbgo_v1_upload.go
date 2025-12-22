@@ -9,6 +9,7 @@ import (
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/common"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/core/file_store"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
 	"github.com/Malowking/kbgo/internal/model/entity"
@@ -47,7 +48,7 @@ func (c *ControllerV1) uploadToRustFS(ctx context.Context, req *v1.UploadFileReq
 		g.Log().Errorf(ctx, "Failed to process file upload pre-steps: %v", err)
 		res.Status = "failed"
 		res.Message = "Failed to process file upload pre-steps: " + err.Error()
-		return res, err
+		return res, errors.Newf(errors.ErrFileUploadFailed, "failed to process file upload pre-steps: %v", err)
 	}
 	defer func() {
 		if closer, ok := fileReader.(io.Closer); ok {
@@ -81,7 +82,7 @@ func (c *ControllerV1) uploadToRustFS(ctx context.Context, req *v1.UploadFileReq
 		if localPath != "" {
 			_ = gfile.Remove(localPath)
 		}
-		return res, err
+		return res, errors.Newf(errors.ErrFileUploadFailed, "failed to upload file to RustFS: %v", err)
 	}
 
 	// Save document information to database
@@ -106,7 +107,7 @@ func (c *ControllerV1) uploadToRustFS(ctx context.Context, req *v1.UploadFileReq
 		res.Message = "Failed to save document information to database: " + err.Error()
 		// Clean up local file
 		_ = gfile.Remove(localPath)
-		return res, err
+		return res, errors.Newf(errors.ErrDatabaseInsert, "failed to save document information: %v", err)
 	}
 	res.DocumentId = documents.Id
 	res.Status = "success"
@@ -123,7 +124,7 @@ func (c *ControllerV1) uploadToLocal(ctx context.Context, req *v1.UploadFileReq)
 		g.Log().Errorf(ctx, "Failed to process file: %v", err)
 		res.Status = "failed"
 		res.Message = "Failed to process file: " + err.Error()
-		return res, err
+		return res, errors.Newf(errors.ErrFileUploadFailed, "failed to process file: %v", err)
 	}
 	defer func() {
 		if closer, ok := fileReader.(io.Closer); ok {
@@ -144,7 +145,7 @@ func (c *ControllerV1) uploadToLocal(ctx context.Context, req *v1.UploadFileReq)
 		res.DocumentId = ""
 		res.Status = "failed"
 		res.Message = "File duplicated, upload rejected"
-		return res, nil
+		return res, errors.New(errors.ErrFileAlreadyExists, "file already exists")
 	}
 
 	// Convert fileReader to multipart.File if it's from an uploaded file
@@ -156,7 +157,7 @@ func (c *ControllerV1) uploadToLocal(ctx context.Context, req *v1.UploadFileReq)
 			g.Log().Errorf(ctx, "Failed to open file: %v", err)
 			res.Status = "failed"
 			res.Message = "Failed to open file: " + err.Error()
-			return res, err
+			return res, errors.Newf(errors.ErrFileReadFailed, "failed to open file: %v", err)
 		}
 		defer multipartFile.Close()
 
@@ -166,7 +167,7 @@ func (c *ControllerV1) uploadToLocal(ctx context.Context, req *v1.UploadFileReq)
 			g.Log().Errorf(ctx, "Failed to save file to local storage: %v", err)
 			res.Status = "failed"
 			res.Message = "Failed to save file to local storage: " + err.Error()
-			return res, err
+			return res, errors.Newf(errors.ErrFileUploadFailed, "failed to save file to local storage: %v", err)
 		}
 	} else {
 		// For URL files, the fileReader is an os.File, we need to save it
@@ -183,7 +184,7 @@ func (c *ControllerV1) uploadToLocal(ctx context.Context, req *v1.UploadFileReq)
 				g.Log().Errorf(ctx, "Failed to create directory: %v", err)
 				res.Status = "failed"
 				res.Message = "Failed to create directory: " + err.Error()
-				return res, err
+				return res, errors.Newf(errors.ErrFileUploadFailed, "failed to create directory: %v", err)
 			}
 
 			// Move file to final location
@@ -192,7 +193,7 @@ func (c *ControllerV1) uploadToLocal(ctx context.Context, req *v1.UploadFileReq)
 				g.Log().Errorf(ctx, "Failed to move file: %v", err)
 				res.Status = "failed"
 				res.Message = "Failed to move file: " + err.Error()
-				return res, err
+				return res, errors.Newf(errors.ErrFileUploadFailed, "failed to move file: %v", err)
 			}
 		}
 	}
@@ -217,7 +218,7 @@ func (c *ControllerV1) uploadToLocal(ctx context.Context, req *v1.UploadFileReq)
 		res.Message = "Failed to save document information to database: " + err.Error()
 		// Clean up file
 		_ = gfile.Remove(finalPath)
-		return res, err
+		return res, errors.Newf(errors.ErrDatabaseInsert, "failed to save document information: %v", err)
 	}
 	res.DocumentId = documents.Id
 	res.Status = "success"

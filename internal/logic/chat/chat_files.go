@@ -2,10 +2,12 @@ package chat
 
 import (
 	"context"
+
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	coreErrors "github.com/Malowking/kbgo/core/errors"
 	"io"
 	"net/http"
 	"os"
@@ -30,7 +32,7 @@ func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, con
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
-		return "", "", fmt.Errorf("model not found: %s", modelID)
+		return "", "", coreErrors.Newf(coreErrors.ErrModelNotFound, "model not found: %s", modelID)
 	}
 
 	// 根据模型类型选择格式适配器
@@ -53,7 +55,7 @@ func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, con
 	// 构建多模态消息（只包含用户问题和多模态文件）
 	userMessage, err := buildMultimodalMessageWithImages(ctx, question, multimodalFiles, fileImages, mc.Type)
 	if err != nil {
-		return "", "", fmt.Errorf("构建多模态消息失败: %w", err)
+		return "", "", coreErrors.Newf(coreErrors.ErrInternalError, "构建多模态消息失败: %v", err)
 	}
 
 	// 保存用户消息
@@ -124,11 +126,11 @@ func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, con
 	// 调用模型服务
 	resp, err := modelService.ChatCompletion(ctx, chatParams)
 	if err != nil {
-		return "", "", fmt.Errorf("API调用失败: %w", err)
+		return "", "", coreErrors.Newf(coreErrors.ErrLLMCallFailed, "API调用失败: %v", err)
 	}
 
 	if len(resp.Choices) == 0 {
-		return "", "", fmt.Errorf("received empty choices from API")
+		return "", "", coreErrors.New(coreErrors.ErrLLMCallFailed, "received empty choices from API")
 	}
 
 	answerContent := resp.Choices[0].Message.Content
@@ -169,7 +171,7 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
-		return "", "", fmt.Errorf("model not found: %s", modelID)
+		return "", "", coreErrors.Newf(coreErrors.ErrModelNotFound, "model not found: %s", modelID)
 	}
 
 	// 根据模型类型选择格式适配器
@@ -226,7 +228,7 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 	// 构建多模态消息（只包含用户问题和多模态文件）
 	userMessage, err := buildMultimodalMessageWithImages(ctx, question, multimodalFiles, fileImages, mc.Type)
 	if err != nil {
-		return "", "", fmt.Errorf("构建多模态消息失败: %w", err)
+		return "", "", coreErrors.Newf(coreErrors.ErrInternalError, "构建多模态消息失败: %v", err)
 	}
 
 	// 保存用户消息
@@ -272,11 +274,11 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 	// 调用模型服务
 	resp, err := modelService.ChatCompletion(ctx, chatParams)
 	if err != nil {
-		return "", "", fmt.Errorf("API调用失败: %w", err)
+		return "", "", coreErrors.Newf(coreErrors.ErrLLMCallFailed, "API调用失败: %v", err)
 	}
 
 	if len(resp.Choices) == 0 {
-		return "", "", fmt.Errorf("received empty choices from API")
+		return "", "", coreErrors.New(coreErrors.ErrLLMCallFailed, "received empty choices from API")
 	}
 
 	answerContent := resp.Choices[0].Message.Content
@@ -317,7 +319,7 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
-		return nil, fmt.Errorf("model not found: %s", modelID)
+		return nil, coreErrors.Newf(coreErrors.ErrModelNotFound, "model not found: %s", modelID)
 	}
 
 	// 根据模型类型选择格式适配器
@@ -374,7 +376,7 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 	// 构建多模态消息（只包含用户问题和多模态文件）
 	userMessage, err := buildMultimodalMessageWithImages(ctx, question, multimodalFiles, fileImages, mc.Type)
 	if err != nil {
-		return nil, fmt.Errorf("构建多模态消息失败: %w", err)
+		return nil, coreErrors.Newf(coreErrors.ErrInternalError, "构建多模态消息失败: %v", err)
 	}
 
 	// 保存用户消息
@@ -427,7 +429,7 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 	// 调用模型服务流式接口
 	stream, err := modelService.ChatCompletionStream(ctx, chatParams)
 	if err != nil {
-		return nil, fmt.Errorf("API调用失败: %w", err)
+		return nil, coreErrors.Newf(coreErrors.ErrLLMCallFailed, "API调用失败: %v", err)
 	}
 
 	// 创建 Pipe 用于流式传输
@@ -611,7 +613,7 @@ func buildFilePart(file *common.MultimodalFile) (schema.MessageInputPart, error)
 		// 读取图片文件
 		data, err := os.ReadFile(file.FilePath)
 		if err != nil {
-			return schema.MessageInputPart{}, fmt.Errorf("failed to read image file: %w", err)
+			return schema.MessageInputPart{}, coreErrors.Newf(coreErrors.ErrFileReadFailed, "failed to read image file: %v", err)
 		}
 
 		// 获取MIME类型
@@ -693,7 +695,7 @@ func parseDocumentFiles(ctx context.Context, files []*common.MultimodalFile) (st
 	// 创建文件解析加载器，chunk_size=-1表示不切分，imageURLFormat=false表示返回相对路径
 	loader, err := indexer.NewFileParseLoaderForChat(ctx, -1, 0, "")
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to create file parse loader: %w", err)
+		return "", nil, coreErrors.Newf(coreErrors.ErrDocumentParseFailed, "failed to create file parse loader: %v", err)
 	}
 
 	// 获取项目根目录（用于拼接图片路径）
@@ -820,7 +822,7 @@ func getConversationDocumentInfo(ctx context.Context, eh *history.Manager, convI
 	var metadata map[string]interface{}
 	err = json.Unmarshal(conv.Metadata, &metadata)
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to unmarshal conversation metadata: %w", err)
+		return "", nil, coreErrors.Newf(coreErrors.ErrInternalError, "failed to unmarshal conversation metadata: %v", err)
 	}
 
 	fileContent, _ := metadata["file_content"].(string)
@@ -873,7 +875,7 @@ func saveConversationDocumentInfo(ctx context.Context, eh *history.Manager, conv
 	// 序列化metadata
 	metadataJSON, err := json.Marshal(metadata)
 	if err != nil {
-		return fmt.Errorf("failed to marshal metadata: %w", err)
+		return coreErrors.Newf(coreErrors.ErrInternalError, "failed to marshal metadata: %v", err)
 	}
 
 	// 更新conversation
@@ -898,7 +900,7 @@ func downloadImageFromURL(ctx context.Context, imageURL string) (string, string,
 		g.Log().Infof(ctx, "Reading local image file: %s", imageURL)
 		data, err := os.ReadFile(imageURL)
 		if err != nil {
-			return "", "", fmt.Errorf("failed to read local image file: %w", err)
+			return "", "", coreErrors.Newf(coreErrors.ErrFileReadFailed, "failed to read local image file: %v", err)
 		}
 
 		// 编码为base64
@@ -916,18 +918,18 @@ func downloadImageFromURL(ctx context.Context, imageURL string) (string, string,
 	g.Log().Infof(ctx, "Downloading image from URL: %s", imageURL)
 	resp, err := http.Get(imageURL)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to download image: %w", err)
+		return "", "", coreErrors.Newf(coreErrors.ErrFileReadFailed, "failed to download image: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("failed to download image: status code %d", resp.StatusCode)
+		return "", "", coreErrors.Newf(coreErrors.ErrFileReadFailed, "failed to download image: status code %d", resp.StatusCode)
 	}
 
 	// 读取图片数据
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to read image data: %w", err)
+		return "", "", coreErrors.Newf(coreErrors.ErrFileReadFailed, "failed to read image data: %v", err)
 	}
 
 	// 编码为base64

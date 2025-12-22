@@ -3,9 +3,9 @@ package cache
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/redis/go-redis/v9"
@@ -28,9 +28,7 @@ func GetAgentPreset(ctx context.Context, presetID string) (*gorm.AgentPreset, er
 	// 从Redis获取
 	cached, err := rdb.Get(ctx, cacheKey).Result()
 	if err != nil {
-		if err == redis.Nil {
-			g.Log().Debugf(ctx, "Agent preset cache miss: %s", presetID)
-		} else {
+		if err != redis.Nil {
 			g.Log().Warningf(ctx, "Failed to get agent preset from cache: %v", err)
 		}
 		return nil, err
@@ -43,14 +41,13 @@ func GetAgentPreset(ctx context.Context, presetID string) (*gorm.AgentPreset, er
 		return nil, err
 	}
 
-	g.Log().Debugf(ctx, "Agent preset cache hit: %s", presetID)
 	return &preset, nil
 }
 
 // SetAgentPreset 设置Agent预设到缓存
 func SetAgentPreset(ctx context.Context, preset *gorm.AgentPreset) error {
 	if preset == nil {
-		return fmt.Errorf("preset is nil")
+		return errors.New(errors.ErrInvalidParameter, "preset is nil")
 	}
 
 	cacheKey := agentPresetCacheKeyPrefix + preset.PresetID
@@ -59,17 +56,16 @@ func SetAgentPreset(ctx context.Context, preset *gorm.AgentPreset) error {
 	data, err := json.Marshal(preset)
 	if err != nil {
 		g.Log().Errorf(ctx, "Failed to marshal agent preset: %v", err)
-		return err
+		return errors.Newf(errors.ErrInternalError, "failed to marshal agent preset: %v", err)
 	}
 
 	// 写入Redis
 	ttl := GetAgentPresetTTL(ctx)
 	if err := rdb.Set(ctx, cacheKey, data, ttl).Err(); err != nil {
 		g.Log().Errorf(ctx, "Failed to set agent preset cache: %v", err)
-		return err
+		return errors.Newf(errors.ErrInternalError, "failed to set agent preset cache: %v", err)
 	}
 
-	g.Log().Debugf(ctx, "Agent preset cached: %s (TTL: %v)", preset.PresetID, ttl)
 	return nil
 }
 
@@ -82,7 +78,6 @@ func InvalidateAgentPreset(ctx context.Context, presetID string) error {
 		return err
 	}
 
-	g.Log().Debugf(ctx, "Agent preset cache invalidated: %s", presetID)
 	return nil
 }
 

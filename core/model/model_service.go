@@ -2,9 +2,9 @@ package model
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Malowking/kbgo/core/client"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/core/formatter"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/sashabaranov/go-openai"
@@ -46,7 +46,7 @@ func (s *ModelService) ChatCompletion(ctx context.Context, params ChatCompletion
 	// 使用格式适配器转换消息
 	openaiMessages, err := s.formatter.FormatMessages(params.Messages)
 	if err != nil {
-		return nil, fmt.Errorf("failed to format messages: %w", err)
+		return nil, errors.Newf(errors.ErrInvalidParameter, "failed to format messages: %v", err)
 	}
 
 	// 调用客户端
@@ -73,7 +73,7 @@ func (s *ModelService) ChatCompletionStream(ctx context.Context, params ChatComp
 	// 使用格式适配器转换消息
 	openaiMessages, err := s.formatter.FormatMessages(params.Messages)
 	if err != nil {
-		return nil, fmt.Errorf("failed to format messages: %w", err)
+		return nil, errors.Newf(errors.ErrInvalidParameter, "failed to format messages: %v", err)
 	}
 
 	// 调用客户端

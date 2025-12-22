@@ -52,7 +52,6 @@ func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 
 	// 检查是否配置了重写模型
 	if !model.Registry.HasRewriteModel() {
-		g.Log().Debugf(ctx, "未配置重写模型，跳过查询重写，直接使用原始查询")
 		// 直接使用原始查询进行检索
 		reqCopy := req.Copy()
 		reqCopy.optQuery = req.Query

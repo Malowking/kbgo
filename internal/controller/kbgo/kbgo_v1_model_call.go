@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/core/model"
-	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/sashabaranov/go-openai"
 )
@@ -18,7 +18,7 @@ func (c *ControllerV1) ChatCompletion(ctx context.Context, req *v1.ChatCompletio
 	mc := model.Registry.Get(req.ModelID)
 	if mc == nil {
 		g.Log().Errorf(ctx, "Model not found: %s", req.ModelID)
-		return nil, gerror.Newf("Model not found: %s", req.ModelID)
+		return nil, errors.Newf(errors.ErrModelNotFound, "model not found: %s", req.ModelID)
 	}
 
 	// 转换消息格式
@@ -216,13 +216,13 @@ func (c *ControllerV1) EmbeddingCompletion(ctx context.Context, req *v1.Embeddin
 	mc := model.Registry.Get(req.ModelID)
 	if mc == nil {
 		g.Log().Errorf(ctx, "Model not found: %s", req.ModelID)
-		return nil, gerror.Newf("Model not found: %s", req.ModelID)
+		return nil, errors.Newf(errors.ErrModelNotFound, "model not found: %s", req.ModelID)
 	}
 
 	// 确保是 embedding 模型
 	if mc.Type != model.ModelTypeEmbedding {
 		g.Log().Errorf(ctx, "Model %s is not an embedding model, type: %s", req.ModelID, mc.Type)
-		return nil, gerror.Newf("Model %s is not an embedding model, type: %s", req.ModelID, mc.Type)
+		return nil, errors.Newf(errors.ErrModelConfigInvalid, "model %s is not an embedding model, type: %s", req.ModelID, mc.Type)
 	}
 
 	// 调用 embedding 接口

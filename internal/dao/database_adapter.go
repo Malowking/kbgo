@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/gogf/gf/v2/frame/g"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
@@ -72,7 +73,7 @@ func buildDSN(config *DBConfig) (string, error) {
 
 		return dsn, nil
 	default:
-		return "", fmt.Errorf("unsupported database type: %s", config.Type)
+		return "", errors.Newf(errors.ErrInvalidParameter, "unsupported database type: %s", config.Type)
 	}
 }
 
@@ -83,7 +84,7 @@ func initDatabase() (*gorm.DB, error) {
 	// 构建 DSN
 	dsn, err := buildDSN(config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build DSN: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseInit, "failed to build DSN: %v", err)
 	}
 
 	// 打印 DSN 用于调试（注意：生产环境应移除密码）
@@ -103,17 +104,17 @@ func initDatabase() (*gorm.DB, error) {
 	case "postgresql", "postgres", "pgsql":
 		db, err = gorm.Open(postgres.Open(dsn), gormConfig)
 	default:
-		return nil, fmt.Errorf("unsupported database type: %s", config.Type)
+		return nil, errors.Newf(errors.ErrInvalidParameter, "unsupported database type: %s", config.Type)
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect database: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseInit, "failed to connect database: %v", err)
 	}
 
 	// 设置连接池
 	sqlDB, err := db.DB()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get database instance: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseInit, "failed to get database instance: %v", err)
 	}
 
 	// 设置连接池
@@ -123,7 +124,7 @@ func initDatabase() (*gorm.DB, error) {
 
 	// 自动迁移数据库表结构
 	if err = gormModel.Migrate(db); err != nil {
-		return nil, fmt.Errorf("failed to migrate database tables: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseInit, "failed to migrate database tables: %v", err)
 	}
 
 	return db, nil

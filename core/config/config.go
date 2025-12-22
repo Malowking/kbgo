@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/core/vector_store"
 	"github.com/gogf/gf/v2/frame/g"
 )
@@ -69,7 +70,7 @@ func ValidateConfiguration(ctx context.Context) error {
 
 	// 检查是否有缺失的必需配置
 	if len(missingConfigs) > 0 {
-		return fmt.Errorf("missing required configuration items:\n- %s\n\nPlease check your config.yaml file and ensure all required settings are properly configured", strings.Join(missingConfigs, "\n- "))
+		return errors.Newf(errors.ErrInvalidParameter, "missing required configuration items:\n- %s\n\nPlease check your config.yaml file and ensure all required settings are properly configured", strings.Join(missingConfigs, "\n- "))
 	}
 
 	// 输出成功信息

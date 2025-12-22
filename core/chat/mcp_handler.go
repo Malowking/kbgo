@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/internal/mcp"
 	"github.com/Malowking/kbgo/pkg/schema"
 )
@@ -23,7 +24,7 @@ func (h *MCPHandler) CallMCPToolsWithLLM(ctx context.Context, req *v1.ChatReq, d
 	// 创建 MCP 工具调用器
 	toolCaller, err := mcp.NewMCPToolCaller(ctx)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("创建MCP工具调用器失败: %w", err)
+		return nil, nil, "", errors.Newf(errors.ErrMCPInitFailed, "创建MCP工具调用器失败: %v", err)
 	}
 	defer toolCaller.Close()
 
@@ -33,7 +34,7 @@ func (h *MCPHandler) CallMCPToolsWithLLM(ctx context.Context, req *v1.ChatReq, d
 	// 使用 LLM 智能选择并调用工具
 	mcpDocuments, mcpResults, finalAnswer, err := toolCaller.CallToolsWithLLM(ctx, req.ModelID, fullQuestion, req.ConvID, req.MCPServiceTools)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("LLM intelligent tool call failed: %w", err)
+		return nil, nil, "", errors.Newf(errors.ErrMCPCallFailed, "LLM intelligent tool call failed: %v", err)
 	}
 
 	return mcpDocuments, mcpResults, finalAnswer, nil

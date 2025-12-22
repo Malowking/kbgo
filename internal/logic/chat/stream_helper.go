@@ -43,7 +43,6 @@ func CreateStreamPipe(ctx context.Context, convID string) (schema.StreamReaderIn
 	}
 
 	// 使用内存 channel
-	g.Log().Debugf(ctx, "Using memory channel for streaming response (bufferSize=%d)", memoryBufferSize)
 	memReader, memWriter := schema.Pipe[*schema.Message](memoryBufferSize)
 	return memReader, memWriter
 }

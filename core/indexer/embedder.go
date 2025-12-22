@@ -3,12 +3,12 @@ package indexer
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"math"
 	"sync"
 	"time"
 
 	"github.com/Malowking/kbgo/core/common"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/core/vector_store"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
@@ -44,7 +44,7 @@ func NewVectorStoreEmbedder(ctx context.Context, conf common.EmbeddingConfig, ve
 	// Create embedding instance
 	embeddingIns, err := common.NewEmbedding(ctx, conf)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create embedding instance: %w", err)
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "failed to create embedding instance: %v", err)
 	}
 
 	return &VectorStoreEmbedder{
@@ -98,7 +98,7 @@ func (v *VectorStoreEmbedder) EmbedAndStore(ctx context.Context, collectionName 
 			if err != nil {
 				resultChan <- BatchResult{
 					BatchIndex: b.Index,
-					Error:      fmt.Errorf("batch %d failed: %w", b.Index, err),
+					Error:      errors.Newf(errors.ErrEmbeddingFailed, "batch %d failed: %v", b.Index, err),
 				}
 				return
 			}
@@ -108,7 +108,7 @@ func (v *VectorStoreEmbedder) EmbedAndStore(ctx context.Context, collectionName 
 			if err != nil {
 				resultChan <- BatchResult{
 					BatchIndex: b.Index,
-					Error:      fmt.Errorf("batch %d storage failed: %w", b.Index, err),
+					Error:      errors.Newf(errors.ErrVectorInsert, "batch %d storage failed: %v", b.Index, err),
 				}
 				return
 			}
@@ -195,13 +195,10 @@ func (v *VectorStoreEmbedder) getDimension(ctx context.Context) int {
 				if extraMap, ok := extra.(map[string]any); ok {
 					if dim, exists := extraMap["dimension"]; exists {
 						if dimInt, ok := dim.(int); ok {
-							g.Log().Debugf(ctx, "Using dimension from model extra field: %d", dimInt)
 							return dimInt
 						}
 						if dimFloat, ok := dim.(float64); ok {
-							dimInt := int(dimFloat)
-							g.Log().Debugf(ctx, "Using dimension from model extra field: %d", dimInt)
-							return dimInt
+							return int(dimFloat)
 						}
 					}
 				} else if extraStr, ok := extra.(string); ok && extraStr != "" {
@@ -210,9 +207,7 @@ func (v *VectorStoreEmbedder) getDimension(ctx context.Context) int {
 					if err := json.Unmarshal([]byte(extraStr), &extraMap); err == nil {
 						if dim, exists := extraMap["dimension"]; exists {
 							if dimFloat, ok := dim.(float64); ok {
-								dimInt := int(dimFloat)
-								g.Log().Debugf(ctx, "Using dimension from model extra JSON: %d", dimInt)
-								return dimInt
+								return int(dimFloat)
 							}
 						}
 					}
@@ -223,7 +218,6 @@ func (v *VectorStoreEmbedder) getDimension(ctx context.Context) int {
 
 	// Fallback：使用配置文件中的dim
 	if v.configDim > 0 {
-		g.Log().Debugf(ctx, "Using dimension from config file: %d", v.configDim)
 		return v.configDim
 	}
 
@@ -267,5 +261,5 @@ func (v *VectorStoreEmbedder) embedTextsWithRetry(ctx context.Context, texts []s
 		return vectors, nil
 	}
 
-	return nil, fmt.Errorf("embedding failed after %d retries, last error: %w", maxRetries, lastErr)
+	return nil, errors.Newf(errors.ErrEmbeddingFailed, "embedding failed after %d retries, last error: %v", maxRetries, lastErr)
 }

@@ -2,8 +2,9 @@ package retriever
 
 import (
 	"context"
+
 	"encoding/json"
-	"fmt"
+	"github.com/Malowking/kbgo/core/errors"
 	"sort"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
@@ -90,13 +91,13 @@ func ProcessRetrieval(ctx context.Context, req *v1.RetrieverReq) (*v1.RetrieverR
 		var kb entity.KnowledgeBase
 		err := dao.KnowledgeBase.Ctx(ctx).WherePri(req.KnowledgeId).Scan(&kb)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get knowledge base: %v", err)
+			return nil, errors.Newf(errors.ErrKBNotFound, "failed to get knowledge base: %v", err)
 		}
 		if kb.Id == "" {
-			return nil, fmt.Errorf("knowledge base not found: %s", req.KnowledgeId)
+			return nil, errors.Newf(errors.ErrKBNotFound, "knowledge base not found: %s", req.KnowledgeId)
 		}
 		if kb.EmbeddingModelId == "" {
-			return nil, fmt.Errorf("knowledge base %s has no embedding model bound", req.KnowledgeId)
+			return nil, errors.Newf(errors.ErrModelNotConfigured, "knowledge base %s has no embedding model bound", req.KnowledgeId)
 		}
 		embeddingModelID = kb.EmbeddingModelId
 		g.Log().Infof(ctx, "Using knowledge base bound embedding model: %s", embeddingModelID)
@@ -105,12 +106,12 @@ func ProcessRetrieval(ctx context.Context, req *v1.RetrieverReq) (*v1.RetrieverR
 	// 从 Registry 获取 embedding 模型信息
 	embeddingModelConfig := model.Registry.Get(embeddingModelID)
 	if embeddingModelConfig == nil {
-		return nil, fmt.Errorf("embedding model not found in registry: %s", embeddingModelID)
+		return nil, errors.Newf(errors.ErrModelNotFound, "embedding model not found in registry: %s", embeddingModelID)
 	}
 
 	// 验证 embedding 模型类型
 	if embeddingModelConfig.Type != model.ModelTypeEmbedding {
-		return nil, fmt.Errorf("model %s is not an embedding model, got type: %s", embeddingModelID, embeddingModelConfig.Type)
+		return nil, errors.Newf(errors.ErrModelConfigInvalid, "model %s is not an embedding model, got type: %s", embeddingModelID, embeddingModelConfig.Type)
 	}
 
 	// 创建动态配置，使用从 Registry 获取的模型信息覆盖静态配置
@@ -136,12 +137,12 @@ func ProcessRetrieval(ctx context.Context, req *v1.RetrieverReq) (*v1.RetrieverR
 	if req.RerankModelID != "" {
 		rerankModelConfig := model.Registry.Get(req.RerankModelID)
 		if rerankModelConfig == nil {
-			return nil, fmt.Errorf("rerank model not found in registry: %s", req.RerankModelID)
+			return nil, errors.Newf(errors.ErrModelNotFound, "rerank model not found in registry: %s", req.RerankModelID)
 		}
 
 		// 验证 rerank 模型类型
 		if rerankModelConfig.Type != model.ModelTypeReranker {
-			return nil, fmt.Errorf("model %s is not a reranker model, got type: %s", req.RerankModelID, rerankModelConfig.Type)
+			return nil, errors.Newf(errors.ErrModelConfigInvalid, "model %s is not a reranker model, got type: %s", req.RerankModelID, rerankModelConfig.Type)
 		}
 
 		// 使用动态 rerank 模型配置
@@ -173,7 +174,7 @@ func ProcessRetrieval(ctx context.Context, req *v1.RetrieverReq) (*v1.RetrieverR
 
 		// 如果使用 rerank 或 rrf 模式，但没有提供 RerankModelID，返回错误
 		if (req.RetrieveMode == "rerank" || req.RetrieveMode == "rrf") && req.RerankModelID == "" {
-			return nil, fmt.Errorf("rerank_model_id is required when retrieve_mode is %s", req.RetrieveMode)
+			return nil, errors.Newf(errors.ErrInvalidParameter, "rerank_model_id is required when retrieve_mode is %s", req.RetrieveMode)
 		}
 	}
 

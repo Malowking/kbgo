@@ -3,12 +3,12 @@ package model
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/sashabaranov/go-openai"
@@ -206,17 +206,17 @@ func (r *ModelRegistry) SetRewriteModel(modelID string) error {
 	// 检查模型是否存在
 	mc, exists := r.models[modelID]
 	if !exists {
-		return fmt.Errorf("model not found: %s", modelID)
+		return errors.Newf(errors.ErrModelNotFound, "model not found: %s", modelID)
 	}
 
 	// 检查模型是否启用
 	if !mc.Enabled {
-		return fmt.Errorf("cannot set disabled model as rewrite model")
+		return errors.New(errors.ErrModelConfigInvalid, "cannot set disabled model as rewrite model")
 	}
 
 	// 检查模型类型是否为 LLM
 	if mc.Type != ModelTypeLLM {
-		return fmt.Errorf("rewrite model must be LLM type")
+		return errors.New(errors.ErrModelConfigInvalid, "rewrite model must be LLM type")
 	}
 
 	// 设置重写模型

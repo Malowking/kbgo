@@ -21,7 +21,6 @@ func (h *ChatHandler) loadAgentPresetConfig(ctx context.Context, req *v1.ChatReq
 		return req
 	}
 	if conv == nil || conv.AgentPresetID == "" {
-		g.Log().Debugf(ctx, "会话未关联Agent预设，使用请求参数")
 		return req
 	}
 

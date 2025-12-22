@@ -12,6 +12,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/Malowking/kbgo/core/errors"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -129,7 +130,7 @@ func NewReranker(ctx context.Context, conf RerankConfig) (*CustomReranker, error
 	if baseURL == "" {
 		baseURL = os.Getenv("RERANK_BASE_URL")
 		if baseURL == "" {
-			return nil, fmt.Errorf("rerank baseURL is required")
+			return nil, errors.New(errors.ErrInvalidParameter, "rerank baseURL is required")
 		}
 	}
 	if model == "" {
@@ -195,14 +196,14 @@ func (r *CustomReranker) Rerank(ctx context.Context, query string, docs []Rerank
 	// 序列化请求
 	jsonData, err := json.Marshal(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+		return nil, errors.Newf(errors.ErrRerankFailed, "failed to marshal request: %v", err)
 	}
 
 	// 创建HTTP请求
 	url := r.baseURL + "/rerank"
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, errors.Newf(errors.ErrRerankFailed, "failed to create request: %v", err)
 	}
 
 	// 设置请求头
@@ -212,7 +213,7 @@ func (r *CustomReranker) Rerank(ctx context.Context, query string, docs []Rerank
 	// 发送请求
 	resp, err := r.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
+		return nil, errors.Newf(errors.ErrRerankFailed, "failed to send request: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -220,15 +221,15 @@ func (r *CustomReranker) Rerank(ctx context.Context, query string, docs []Rerank
 	if resp.StatusCode != http.StatusOK {
 		var errResp RerankErrorResponse
 		if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
-			return nil, fmt.Errorf("HTTP %d: failed to decode error response: %w", resp.StatusCode, err)
+			return nil, errors.Newf(errors.ErrRerankFailed, "HTTP %d: failed to decode error response: %v", resp.StatusCode, err)
 		}
-		return nil, fmt.Errorf("API error (HTTP %d): %s", resp.StatusCode, errResp.Error.Message)
+		return nil, errors.Newf(errors.ErrRerankFailed, "API error (HTTP %d): %s", resp.StatusCode, errResp.Error.Message)
 	}
 
 	// 解析响应
 	var rerankResp RerankResponse
 	if err := json.NewDecoder(resp.Body).Decode(&rerankResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+		return nil, errors.Newf(errors.ErrRerankFailed, "failed to decode response: %v", err)
 	}
 
 	// 验证响应数据
@@ -240,7 +241,7 @@ func (r *CustomReranker) Rerank(ctx context.Context, query string, docs []Rerank
 	result := make([]RerankDocument, 0, len(rerankResp.Results))
 	for _, res := range rerankResp.Results {
 		if res.Index >= len(docs) {
-			return nil, fmt.Errorf("invalid result index: %d", res.Index)
+			return nil, errors.Newf(errors.ErrRerankFailed, "invalid result index: %d", res.Index)
 		}
 		doc := docs[res.Index]
 		doc.Score = res.RelevanceScore
@@ -498,7 +499,7 @@ func (r *CustomReranker) RerankWithSubChunks(ctx context.Context, query string, 
 			// topN 设置为 len(batchDocs) 以获取所有结果的分数
 			results, err := r.Rerank(gCtx, query, batchDocs, len(batchDocs))
 			if err != nil {
-				return fmt.Errorf("batch %d rerank failed: %w", batchIdx, err)
+				return errors.Newf(errors.ErrRerankFailed, "batch %d rerank failed: %v", batchIdx, err)
 			}
 
 			// 将结果发送到 channel
@@ -543,7 +544,7 @@ func (r *CustomReranker) RerankWithSubChunks(ctx context.Context, query string, 
 
 	// 等待所有并行任务完成
 	if err := g.Wait(); err != nil {
-		return nil, fmt.Errorf("parallel rerank failed: %w", err)
+		return nil, errors.Newf(errors.ErrRerankFailed, "parallel rerank failed: %v", err)
 	}
 	close(resultChan)
 

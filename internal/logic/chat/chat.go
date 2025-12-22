@@ -2,9 +2,11 @@ package chat
 
 import (
 	"context"
+
 	"encoding/base64"
 	"errors"
 	"fmt"
+	coreErrors "github.com/Malowking/kbgo/core/errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -93,7 +95,7 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
-		return "", "", fmt.Errorf("model not found: %s", modelID)
+		return "", "", coreErrors.Newf(coreErrors.ErrModelNotFound, "model not found: %s", modelID)
 	}
 
 	// 检查模型是否已启用，如果禁用则直接返回提示消息
@@ -205,14 +207,14 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 		}
 
 		if len(resp.Choices) == 0 {
-			return nil, fmt.Errorf("received empty choices from API")
+			return nil, coreErrors.New(coreErrors.ErrLLMCallFailed, "received empty choices from API")
 		}
 
 		return resp, nil
 	})
 
 	if err != nil {
-		return "", "", fmt.Errorf("API调用失败: %w", err)
+		return "", "", coreErrors.Newf(coreErrors.ErrLLMCallFailed, "API调用失败: %v", err)
 	}
 
 	resp := result.(*openai.ChatCompletionResponse)
@@ -254,7 +256,7 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
-		return nil, fmt.Errorf("model not found: %s", modelID)
+		return nil, coreErrors.Newf(coreErrors.ErrModelNotFound, "model not found: %s", modelID)
 	}
 
 	// 检查模型是否已启用，如果禁用则返回固定消息流
@@ -375,7 +377,7 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 	// 调用模型服务流式接口
 	stream, err := modelService.ChatCompletionStream(ctx, chatParams)
 	if err != nil {
-		return nil, fmt.Errorf("API调用失败: %w", err)
+		return nil, coreErrors.Newf(coreErrors.ErrLLMCallFailed, "API调用失败: %v", err)
 	}
 
 	// 创建 Pipe 用于流式传输
@@ -679,7 +681,7 @@ func (x *Chat) GenerateWithTools(ctx context.Context, modelID string, messages [
 	// 获取模型配置
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
-		return nil, fmt.Errorf("model not found: %s", modelID)
+		return nil, coreErrors.Newf(coreErrors.ErrModelNotFound, "model not found: %s", modelID)
 	}
 
 	// 检查模型是否已启用，如果禁用则返回固定消息
@@ -757,18 +759,11 @@ func (x *Chat) GenerateWithTools(ctx context.Context, modelID string, messages [
 	g.Log().Infof(ctx, "[GenerateWithTools] 调用模型: %s, 消息数: %d, 工具数: %d",
 		mc.Name, len(messages), len(openaiTools))
 
-	// 打印最后一条消息的内容（用于调试）
-	if len(messages) > 0 {
-		lastMsg := messages[len(messages)-1]
-		g.Log().Debugf(ctx, "[GenerateWithTools] 最后一条消息 - Role: %s, Content长度: %d, ToolCalls数: %d",
-			lastMsg.Role, len(lastMsg.Content), len(lastMsg.ToolCalls))
-	}
-
 	// 调用模型服务
 	resp, err := modelService.ChatCompletion(ctx, chatParams)
 	if err != nil {
 		g.Log().Errorf(ctx, "[GenerateWithTools] API调用失败: %v", err)
-		return nil, fmt.Errorf("API调用失败: %w", err)
+		return nil, coreErrors.Newf(coreErrors.ErrLLMCallFailed, "API调用失败: %v", err)
 	}
 
 	// 记录响应信息
@@ -779,7 +774,7 @@ func (x *Chat) GenerateWithTools(ctx context.Context, modelID string, messages [
 		// 打印完整的响应以便调试
 		g.Log().Errorf(ctx, "[GenerateWithTools] 收到空的Choices! 完整响应: ID=%s, Model=%s, Object=%s",
 			resp.ID, resp.Model, resp.Object)
-		return nil, fmt.Errorf("received empty choices from API")
+		return nil, coreErrors.New(coreErrors.ErrLLMCallFailed, "received empty choices from API")
 	}
 
 	// 计算延迟

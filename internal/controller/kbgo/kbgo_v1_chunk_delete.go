@@ -5,10 +5,10 @@ import (
 	"strings"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/index"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
-	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -23,7 +23,7 @@ func (c *ControllerV1) ChunkDelete(ctx context.Context, req *v1.ChunkDeleteReq) 
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
-			err = gerror.Newf("panic occurred during ChunkDelete: %v", r)
+			err = errors.Newf(errors.ErrInternalError, "panic occurred during ChunkDelete: %v", r)
 		}
 	}()
 
@@ -38,7 +38,7 @@ func (c *ControllerV1) ChunkDelete(ctx context.Context, req *v1.ChunkDeleteReq) 
 		// 其他数据库错误
 		g.Log().Errorf(ctx, "ChunkDelete: GetChunkById failed for id %v, err: %v", req.ChunkId, err)
 		tx.Rollback()
-		err = gerror.Newf("failed to query chunk with id %v: %v", req.ChunkId, err)
+		err = errors.Newf(errors.ErrChunkNotFound, "failed to query chunk: %v", err)
 		return
 	}
 
@@ -52,7 +52,7 @@ func (c *ControllerV1) ChunkDelete(ctx context.Context, req *v1.ChunkDeleteReq) 
 		if err != nil {
 			g.Log().Errorf(ctx, "ChunkDelete: Milvus DeleteDocument failed for chunk id %v in collection %s, err: %v", chunk.Id, chunk.CollectionName, err)
 			tx.Rollback()
-			err = gerror.Newf("failed to delete chunk from Milvus: %v", err)
+			err = errors.Newf(errors.ErrVectorDelete, "failed to delete chunk from vector store: %v", err)
 			return
 		}
 		g.Log().Infof(ctx, "ChunkDelete: Successfully deleted chunk %v from Milvus collection %s", chunk.Id, chunk.CollectionName)
@@ -63,14 +63,14 @@ func (c *ControllerV1) ChunkDelete(ctx context.Context, req *v1.ChunkDeleteReq) 
 	if err != nil {
 		g.Log().Errorf(ctx, "ChunkDelete: DeleteChunkById failed for id %v, err: %v", req.ChunkId, err)
 		tx.Rollback()
-		err = gerror.Newf("failed to delete chunk from database: %v", err)
+		err = errors.Newf(errors.ErrDatabaseDelete, "failed to delete chunk from database: %v", err)
 		return
 	}
 
 	// 提交事务
 	if err = tx.Commit().Error; err != nil {
 		g.Log().Errorf(ctx, "ChunkDelete: transaction commit failed, err: %v", err)
-		err = gerror.Newf("failed to commit transaction: %v", err)
+		err = errors.Newf(errors.ErrDatabaseDelete, "failed to commit transaction: %v", err)
 		return
 	}
 

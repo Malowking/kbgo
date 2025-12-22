@@ -2,8 +2,10 @@ package conversation
 
 import (
 	"context"
+
 	"encoding/json"
 	"fmt"
+	"github.com/Malowking/kbgo/core/errors"
 	"strings"
 	"time"
 
@@ -57,7 +59,7 @@ func (m *Manager) GetConversationDetail(ctx context.Context, convID string) (*Co
 		return nil, err
 	}
 	if conv == nil {
-		return nil, fmt.Errorf("会话不存在: %s", convID)
+		return nil, errors.Newf(errors.ErrConversationNotFound, "会话不存在: %s", convID)
 	}
 
 	// 查询消息列表
@@ -120,7 +122,7 @@ func (m *Manager) UpdateConversation(ctx context.Context, convID string, title, 
 		return err
 	}
 	if conv == nil {
-		return fmt.Errorf("会话不存在: %s", convID)
+		return errors.Newf(errors.ErrConversationNotFound, "会话不存在: %s", convID)
 	}
 
 	// 准备更新字段
@@ -161,7 +163,7 @@ func (m *Manager) UpdateConversation(ctx context.Context, convID string, title, 
 		// 序列化元数据
 		metadataJSON, err := json.Marshal(existingMetadata)
 		if err != nil {
-			return fmt.Errorf("序列化元数据失败: %w", err)
+			return errors.Newf(errors.ErrInternalError, "序列化元数据失败: %v", err)
 		}
 		updates["metadata"] = metadataJSON
 	}
@@ -207,7 +209,7 @@ func (m *Manager) GenerateSummary(ctx context.Context, convID, modelID, length s
 	// 查询会话消息
 	messages, err := m.historyManager.GetHistory(convID, 100) // 最多取100条消息
 	if err != nil {
-		return "", fmt.Errorf("查询会话消息失败: %w", err)
+		return "", errors.Newf(errors.ErrDatabaseQuery, "查询会话消息失败: %v", err)
 	}
 
 	if len(messages) == 0 {
@@ -237,7 +239,7 @@ func (m *Manager) GenerateSummary(ctx context.Context, convID, modelID, length s
 	// 调用LLM生成摘要
 	mc := coreModel.Registry.Get(modelID)
 	if mc == nil {
-		return "", fmt.Errorf("模型不存在: %s", modelID)
+		return "", errors.Newf(errors.ErrModelNotFound, "模型不存在: %s", modelID)
 	}
 
 	// TODO: 这里需要调用模型生成摘要
@@ -261,7 +263,7 @@ func (m *Manager) ExportConversation(ctx context.Context, convID, format string)
 	case "json":
 		data, err := json.MarshalIndent(detail, "", "  ")
 		if err != nil {
-			return "", "", fmt.Errorf("JSON序列化失败: %w", err)
+			return "", "", errors.Newf(errors.ErrInternalError, "JSON序列化失败: %v", err)
 		}
 		return string(data), filename, nil
 
@@ -299,7 +301,7 @@ func (m *Manager) ExportConversation(ctx context.Context, convID, format string)
 		return txt.String(), filename, nil
 
 	default:
-		return "", "", fmt.Errorf("不支持的导出格式: %s", format)
+		return "", "", errors.Newf(errors.ErrInvalidParameter, "不支持的导出格式: %s", format)
 	}
 }
 

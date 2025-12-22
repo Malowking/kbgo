@@ -9,6 +9,7 @@ import (
 	"github.com/Malowking/kbgo/core/cache"
 	"github.com/Malowking/kbgo/core/chat"
 	"github.com/Malowking/kbgo/core/common"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/internal/dao"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
@@ -30,7 +31,7 @@ func (s *AgentService) CreatePreset(ctx context.Context, req *v1.CreateAgentPres
 	configJSON, err := json.Marshal(req.Config)
 	if err != nil {
 		g.Log().Errorf(ctx, "序列化Agent配置失败: %v", err)
-		return nil, fmt.Errorf("配置序列化失败")
+		return nil, errors.Newf(errors.ErrInvalidParameter, "failed to marshal agent config: %v", err)
 	}
 
 	// 创建预设对象
@@ -44,7 +45,7 @@ func (s *AgentService) CreatePreset(ctx context.Context, req *v1.CreateAgentPres
 
 	// 保存到数据库
 	if err := dao.AgentPreset.Create(ctx, preset); err != nil {
-		return nil, fmt.Errorf("创建Agent预设失败: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseInsert, "failed to create agent preset: %v", err)
 	}
 
 	g.Log().Infof(ctx, "创建Agent预设成功: %s, User: %s", preset.PresetID, req.UserID)
@@ -53,8 +54,6 @@ func (s *AgentService) CreatePreset(ctx context.Context, req *v1.CreateAgentPres
 	if err := cache.SetAgentPreset(ctx, preset); err != nil {
 		g.Log().Warningf(ctx, "写入Agent预设缓存失败（非致命）: %v", err)
 		// 不阻断流程，缓存失败不影响返回
-	} else {
-		g.Log().Debugf(ctx, "Agent预设已缓存: %s", preset.PresetID)
 	}
 
 	return &v1.CreateAgentPresetRes{
@@ -67,19 +66,19 @@ func (s *AgentService) UpdatePreset(ctx context.Context, req *v1.UpdateAgentPres
 	// 检查权限
 	isOwner, err := dao.AgentPreset.CheckOwnership(ctx, req.PresetID, req.UserID)
 	if err != nil {
-		return nil, fmt.Errorf("权限检查失败: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to check ownership: %v", err)
 	}
 	if !isOwner {
-		return nil, fmt.Errorf("无权限修改此预设")
+		return nil, errors.New(errors.ErrUnauthorized, "no permission to modify this preset")
 	}
 
 	// 查询现有预设
 	preset, err := dao.AgentPreset.GetByPresetID(ctx, req.PresetID)
 	if err != nil {
-		return nil, fmt.Errorf("查询预设失败: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to query preset: %v", err)
 	}
 	if preset == nil {
-		return nil, fmt.Errorf("预设不存在")
+		return nil, errors.Newf(errors.ErrNotFound, "preset not found: %s", req.PresetID)
 	}
 
 	// 更新字段
@@ -96,14 +95,14 @@ func (s *AgentService) UpdatePreset(ctx context.Context, req *v1.UpdateAgentPres
 	if req.Config.ModelID != "" {
 		configJSON, err := json.Marshal(req.Config)
 		if err != nil {
-			return nil, fmt.Errorf("配置序列化失败: %v", err)
+			return nil, errors.Newf(errors.ErrInvalidParameter, "failed to marshal config: %v", err)
 		}
 		updates["config"] = gormModel.JSON(configJSON)
 	}
 
 	// 执行更新
 	if err := dao.AgentPreset.UpdateFields(ctx, req.PresetID, updates); err != nil {
-		return nil, fmt.Errorf("更新预设失败: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseUpdate, "failed to update preset: %v", err)
 	}
 
 	// 清除缓存
@@ -128,10 +127,10 @@ func (s *AgentService) GetPreset(ctx context.Context, presetID string) (*v1.GetA
 	if preset == nil {
 		preset, err = dao.AgentPreset.GetByPresetID(ctx, presetID)
 		if err != nil {
-			return nil, fmt.Errorf("查询预设失败: %v", err)
+			return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to query preset: %v", err)
 		}
 		if preset == nil {
-			return nil, fmt.Errorf("预设不存在")
+			return nil, errors.Newf(errors.ErrNotFound, "preset not found: %s", presetID)
 		}
 
 		// 写入缓存
@@ -143,7 +142,7 @@ func (s *AgentService) GetPreset(ctx context.Context, presetID string) (*v1.GetA
 	// 反序列化配置
 	var config v1.AgentConfig
 	if err := json.Unmarshal(preset.Config, &config); err != nil {
-		return nil, fmt.Errorf("配置反序列化失败: %v", err)
+		return nil, errors.Newf(errors.ErrInvalidParameter, "failed to unmarshal config: %v", err)
 	}
 
 	// 构造响应
@@ -190,11 +189,11 @@ func (s *AgentService) ListPresets(ctx context.Context, req *v1.ListAgentPresets
 		// 查询用户的预设
 		presets, total, err = dao.AgentPreset.ListByUserID(ctx, req.UserID, page, pageSize)
 	} else {
-		return nil, fmt.Errorf("必须指定user_id或is_public参数")
+		return nil, errors.New(errors.ErrInvalidParameter, "must specify user_id or is_public parameter")
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("查询预设列表失败: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to query preset list: %v", err)
 	}
 
 	// 构造响应列表
@@ -227,15 +226,15 @@ func (s *AgentService) DeletePreset(ctx context.Context, req *v1.DeleteAgentPres
 	// 检查权限
 	isOwner, err := dao.AgentPreset.CheckOwnership(ctx, req.PresetID, req.UserID)
 	if err != nil {
-		return nil, fmt.Errorf("权限检查失败: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to check ownership: %v", err)
 	}
 	if !isOwner {
-		return nil, fmt.Errorf("无权限删除此预设")
+		return nil, errors.New(errors.ErrUnauthorized, "no permission to delete this preset")
 	}
 
 	// 删除预设
 	if err := dao.AgentPreset.Delete(ctx, req.PresetID); err != nil {
-		return nil, fmt.Errorf("删除预设失败: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseDelete, "failed to delete preset: %v", err)
 	}
 
 	// 清除缓存
@@ -253,7 +252,7 @@ func (s *AgentService) AgentChat(ctx context.Context, req *v1.AgentChatReq, uplo
 	// 获取Agent预设配置（带缓存）
 	preset, err := s.GetPreset(ctx, req.PresetID)
 	if err != nil {
-		return nil, fmt.Errorf("获取Agent预设失败: %v", err)
+		return nil, err
 	}
 
 	// 反序列化配置
@@ -307,7 +306,7 @@ func (s *AgentService) AgentChat(ctx context.Context, req *v1.AgentChatReq, uplo
 	chatHandler := chat.NewChatHandler()
 	chatRes, err := chatHandler.Chat(ctx, chatReq, uploadedFiles)
 	if err != nil {
-		return nil, fmt.Errorf("对话处理失败: %v", err)
+		return nil, errors.Newf(errors.ErrChatFailed, "agent chat failed: %v", err)
 	}
 
 	// 构造响应

@@ -4,10 +4,10 @@ import (
 	"context"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
 	"github.com/Malowking/kbgo/internal/model/entity"
-	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -20,7 +20,7 @@ func (c *ControllerV1) UpdateChunk(ctx context.Context, req *v1.UpdateChunkReq) 
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
-			err = gerror.Newf("panic occurred during UpdateChunk: %v", r)
+			err = errors.Newf(errors.ErrInternalError, "panic occurred during UpdateChunk: %v", r)
 		}
 	}()
 
@@ -30,12 +30,12 @@ func (c *ControllerV1) UpdateChunk(ctx context.Context, req *v1.UpdateChunkReq) 
 	})
 	if err != nil {
 		tx.Rollback()
-		return
+		return nil, errors.Newf(errors.ErrDatabaseUpdate, "failed to update chunk: %v", err)
 	}
 
 	// 提交事务
 	if err = tx.Commit().Error; err != nil {
-		return nil, gerror.Newf("failed to commit transaction: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseUpdate, "failed to commit transaction: %v", err)
 	}
 
 	return &v1.UpdateChunkRes{}, nil

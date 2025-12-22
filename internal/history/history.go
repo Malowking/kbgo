@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/internal/dao"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/Malowking/kbgo/pkg/schema"
@@ -78,7 +79,7 @@ func (h *Manager) SaveMessageWithMetricsSync(message *MessageWithMetrics, convID
 	if message.ToolCalls != nil {
 		data, err := json.Marshal(message.ToolCalls)
 		if err != nil {
-			return fmt.Errorf("failed to marshal tool calls: %w", err)
+			return errors.Newf(errors.ErrInternalError, "failed to marshal tool calls: %v", err)
 		}
 		toolCallsJSON = gormModel.JSON(data)
 	}
@@ -120,7 +121,7 @@ func (h *Manager) SaveMessageWithMetadata(message *schema.Message, convID string
 	if metadata != nil {
 		data, err := json.Marshal(metadata)
 		if err != nil {
-			return fmt.Errorf("failed to marshal metadata: %w", err)
+			return errors.Newf(errors.ErrInternalError, "failed to marshal metadata: %v", err)
 		}
 		metadataJSON = gormModel.JSON(data)
 	}
@@ -322,7 +323,7 @@ func (h *Manager) GetHistory(convID string, limit int) ([]*schema.Message, error
 func (h *Manager) processImageContent(mediaURL string) (schema.ChatMessagePart, error) {
 	// 检查是否是文件路径
 	if len(mediaURL) == 0 {
-		return schema.ChatMessagePart{}, fmt.Errorf("empty media URL")
+		return schema.ChatMessagePart{}, errors.New(errors.ErrInvalidParameter, "empty media URL")
 	}
 
 	// 如果已经是data URI或HTTP URL，直接返回
@@ -358,18 +359,15 @@ func (h *Manager) processImageContent(mediaURL string) (schema.ChatMessagePart, 
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		g.Log().Errorf(context.Background(), "[processImageContent] Failed to read file: %v", err)
-		return schema.ChatMessagePart{}, fmt.Errorf("failed to read image file: %w", err)
+		return schema.ChatMessagePart{}, errors.Newf(errors.ErrFileReadFailed, "failed to read image file: %v", err)
 	}
-	g.Log().Debugf(context.Background(), "[processImageContent] File read successfully, data length=%d", len(data))
 
 	// 获取MIME类型
 	ext := filepath.Ext(mediaURL)
 	mimeType := getMimeTypeFromExt(ext)
-	g.Log().Debugf(context.Background(), "[processImageContent] ext=%s, mimeType=%s", ext, mimeType)
 
 	// 编码为base64
 	base64Data := base64.StdEncoding.EncodeToString(data)
-	g.Log().Debugf(context.Background(), "[processImageContent] base64 length=%d, first 100 chars=%s", len(base64Data), base64Data[:min(100, len(base64Data))])
 
 	// 构造data URI
 	dataURI := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
@@ -394,7 +392,7 @@ func min(a, b int) int {
 func (h *Manager) processAudioContent(mediaURL string) (schema.ChatMessagePart, error) {
 	// 检查是否是文件路径
 	if len(mediaURL) == 0 {
-		return schema.ChatMessagePart{}, fmt.Errorf("empty media URL")
+		return schema.ChatMessagePart{}, errors.New(errors.ErrInvalidParameter, "empty media URL")
 	}
 
 	// 如果已经是data URI或HTTP URL，直接返回
@@ -409,13 +407,13 @@ func (h *Manager) processAudioContent(mediaURL string) (schema.ChatMessagePart, 
 
 	// 检查文件是否存在
 	if _, err := os.Stat(mediaURL); os.IsNotExist(err) {
-		return schema.ChatMessagePart{}, fmt.Errorf("audio file not found: %s", mediaURL)
+		return schema.ChatMessagePart{}, errors.Newf(errors.ErrFileReadFailed, "audio file not found: %s", mediaURL)
 	}
 
 	// 读取文件
 	data, err := os.ReadFile(mediaURL)
 	if err != nil {
-		return schema.ChatMessagePart{}, fmt.Errorf("failed to read audio file: %w", err)
+		return schema.ChatMessagePart{}, errors.Newf(errors.ErrFileReadFailed, "failed to read audio file: %v", err)
 	}
 
 	// 获取MIME类型
@@ -440,7 +438,7 @@ func (h *Manager) processAudioContent(mediaURL string) (schema.ChatMessagePart, 
 func (h *Manager) processVideoContent(mediaURL string) (schema.ChatMessagePart, error) {
 	// 检查是否是文件路径
 	if len(mediaURL) == 0 {
-		return schema.ChatMessagePart{}, fmt.Errorf("empty media URL")
+		return schema.ChatMessagePart{}, errors.New(errors.ErrInvalidParameter, "empty media URL")
 	}
 
 	// 如果已经是data URI或HTTP URL，直接返回
@@ -455,13 +453,13 @@ func (h *Manager) processVideoContent(mediaURL string) (schema.ChatMessagePart, 
 
 	// 检查文件是否存在
 	if _, err := os.Stat(mediaURL); os.IsNotExist(err) {
-		return schema.ChatMessagePart{}, fmt.Errorf("video file not found: %s", mediaURL)
+		return schema.ChatMessagePart{}, errors.Newf(errors.ErrFileReadFailed, "video file not found: %s", mediaURL)
 	}
 
 	// 读取文件
 	data, err := os.ReadFile(mediaURL)
 	if err != nil {
-		return schema.ChatMessagePart{}, fmt.Errorf("failed to read video file: %w", err)
+		return schema.ChatMessagePart{}, errors.Newf(errors.ErrFileReadFailed, "failed to read video file: %v", err)
 	}
 
 	// 获取MIME类型
@@ -694,7 +692,7 @@ func (h *Manager) GetMessageMetadata(msgID string) (map[string]interface{}, erro
 	var metadata map[string]interface{}
 	err = json.Unmarshal(message.Metadata, &metadata)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+		return nil, errors.Newf(errors.ErrInternalError, "failed to unmarshal metadata: %v", err)
 	}
 
 	return metadata, nil

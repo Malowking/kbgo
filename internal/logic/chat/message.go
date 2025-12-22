@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/Malowking/kbgo/pkg/schema"
-	"github.com/gogf/gf/v2/frame/g"
 )
 
 const (
@@ -113,13 +112,8 @@ func (x *Chat) docsMessages(ctx context.Context, convID string, docs []*schema.D
 		return
 	}
 
-	for i, doc := range docs {
-		g.Log().Debugf(context.Background(), "docs[%d]: %s", i, doc.Content)
-	}
-
 	// 格式化文档为包含元数据的字符串
 	formattedDocs := formatDocuments(docs)
-	g.Log().Debugf(context.Background(), "formatted docs: %s", formattedDocs)
 
 	// 构建系统消息
 	systemContent := buildSystemMessage(formattedDocs)

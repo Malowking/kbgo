@@ -95,7 +95,6 @@ func retrieveWithRerank(ctx context.Context, conf *config.RetrieverConfig, req *
 	var relatedDocs []*schema.Document
 	for _, doc := range docs {
 		if doc.Score < float32(*req.Score) {
-			g.Log().Debugf(ctx, "score less: %v, related: %v", doc.Score, doc.Content)
 			continue
 		}
 		relatedDocs = append(relatedDocs, doc)
@@ -197,7 +196,6 @@ func retrieveWithRRF(ctx context.Context, conf *config.RetrieverConfig, req *Ret
 	var relatedDocs []*schema.Document
 	for _, doc := range docs {
 		if doc.Score < float32(*req.Score) {
-			g.Log().Debugf(ctx, "score less: %v, related: %v", doc.Score, doc.Content)
 			continue
 		}
 		relatedDocs = append(relatedDocs, doc)

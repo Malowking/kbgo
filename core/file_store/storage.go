@@ -55,8 +55,6 @@ func InitUploadDirectories() {
 	for _, dir := range uploadDirs {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			g.Log().Warningf(ctx, "Failed to create directory %s: %v", dir, err)
-		} else {
-			g.Log().Debugf(ctx, "Created upload directory: %s", dir)
 		}
 	}
 }

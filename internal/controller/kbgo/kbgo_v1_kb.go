@@ -2,19 +2,18 @@ package kbgo
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/core/file_store"
 	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/index"
 	"github.com/Malowking/kbgo/internal/model/do"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
-	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gfile"
 	"github.com/google/uuid"
@@ -30,10 +29,12 @@ func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *
 	// 验证 embedding 模型是否存在且类型为 embedding
 	modelConfig := model.Registry.Get(req.EmbeddingModelId)
 	if modelConfig == nil {
-		return nil, fmt.Errorf("embedding model not found: %s", req.EmbeddingModelId)
+		g.Log().Errorf(ctx, "Embedding model not found: %s", req.EmbeddingModelId)
+		return nil, errors.Newf(errors.ErrModelNotFound, "embedding model not found: %s", req.EmbeddingModelId)
 	}
 	if modelConfig.Type != model.ModelTypeEmbedding {
-		return nil, fmt.Errorf("model %s is not an embedding model, type: %s", req.EmbeddingModelId, modelConfig.Type)
+		g.Log().Errorf(ctx, "Model %s is not an embedding model, type: %s", req.EmbeddingModelId, modelConfig.Type)
+		return nil, errors.Newf(errors.ErrInvalidParameter, "model %s is not an embedding model, type: %s", req.EmbeddingModelId, modelConfig.Type)
 	}
 
 	// 获取模型维度
@@ -72,7 +73,8 @@ func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *
 	if err != nil {
 		// 如果创建向量库 collection 失败，删除已创建的数据库记录并返回错误
 		dao.GetDB().WithContext(ctx).Delete(&gormModel.KnowledgeBase{}, "id = ?", knowledgeId)
-		return nil, fmt.Errorf("创建向量库 collection 失败: %w", err)
+		g.Log().Errorf(ctx, "创建向量库 collection 失败: %v", err)
+		return nil, errors.Newf(errors.ErrInternalError, "创建向量库 collection 失败: %w", err)
 	}
 	g.Log().Infof(ctx, "成功创建向量库 collection: %s with dimension: %d", knowledgeId, dimension)
 
@@ -108,7 +110,8 @@ func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
-			err = gerror.Newf("panic occurred during KBDelete: %v", r)
+			g.Log().Errorf(ctx, "Panic occurred during KBDelete: %v", r)
+			err = errors.Newf(errors.ErrInternalError, "panic occurred during KBDelete: %v", r)
 		}
 	}()
 
@@ -192,7 +195,8 @@ func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *
 
 	// 提交事务
 	if err = tx.Commit().Error; err != nil {
-		return nil, gerror.Newf("failed to commit transaction: %v", err)
+		g.Log().Errorf(ctx, "Failed to commit transaction: %v", err)
+		return nil, errors.Newf(errors.ErrInternalError, "failed to commit transaction: %v", err)
 	}
 
 	// 7. 事务成功提交后，删除存储中的文件（这个操作失败不影响数据一致性）
@@ -284,7 +288,8 @@ func (c *ControllerV1) KBUpdate(ctx context.Context, req *v1.KBUpdateReq) (res *
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
-			err = gerror.Newf("panic occurred during KBUpdate: %v", r)
+			g.Log().Errorf(ctx, "Panic occurred during KBUpdate: %v", r)
+			err = errors.Newf(errors.ErrInternalError, "panic occurred during KBUpdate: %v", r)
 		}
 	}()
 
@@ -303,7 +308,8 @@ func (c *ControllerV1) KBUpdate(ctx context.Context, req *v1.KBUpdateReq) (res *
 
 	// 提交事务
 	if err = tx.Commit().Error; err != nil {
-		return nil, gerror.Newf("failed to commit transaction: %v", err)
+		g.Log().Errorf(ctx, "Failed to commit transaction: %v", err)
+		return nil, errors.Newf(errors.ErrInternalError, "failed to commit transaction: %v", err)
 	}
 
 	return &v1.KBUpdateRes{}, nil
@@ -318,7 +324,8 @@ func (c *ControllerV1) KBUpdateStatus(ctx context.Context, req *v1.KBUpdateStatu
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
-			err = gerror.Newf("panic occurred during KBUpdateStatus: %v", r)
+			g.Log().Errorf(ctx, "Panic occurred during KBUpdateStatus: %v", r)
+			err = errors.Newf(errors.ErrInternalError, "panic occurred during KBUpdateStatus: %v", r)
 		}
 	}()
 
@@ -331,7 +338,8 @@ func (c *ControllerV1) KBUpdateStatus(ctx context.Context, req *v1.KBUpdateStatu
 	}
 	if count == 0 {
 		tx.Rollback()
-		return nil, gerror.Newf("knowledge base not found: %s", req.Id)
+		g.Log().Errorf(ctx, "Knowledge base not found: %s", req.Id)
+		return nil, errors.Newf(errors.ErrKBNotFound, "knowledge base not found: %s", req.Id)
 	}
 
 	// 更新状态
@@ -343,7 +351,8 @@ func (c *ControllerV1) KBUpdateStatus(ctx context.Context, req *v1.KBUpdateStatu
 
 	// 提交事务
 	if err = tx.Commit().Error; err != nil {
-		return nil, gerror.Newf("failed to commit transaction: %v", err)
+		g.Log().Errorf(ctx, "Failed to commit transaction: %v", err)
+		return nil, errors.Newf(errors.ErrInternalError, "failed to commit transaction: %v", err)
 	}
 
 	return &v1.KBUpdateStatusRes{}, nil

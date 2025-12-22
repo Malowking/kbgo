@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Malowking/kbgo/core/common"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/internal/dao"
 	pgvectorModel "github.com/Malowking/kbgo/internal/model/pgvector"
 	"github.com/Malowking/kbgo/pkg/schema"
@@ -34,7 +35,7 @@ func InitializePostgresStore(ctx context.Context) (VectorStore, error) {
 	sslMode := g.Cfg().MustGet(ctx, "postgres.sslmode", "disable").String()
 
 	if host == "" || user == "" || database == "" {
-		return nil, fmt.Errorf("postgres configuration is incomplete. Required: host, user, database")
+		return nil, errors.New(errors.ErrVectorStoreInit, "postgres configuration is incomplete. Required: host, user, database")
 	}
 
 	// 构建连接字符串（去掉空密码的 password= 参数）
@@ -52,13 +53,13 @@ func InitializePostgresStore(ctx context.Context) (VectorStore, error) {
 	// 创建连接池
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create postgres connection pool: %w", err)
+		return nil, errors.Newf(errors.ErrVectorStoreInit, "failed to create postgres connection pool: %v", err)
 	}
 
 	// 测试连接
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("failed to ping postgres: %w", err)
+		return nil, errors.Newf(errors.ErrVectorStoreInit, "failed to ping postgres: %v", err)
 	}
 
 	// 创建PostgresStore配置
@@ -71,7 +72,7 @@ func InitializePostgresStore(ctx context.Context) (VectorStore, error) {
 	postgresStore, err := NewVectorStore(config)
 	if err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("failed to create postgres store: %w", err)
+		return nil, errors.Newf(errors.ErrVectorStoreInit, "failed to create postgres store: %v", err)
 	}
 
 	return postgresStore, nil
@@ -80,16 +81,16 @@ func InitializePostgresStore(ctx context.Context) (VectorStore, error) {
 // NewPostgresStore 创建PostgreSQL向量存储实例
 func NewPostgresStore(config *VectorStoreConfig) (VectorStore, error) {
 	if config == nil {
-		return nil, fmt.Errorf("config cannot be nil")
+		return nil, errors.New(errors.ErrInvalidParameter, "config cannot be nil")
 	}
 
 	pool, ok := config.Client.(*pgxpool.Pool)
 	if !ok {
-		return nil, fmt.Errorf("client must be *pgxpool.Pool")
+		return nil, errors.New(errors.ErrInvalidParameter, "client must be *pgxpool.Pool")
 	}
 
 	if config.Database == "" {
-		return nil, fmt.Errorf("database name cannot be empty")
+		return nil, errors.New(errors.ErrInvalidParameter, "database name cannot be empty")
 	}
 
 	return &PostgresStore{
@@ -105,7 +106,7 @@ func (p *PostgresStore) CreateDatabaseIfNotExists(ctx context.Context) error {
 	var extensionExists bool
 	err := p.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'vector')").Scan(&extensionExists)
 	if err != nil {
-		return fmt.Errorf("failed to check pgvector extension: %w", err)
+		return errors.Newf(errors.ErrDatabaseQuery, "failed to check pgvector extension: %v", err)
 	}
 
 	// 只在扩展不存在时尝试创建
@@ -113,7 +114,7 @@ func (p *PostgresStore) CreateDatabaseIfNotExists(ctx context.Context) error {
 		g.Log().Infof(ctx, "pgvector extension not found, attempting to create...")
 		_, err = p.pool.Exec(ctx, "CREATE EXTENSION vector")
 		if err != nil {
-			return fmt.Errorf("failed to create pgvector extension: %w. Please ensure pgvector is installed for your PostgreSQL version", err)
+			return errors.Newf(errors.ErrVectorStoreInit, "failed to create pgvector extension: %v. Please ensure pgvector is installed for your PostgreSQL version", err)
 		}
 		g.Log().Infof(ctx, "pgvector extension created successfully")
 	} else {
@@ -123,7 +124,7 @@ func (p *PostgresStore) CreateDatabaseIfNotExists(ctx context.Context) error {
 	// 2. 创建独立的 vectors schema
 	_, err = p.pool.Exec(ctx, fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s", p.schema))
 	if err != nil {
-		return fmt.Errorf("failed to create vectors schema: %w", err)
+		return errors.Newf(errors.ErrVectorStoreInit, "failed to create vectors schema: %v", err)
 	}
 
 	g.Log().Infof(ctx, "PostgreSQL database '%s' ready with pgvector extension and '%s' schema", p.database, p.schema)
@@ -142,7 +143,7 @@ func (p *PostgresStore) CreateCollection(ctx context.Context, collectionName str
 	createTableSQL := schema.GenerateCreateTableSQL(p.schema, tableName, dimension)
 	_, err := p.pool.Exec(ctx, createTableSQL)
 	if err != nil {
-		return fmt.Errorf("failed to create table %s.%s: %w", p.schema, tableName, err)
+		return errors.Newf(errors.ErrVectorStoreInit, "failed to create table %s.%s: %v", p.schema, tableName, err)
 	}
 
 	// 2. 创建索引
@@ -150,7 +151,7 @@ func (p *PostgresStore) CreateCollection(ctx context.Context, collectionName str
 	for _, indexSQL := range createIndexSQLs {
 		_, err = p.pool.Exec(ctx, indexSQL)
 		if err != nil {
-			return fmt.Errorf("failed to create index on table %s.%s: %w", p.schema, tableName, err)
+			return errors.Newf(errors.ErrVectorStoreInit, "failed to create index on table %s.%s: %v", p.schema, tableName, err)
 		}
 	}
 
@@ -169,7 +170,7 @@ func (p *PostgresStore) CollectionExists(ctx context.Context, collectionName str
 	).Scan(&exists)
 
 	if err != nil {
-		return false, fmt.Errorf("failed to check if table %s.%s exists: %w", p.schema, tableName, err)
+		return false, errors.Newf(errors.ErrDatabaseQuery, "failed to check if table %s.%s exists: %v", p.schema, tableName, err)
 	}
 
 	return exists, nil
@@ -182,7 +183,7 @@ func (p *PostgresStore) DeleteCollection(ctx context.Context, collectionName str
 
 	_, err := p.pool.Exec(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s", fullTableName))
 	if err != nil {
-		return fmt.Errorf("failed to drop table %s: %w", fullTableName, err)
+		return errors.Newf(errors.ErrVectorDelete, "failed to drop table %s: %v", fullTableName, err)
 	}
 
 	g.Log().Infof(ctx, "Table '%s' deleted", fullTableName)
@@ -192,7 +193,7 @@ func (p *PostgresStore) DeleteCollection(ctx context.Context, collectionName str
 // InsertVectors 插入向量数据
 func (p *PostgresStore) InsertVectors(ctx context.Context, collectionName string, chunks []*schema.Document, vectors [][]float32) ([]string, error) {
 	if len(chunks) != len(vectors) {
-		return nil, fmt.Errorf("chunks and vectors length mismatch: %d vs %d", len(chunks), len(vectors))
+		return nil, errors.Newf(errors.ErrInvalidParameter, "chunks and vectors length mismatch: %d vs %d", len(chunks), len(vectors))
 	}
 
 	tableName := p.sanitizeTableName(collectionName)
@@ -214,7 +215,7 @@ func (p *PostgresStore) InsertVectors(ctx context.Context, collectionName string
 	// 准备批量插入
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to begin transaction: %v", err)
 	}
 	defer tx.Rollback(ctx)
 
@@ -241,7 +242,7 @@ func (p *PostgresStore) InsertVectors(ctx context.Context, collectionName string
 		if contextDocumentId != "" {
 			docID = contextDocumentId
 		} else {
-			return nil, fmt.Errorf("document_id not found in context for chunk %s", chunk.ID)
+			return nil, errors.Newf(errors.ErrInvalidParameter, "document_id not found in context for chunk %s", chunk.ID)
 		}
 
 		// 构建metadata
@@ -260,19 +261,19 @@ func (p *PostgresStore) InsertVectors(ctx context.Context, collectionName string
 		// 序列化metadata
 		metaBytes, err := json.Marshal(metaCopy)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal metadata: %w", err)
+			return nil, errors.Newf(errors.ErrVectorInsert, "failed to marshal metadata: %v", err)
 		}
 
 		// 插入数据
 		_, err = tx.Exec(ctx, insertSQL, chunk.ID, text, pgVector, docID, metaBytes)
 		if err != nil {
-			return nil, fmt.Errorf("failed to insert vector for chunk %s: %w", chunk.ID, err)
+			return nil, errors.Newf(errors.ErrVectorInsert, "failed to insert vector for chunk %s: %v", chunk.ID, err)
 		}
 	}
 
 	// 提交事务
 	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+		return nil, errors.Newf(errors.ErrVectorInsert, "failed to commit transaction: %v", err)
 	}
 
 	g.Log().Infof(ctx, "Successfully inserted %d vectors into table '%s'", len(chunks), fullTableName)
@@ -283,7 +284,7 @@ func (p *PostgresStore) InsertVectors(ctx context.Context, collectionName string
 func (p *PostgresStore) DeleteByDocumentID(ctx context.Context, collectionName string, documentID string) error {
 	// 验证 documentID 格式
 	if !common.ValidateUUID(documentID) {
-		return fmt.Errorf("invalid document ID format: %s (must be valid UUID)", documentID)
+		return errors.Newf(errors.ErrInvalidParameter, "invalid document ID format: %s (must be valid UUID)", documentID)
 	}
 
 	tableName := p.sanitizeTableName(collectionName)
@@ -296,7 +297,7 @@ func (p *PostgresStore) DeleteByDocumentID(ctx context.Context, collectionName s
 		documentID,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to delete document %s: %w", documentID, err)
+		return errors.Newf(errors.ErrVectorDelete, "failed to delete document %s: %v", documentID, err)
 	}
 
 	rowsAffected := result.RowsAffected()
@@ -313,7 +314,7 @@ func (p *PostgresStore) DeleteByDocumentID(ctx context.Context, collectionName s
 func (p *PostgresStore) DeleteByChunkID(ctx context.Context, collectionName string, chunkID string) error {
 	// 验证 chunkID 格式
 	if !common.ValidateUUID(chunkID) {
-		return fmt.Errorf("invalid chunk ID format: %s (must be valid UUID)", chunkID)
+		return errors.Newf(errors.ErrInvalidParameter, "invalid chunk ID format: %s (must be valid UUID)", chunkID)
 	}
 
 	tableName := p.sanitizeTableName(collectionName)
@@ -326,7 +327,7 @@ func (p *PostgresStore) DeleteByChunkID(ctx context.Context, collectionName stri
 		chunkID,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to delete chunk %s: %w", chunkID, err)
+		return errors.Newf(errors.ErrVectorDelete, "failed to delete chunk %s: %v", chunkID, err)
 	}
 
 	rowsAffected := result.RowsAffected()
@@ -347,11 +348,11 @@ func (p *PostgresStore) GetClient() interface{} {
 // NewRetriever 创建PostgreSQL检索器实例
 func (p *PostgresStore) NewRetriever(ctx context.Context, conf interface{}, collectionName string) (Retriever, error) {
 	if p.pool == nil {
-		return nil, fmt.Errorf("postgres pool not provided")
+		return nil, errors.New(errors.ErrInvalidParameter, "postgres pool not provided")
 	}
 
 	if collectionName == "" {
-		return nil, fmt.Errorf("collection name cannot be empty")
+		return nil, errors.New(errors.ErrInvalidParameter, "collection name cannot be empty")
 	}
 
 	tableName := p.sanitizeTableName(collectionName)
@@ -360,10 +361,10 @@ func (p *PostgresStore) NewRetriever(ctx context.Context, conf interface{}, coll
 	// 检查表是否存在
 	exists, err := p.CollectionExists(ctx, collectionName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check collection: %w", err)
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to check collection: %v", err)
 	}
 	if !exists {
-		return nil, fmt.Errorf("table '%s' not found", fullTableName)
+		return nil, errors.Newf(errors.ErrVectorStoreNotFound, "table '%s' not found", fullTableName)
 	}
 
 	// 创建并返回检索器
@@ -397,7 +398,7 @@ func (p *PostgresStore) VectorSearchOnly(ctx context.Context, conf GeneralRetrie
 		return pgRetriever.vectorSearchWithThreshold(ctx, query, postgresTopK, score)
 	}
 
-	return nil, fmt.Errorf("failed to cast retriever to postgresRetriever")
+	return nil, errors.New(errors.ErrVectorSearch, "failed to cast retriever to postgresRetriever")
 }
 
 // Helper functions
@@ -490,7 +491,7 @@ func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query
 	// 创建embedder
 	embedder, err := common.NewEmbedding(ctx, embeddingConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create embedder: %w", err)
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "failed to create embedder: %v", err)
 	}
 
 	// 生成查询向量
@@ -498,11 +499,11 @@ func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query
 	dim := g.Cfg().MustGet(ctx, "postgres.dim", 1024).Int()
 	vectors, err := embedder.EmbedStrings(ctx, []string{query}, dim)
 	if err != nil {
-		return nil, fmt.Errorf("embedding has error: %w", err)
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "embedding has error: %v", err)
 	}
 
 	if len(vectors) != 1 {
-		return nil, fmt.Errorf("invalid return length of vector, got=%d, expected=1", len(vectors))
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "invalid return length of vector, got=%d, expected=1", len(vectors))
 	}
 
 	// 直接使用float32向量
@@ -545,7 +546,7 @@ func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query
 
 	rows, err := r.pool.Query(ctx, searchSQL, queryVector, threshold, topK)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute vector search: %w", err)
+		return nil, errors.Newf(errors.ErrVectorSearch, "failed to execute vector search: %v", err)
 	}
 	defer rows.Close()
 
@@ -557,7 +558,7 @@ func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query
 
 		err := rows.Scan(&id, &text, &documentId, &metadataBytes, &score)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan row: %w", err)
+			return nil, errors.Newf(errors.ErrVectorSearch, "failed to scan row: %v", err)
 		}
 
 		doc := &schema.Document{
@@ -584,7 +585,7 @@ func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating over rows: %w", err)
+		return nil, errors.Newf(errors.ErrVectorSearch, "error iterating over rows: %v", err)
 	}
 
 	// 权限控制：过滤掉status != 1的chunks
@@ -596,7 +597,7 @@ func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query
 
 		activeIDs, err := dao.KnowledgeChunks.GetActiveChunkIDs(ctx, chunkIDs)
 		if err != nil {
-			return nil, fmt.Errorf("failed to query chunk status: %w", err)
+			return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to query chunk status: %v", err)
 		}
 
 		// 收集document_ids以查询文档名称

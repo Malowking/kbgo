@@ -3,12 +3,12 @@ package schema
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"sync"
 	"time"
 
 	"github.com/Malowking/kbgo/core/cache"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/redis/go-redis/v9"
 )
@@ -90,7 +90,6 @@ func RedisPipe[T any](ctx context.Context, streamID string) (*RedisStreamReader[
 		time.Sleep(streamTTL)
 		if !writer.closed {
 			rdb.Del(context.Background(), streamKey, statusKey)
-			g.Log().Debugf(context.Background(), "Redis stream expired and cleaned: %s", streamKey)
 		}
 	}()
 
@@ -151,7 +150,7 @@ func (r *RedisStreamReader[T]) Recv() (T, error) {
 				r.mu.Lock()
 				r.closed = true
 				r.mu.Unlock()
-				return zero, fmt.Errorf("stream encountered an error")
+				return zero, errors.New(errors.ErrStreamingFailed, "stream encountered an error")
 			}
 		}
 
@@ -195,12 +194,12 @@ func (r *RedisStreamReader[T]) readNext() (T, error) {
 	// 解析消息内容
 	dataStr, ok := msg.Values["data"].(string)
 	if !ok {
-		return zero, fmt.Errorf("invalid message format: missing 'data' field")
+		return zero, errors.New(errors.ErrInvalidParameter, "invalid message format: missing 'data' field")
 	}
 
 	var result T
 	if err := json.Unmarshal([]byte(dataStr), &result); err != nil {
-		return zero, fmt.Errorf("failed to unmarshal message: %w", err)
+		return zero, errors.Newf(errors.ErrStreamingFailed, "failed to unmarshal message: %v", err)
 	}
 
 	return result, nil
@@ -269,7 +268,6 @@ func (w *RedisStreamWriter[T]) Close() error {
 		w.closed = true
 		// 设置流状态为已完成
 		w.rdb.Set(context.Background(), w.statusKey, streamStatusCompleted, streamTTL)
-		g.Log().Debugf(context.Background(), "Redis stream writer closed: %s", w.streamKey)
 	}
 	return nil
 }

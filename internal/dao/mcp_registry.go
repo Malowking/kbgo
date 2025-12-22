@@ -2,8 +2,8 @@ package dao
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/Malowking/kbgo/core/errors"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
 )
@@ -118,7 +118,7 @@ func (d *MCPRegistryDAO) Exists(ctx context.Context, name string, excludeID ...s
 
 	var count int64
 	if err := query.Count(&count).Error; err != nil {
-		return false, fmt.Errorf("failed to check MCP registry existence: %v", err)
+		return false, errors.Newf(errors.ErrDatabaseQuery, "failed to check MCP registry existence: %v", err)
 	}
 
 	return count > 0, nil

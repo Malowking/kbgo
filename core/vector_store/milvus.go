@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Malowking/kbgo/core/common"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/internal/dao"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	milvusModel "github.com/Malowking/kbgo/internal/model/milvus"
@@ -43,7 +44,7 @@ func InitializeMilvusStore(ctx context.Context) (VectorStore, error) {
 	database := g.Cfg().MustGet(ctx, "milvus.database", "default").String()
 
 	if address == "" {
-		return nil, fmt.Errorf("milvus.address is required but not found in config file. Please check your config.yaml file and ensure milvus.address is properly set")
+		return nil, errors.New(errors.ErrVectorStoreInit, "milvus.address is required but not found in config file. Please check your config.yaml file and ensure milvus.address is properly set")
 	}
 
 	g.Log().Infof(ctx, "Connecting to Milvus at: %s, database: %s", address, database)
@@ -54,7 +55,7 @@ func InitializeMilvusStore(ctx context.Context) (VectorStore, error) {
 		DBName:  database,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create milvus client (address: %s, database: %s): %w", address, database, err)
+		return nil, errors.Newf(errors.ErrVectorStoreInit, "failed to create milvus client (address: %s, database: %s): %v", address, database, err)
 	}
 
 	// Create MilvusStore with the client
@@ -66,7 +67,7 @@ func InitializeMilvusStore(ctx context.Context) (VectorStore, error) {
 
 	milvusStore, err := NewVectorStore(config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create milvus store: %w", err)
+		return nil, errors.Newf(errors.ErrVectorStoreInit, "failed to create milvus store: %v", err)
 	}
 
 	return milvusStore, nil
@@ -75,16 +76,16 @@ func InitializeMilvusStore(ctx context.Context) (VectorStore, error) {
 // NewMilvusStore 创建Milvus向量存储实例
 func NewMilvusStore(config *VectorStoreConfig) (VectorStore, error) {
 	if config == nil {
-		return nil, fmt.Errorf("config cannot be nil")
+		return nil, errors.New(errors.ErrInvalidParameter, "config cannot be nil")
 	}
 
 	client, ok := config.Client.(*milvusclient.Client)
 	if !ok {
-		return nil, fmt.Errorf("client must be *milvusclient.Client")
+		return nil, errors.New(errors.ErrInvalidParameter, "client must be *milvusclient.Client")
 	}
 
 	if config.Database == "" {
-		return nil, fmt.Errorf("database name cannot be empty")
+		return nil, errors.New(errors.ErrInvalidParameter, "database name cannot be empty")
 	}
 
 	return &MilvusStore{
@@ -97,7 +98,7 @@ func NewMilvusStore(config *VectorStoreConfig) (VectorStore, error) {
 func (m *MilvusStore) CreateDatabaseIfNotExists(ctx context.Context) error {
 	dbNames, err := m.client.ListDatabase(ctx, milvusclient.NewListDatabaseOption())
 	if err != nil {
-		return fmt.Errorf("failed to list databases: %w", err)
+		return errors.Newf(errors.ErrVectorStoreInit, "failed to list databases: %v", err)
 	}
 
 	for _, name := range dbNames {
@@ -110,7 +111,7 @@ func (m *MilvusStore) CreateDatabaseIfNotExists(ctx context.Context) error {
 	// 数据库不存在，创建
 	err = m.client.CreateDatabase(ctx, milvusclient.NewCreateDatabaseOption(m.database))
 	if err != nil {
-		return fmt.Errorf("failed to create database: %w", err)
+		return errors.Newf(errors.ErrVectorStoreInit, "failed to create database: %v", err)
 	}
 
 	g.Log().Infof(ctx, "Database '%s' created successfully", m.database)
@@ -134,13 +135,13 @@ func (m *MilvusStore) CreateCollection(ctx context.Context, collectionName strin
 	err := m.client.CreateCollection(ctx, milvusclient.NewCreateCollectionOption(collectionName, schema).WithIndexOptions(
 		milvusclient.NewCreateIndexOption(collectionName, "vector", index.NewHNSWIndex(entity.L2, 64, 128))))
 	if err != nil {
-		return fmt.Errorf("failed to create Milvus collection: %w", err)
+		return errors.Newf(errors.ErrVectorStoreInit, "failed to create Milvus collection: %v", err)
 	}
 
 	// Load collection into memory
 	_, err = m.client.LoadCollection(ctx, milvusclient.NewLoadCollectionOption(collectionName))
 	if err != nil {
-		return fmt.Errorf("failed to load Milvus collection: %w", err)
+		return errors.Newf(errors.ErrVectorStoreInit, "failed to load Milvus collection: %v", err)
 	}
 
 	g.Log().Infof(ctx, "Collection '%s' created with dimension %d, index built and loaded", collectionName, dimension)
@@ -151,7 +152,7 @@ func (m *MilvusStore) CreateCollection(ctx context.Context, collectionName strin
 func (m *MilvusStore) CollectionExists(ctx context.Context, collectionName string) (bool, error) {
 	has, err := m.client.HasCollection(ctx, milvusclient.NewHasCollectionOption(collectionName))
 	if err != nil {
-		return false, fmt.Errorf("failed to check if collection exists: %w", err)
+		return false, errors.Newf(errors.ErrVectorStoreNotFound, "failed to check if collection exists: %v", err)
 	}
 	return has, nil
 }
@@ -160,7 +161,7 @@ func (m *MilvusStore) CollectionExists(ctx context.Context, collectionName strin
 func (m *MilvusStore) DeleteCollection(ctx context.Context, collectionName string) error {
 	err := m.client.DropCollection(ctx, milvusclient.NewDropCollectionOption(collectionName))
 	if err != nil {
-		return fmt.Errorf("failed to delete collection: %w", err)
+		return errors.Newf(errors.ErrVectorDelete, "failed to delete collection: %v", err)
 	}
 	g.Log().Infof(ctx, "Collection '%s' deleted", collectionName)
 	return nil
@@ -169,7 +170,7 @@ func (m *MilvusStore) DeleteCollection(ctx context.Context, collectionName strin
 // InsertVectors 插入向量数据 - 直接使用float32向量
 func (m *MilvusStore) InsertVectors(ctx context.Context, collectionName string, chunks []*schema.Document, vectors [][]float32) ([]string, error) {
 	if len(chunks) != len(vectors) {
-		return nil, fmt.Errorf("chunks and vectors length mismatch: %d vs %d", len(chunks), len(vectors))
+		return nil, errors.Newf(errors.ErrInvalidParameter, "chunks and vectors length mismatch: %d vs %d", len(chunks), len(vectors))
 	}
 
 	ids := make([]string, len(chunks))
@@ -204,7 +205,7 @@ func (m *MilvusStore) InsertVectors(ctx context.Context, collectionName string, 
 		if contextDocumentId != "" {
 			docID = contextDocumentId
 		} else {
-			return nil, fmt.Errorf("document_id not found in context for chunk %s", chunk.ID)
+			return nil, errors.Newf(errors.ErrInvalidParameter, "document_id not found in context for chunk %s", chunk.ID)
 		}
 		documentIds[idx] = docID
 
@@ -224,7 +225,7 @@ func (m *MilvusStore) InsertVectors(ctx context.Context, collectionName string, 
 		// 序列化metadata
 		metaBytes, err := marshalMetadata(metaCopy)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal metadata: %w", err)
+			return nil, errors.Newf(errors.ErrInternalError, "failed to marshal metadata: %v", err)
 		}
 		metadataList[idx] = metaBytes
 	}
@@ -245,7 +246,7 @@ func (m *MilvusStore) InsertVectors(ctx context.Context, collectionName string, 
 	insertOpt := milvusclient.NewColumnBasedInsertOption(collectionName, columns...)
 	result, err := m.client.Insert(ctx, insertOpt)
 	if err != nil {
-		return nil, fmt.Errorf("failed to insert vectors: %w", err)
+		return nil, errors.Newf(errors.ErrVectorInsert, "failed to insert vectors: %v", err)
 	}
 
 	g.Log().Infof(ctx, "Successfully inserted %d vectors into collection '%s'", result.InsertCount, collectionName)
@@ -256,7 +257,7 @@ func (m *MilvusStore) InsertVectors(ctx context.Context, collectionName string, 
 func (m *MilvusStore) DeleteByDocumentID(ctx context.Context, collectionName string, documentID string) error {
 	// 验证 documentID 格式（防止注入）
 	if !common.ValidateUUID(documentID) {
-		return fmt.Errorf("invalid document ID format: %s (must be valid UUID)", documentID)
+		return errors.Newf(errors.ErrInvalidParameter, "invalid document ID format: %s (must be valid UUID)", documentID)
 	}
 
 	// 转义特殊字符（双重保护）
@@ -268,7 +269,7 @@ func (m *MilvusStore) DeleteByDocumentID(ctx context.Context, collectionName str
 	deleteOpt := milvusclient.NewDeleteOption(collectionName).WithExpr(filterExpr)
 	result, err := m.client.Delete(ctx, deleteOpt)
 	if err != nil {
-		return fmt.Errorf("failed to delete document %s: %w", documentID, err)
+		return errors.Newf(errors.ErrVectorDelete, "failed to delete document %s: %v", documentID, err)
 	}
 
 	g.Log().Infof(ctx, "Delete operation completed for document %s, affected rows: %d", documentID, result.DeleteCount)
@@ -284,7 +285,7 @@ func (m *MilvusStore) DeleteByDocumentID(ctx context.Context, collectionName str
 func (m *MilvusStore) DeleteByChunkID(ctx context.Context, collectionName string, chunkID string) error {
 	// 验证 chunkID 格式（防止注入）
 	if !common.ValidateUUID(chunkID) {
-		return fmt.Errorf("invalid chunk ID format: %s (must be valid UUID)", chunkID)
+		return errors.Newf(errors.ErrInvalidParameter, "invalid chunk ID format: %s (must be valid UUID)", chunkID)
 	}
 
 	// 转义特殊字符（双重保护）
@@ -296,7 +297,7 @@ func (m *MilvusStore) DeleteByChunkID(ctx context.Context, collectionName string
 	deleteOpt := milvusclient.NewDeleteOption(collectionName).WithExpr(filterExpr)
 	result, err := m.client.Delete(ctx, deleteOpt)
 	if err != nil {
-		return fmt.Errorf("failed to delete chunk %s: %w", chunkID, err)
+		return errors.Newf(errors.ErrVectorDelete, "failed to delete chunk %s: %v", chunkID, err)
 	}
 
 	g.Log().Infof(ctx, "Delete operation completed for chunk %s, affected rows: %d", chunkID, result.DeleteCount)
@@ -442,7 +443,7 @@ func (r *milvusRetriever) Retrieve(ctx context.Context, query string, opts ...Op
 
 	embedder, err := common.NewEmbedding(ctx, embeddingConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create embedder: %w", err)
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "failed to create embedder: %v", err)
 	}
 
 	// embedding查询 - 直接获取float32向量
@@ -450,11 +451,11 @@ func (r *milvusRetriever) Retrieve(ctx context.Context, query string, opts ...Op
 	dim := g.Cfg().MustGet(ctx, "milvus.dim", 1024).Int()
 	vectors, err := embedder.EmbedStrings(ctx, []string{query}, dim)
 	if err != nil {
-		return nil, fmt.Errorf("embedding has error: %w", err)
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "embedding has error: %v", err)
 	}
 	// 检查 embedding result
 	if len(vectors) != 1 {
-		return nil, fmt.Errorf("invalid return length of vector, got=%d, expected=1", len(vectors))
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "invalid return length of vector, got=%d, expected=1", len(vectors))
 	}
 
 	// 将float32向量转换为entity.Vector
@@ -488,7 +489,7 @@ func (r *milvusRetriever) Retrieve(ctx context.Context, query string, opts ...Op
 	// 搜索集合
 	results, err := r.client.Search(ctx, searchOpt)
 	if err != nil {
-		return nil, fmt.Errorf("search has error: %w", err)
+		return nil, errors.Newf(errors.ErrVectorSearch, "search has error: %v", err)
 	}
 
 	// 检查搜索结果
@@ -513,28 +514,28 @@ func (r *milvusRetriever) IsCallbacksEnabled() bool {
 // NewMilvusRetriever 创建Milvus检索器实例
 func (m *MilvusStore) NewMilvusRetriever(ctx context.Context, conf interface{}, collectionName string) (Retriever, error) {
 	if m.client == nil {
-		return nil, fmt.Errorf("milvus client not provided")
+		return nil, errors.New(errors.ErrInvalidParameter, "milvus client not provided")
 	}
 
 	if collectionName == "" {
-		return nil, fmt.Errorf("collection name cannot be empty")
+		return nil, errors.New(errors.ErrInvalidParameter, "collection name cannot be empty")
 	}
 
 	// 检查集合是否存在
 	hasCollectionOpt := milvusclient.NewHasCollectionOption(collectionName)
 	exists, err := m.client.HasCollection(ctx, hasCollectionOpt)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check collection: %w", err)
+		return nil, errors.Newf(errors.ErrVectorStoreNotFound, "failed to check collection: %v", err)
 	}
 	if !exists {
-		return nil, fmt.Errorf("collection '%s' not found", collectionName)
+		return nil, errors.Newf(errors.ErrVectorStoreNotFound, "collection '%s' not found", collectionName)
 	}
 
 	// 获取集合描述
 	descCollOpt := milvusclient.NewDescribeCollectionOption(collectionName)
 	collection, err := m.client.DescribeCollection(ctx, descCollOpt)
 	if err != nil {
-		return nil, fmt.Errorf("failed to describe collection: %w", err)
+		return nil, errors.Newf(errors.ErrVectorStoreNotFound, "failed to describe collection: %v", err)
 	}
 
 	// 检查向量字段是否存在
@@ -547,7 +548,7 @@ func (m *MilvusStore) NewMilvusRetriever(ctx context.Context, conf interface{}, 
 		}
 	}
 	if !found {
-		return nil, fmt.Errorf("vector field '%s' not found in collection schema", vectorField)
+		return nil, errors.Newf(errors.ErrVectorStoreNotFound, "vector field '%s' not found in collection schema", vectorField)
 	}
 
 	// 确保集合已加载
@@ -555,7 +556,7 @@ func (m *MilvusStore) NewMilvusRetriever(ctx context.Context, conf interface{}, 
 		loadOpt := milvusclient.NewLoadCollectionOption(collectionName)
 		_, err = m.client.LoadCollection(ctx, loadOpt)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load collection: %w", err)
+			return nil, errors.Newf(errors.ErrVectorStoreInit, "failed to load collection: %v", err)
 		}
 	}
 
@@ -597,7 +598,7 @@ func (m *MilvusStore) ConvertSearchResultsToDocuments(ctx context.Context, colum
 			for i := 0; i < col.Len(); i++ {
 				val, err := col.Get(i)
 				if err != nil {
-					return nil, fmt.Errorf("failed to get id: %w", err)
+					return nil, errors.Newf(errors.ErrInternalError, "failed to get id: %v", err)
 				}
 				if str, ok := val.(string); ok {
 					result[i].ID = str
@@ -607,7 +608,7 @@ func (m *MilvusStore) ConvertSearchResultsToDocuments(ctx context.Context, colum
 			for i := 0; i < col.Len(); i++ {
 				val, err := col.Get(i)
 				if err != nil {
-					return nil, fmt.Errorf("failed to get content: %w", err)
+					return nil, errors.Newf(errors.ErrInternalError, "failed to get content: %v", err)
 				}
 				if str, ok := val.(string); ok {
 					result[i].Content = str
@@ -617,7 +618,7 @@ func (m *MilvusStore) ConvertSearchResultsToDocuments(ctx context.Context, colum
 			for i := 0; i < col.Len(); i++ {
 				_, err := col.Get(i)
 				if err != nil {
-					return nil, fmt.Errorf("failed to get content_vector: %w", err)
+					return nil, errors.Newf(errors.ErrInternalError, "failed to get content_vector: %v", err)
 				}
 				// Milvus returns vectors as []float32 or []byte - we don't need to store them in the document
 				// The vectors are only used for similarity search, not for retrieval
@@ -686,7 +687,7 @@ func (m *MilvusStore) ConvertSearchResultsToDocuments(ctx context.Context, colum
 	if len(chunkIDs) > 0 {
 		activeIDs, err := dao.KnowledgeChunks.GetActiveChunkIDs(ctx, chunkIDs)
 		if err != nil {
-			return nil, fmt.Errorf("failed to query chunk status: %w", err)
+			return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to query chunk status: %v", err)
 		}
 
 		// Collect document_ids from metadata to query document names
@@ -798,7 +799,6 @@ func (m *MilvusStore) VectorSearchOnly(ctx context.Context, conf GeneralRetrieve
 	var relatedDocs []*schema.Document
 	for _, doc := range docs {
 		if doc.Score < float32(score) {
-			g.Log().Debugf(ctx, "score less: %v, related: %v", doc.Score, doc.Content)
 			continue
 		}
 		relatedDocs = append(relatedDocs, doc)

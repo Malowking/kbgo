@@ -5,12 +5,12 @@ import (
 	"os"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/core/file_store"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/index"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
-	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -25,7 +25,7 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
-			err = gerror.Newf("panic occurred during DocumentsDelete: %v", r)
+			err = errors.Newf(errors.ErrInternalError, "panic occurred during DocumentsDelete: %v", r)
 		}
 	}()
 
@@ -34,7 +34,7 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 	if err != nil {
 		g.Log().Errorf(ctx, "DocumentsDelete: GetDocumentById failed for id %s, err: %v", req.DocumentId, err)
 		tx.Rollback()
-		return nil, err
+		return nil, errors.Newf(errors.ErrDocumentNotFound, "document not found: %v", err)
 	}
 
 	var needDeleteFromRustFS bool
@@ -50,7 +50,7 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 		if err != nil {
 			g.Log().Errorf(ctx, "DocumentsDelete: failed to count documents with same SHA256, err: %v", err)
 			tx.Rollback()
-			return nil, err
+			return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to count documents: %v", err)
 		}
 
 		// 如果只有当前这一个文档，则需要删除存储中的文件
@@ -90,7 +90,7 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 		if err != nil {
 			g.Log().Errorf(ctx, "DocumentsDelete: Milvus DeleteDocument failed for documentId %s in collection %s, err: %v", req.DocumentId, document.CollectionName, err)
 			tx.Rollback()
-			return nil, err
+			return nil, errors.Newf(errors.ErrVectorDelete, "failed to delete from vector store: %v", err)
 		}
 	}
 
@@ -99,13 +99,13 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 	if err != nil {
 		g.Log().Errorf(ctx, "DocumentsDelete: DeleteDocument failed for id %s, err: %v", req.DocumentId, err)
 		tx.Rollback()
-		return nil, err
+		return nil, errors.Newf(errors.ErrDatabaseDelete, "failed to delete document: %v", err)
 	}
 
 	// 提交事务
 	if err = tx.Commit().Error; err != nil {
 		g.Log().Errorf(ctx, "DocumentsDelete: transaction commit failed, err: %v", err)
-		return nil, gerror.Newf("failed to commit transaction: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseDelete, "failed to commit transaction: %v", err)
 	}
 
 	// 事务成功提交后，删除存储中的文件（这个操作失败不影响数据一致性）

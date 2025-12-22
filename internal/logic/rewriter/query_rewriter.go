@@ -2,9 +2,12 @@ package rewriter
 
 import (
 	"context"
+
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Malowking/kbgo/core/errors"
 
 	"github.com/Malowking/kbgo/core/formatter"
 	coreModel "github.com/Malowking/kbgo/core/model"
@@ -58,19 +61,16 @@ func (r *QueryRewriter) RewriteQuery(ctx context.Context, currentQuery string, c
 
 	// 检查是否配置了重写模型
 	if !coreModel.Registry.HasRewriteModel() {
-		g.Log().Debugf(ctx, "未配置重写模型，跳过查询重写")
 		return currentQuery, nil
 	}
 
 	// 如果没有历史对话，不需要重写
 	if len(chatHistory) == 0 {
-		g.Log().Debugf(ctx, "没有历史对话，跳过查询重写")
 		return currentQuery, nil
 	}
 
 	// 检查是否需要重写
 	if !r.needsRewriting(currentQuery) {
-		g.Log().Debugf(ctx, "查询不需要重写，跳过")
 		return currentQuery, nil
 	}
 
@@ -236,10 +236,8 @@ AI: 学习深度学习需要掌握数学基础、Python编程...
 	// 获取重写模型配置（从内存中获取）
 	mc := coreModel.Registry.GetRewriteModel()
 	if mc == nil {
-		return "", fmt.Errorf("重写模型未配置")
+		return "", errors.New(errors.ErrModelNotConfigured, "重写模型未配置")
 	}
-
-	g.Log().Debugf(ctx, "使用重写模型: %s (%s)", mc.Name, mc.ModelID)
 
 	// 选择格式适配器
 	var msgFormatter formatter.MessageFormatter
@@ -253,7 +251,6 @@ AI: 学习深度学习需要掌握数学基础、Python编程...
 	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
 
 	// 调用模型
-	startTime := time.Now()
 	resp, err := modelService.ChatCompletion(ctx, coreModel.ChatCompletionParams{
 		ModelName:           mc.Name,
 		Messages:            messages,
@@ -262,11 +259,11 @@ AI: 学习深度学习需要掌握数学基础、Python编程...
 	})
 
 	if err != nil {
-		return "", fmt.Errorf("调用模型失败: %w", err)
+		return "", errors.Newf(errors.ErrLLMCallFailed, "调用模型失败: %v", err)
 	}
 
 	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("模型返回空响应")
+		return "", errors.New(errors.ErrLLMCallFailed, "模型返回空响应")
 	}
 
 	// 提取重写后的问题
@@ -277,12 +274,8 @@ AI: 学习深度学习需要掌握数学基础、Python编程...
 
 	// 如果重写失败或返回空，使用原查询
 	if rewrittenQuery == "" || len([]rune(rewrittenQuery)) < 2 {
-		return currentQuery, fmt.Errorf("重写结果为空")
+		return currentQuery, errors.New(errors.ErrRewriteFailed, "重写结果为空")
 	}
-
-	// 记录性能指标
-	duration := time.Since(startTime)
-	g.Log().Debugf(ctx, "查询重写耗时: %v, tokens: %d", duration, resp.Usage.TotalTokens)
 
 	return rewrittenQuery, nil
 }
