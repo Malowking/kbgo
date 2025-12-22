@@ -231,8 +231,17 @@ func (p *PostgresStore) InsertVectors(ctx context.Context, collectionName string
 		}
 		ids[idx] = chunk.ID
 
-		// 截断文本（如果需要）
-		text := p.truncateString(chunk.Content, 65535)
+		// 清理文本并截断
+		// 注意：这里不需要再次清洗，因为在stepSaveChunks中已经清洗过了
+		// 但为了防御性编程，仍然使用统一的清洗工具确保安全
+		sanitizedText, err := common.CleanString(chunk.Content, common.ProfileDatabase)
+		if err != nil {
+			// 如果清洗失败，记录警告但不中断（因为前面已经清洗过了）
+			g.Log().Warningf(ctx, "Failed to clean chunk content in InsertVectors, using original content. chunkID=%s, err=%v",
+				chunk.ID, err)
+			sanitizedText = chunk.Content
+		}
+		text := p.truncateString(sanitizedText, 65535)
 
 		// 转换向量为pgvector格式 - 直接使用float32向量
 		pgVector := pgvector.NewVector(vectors[idx])

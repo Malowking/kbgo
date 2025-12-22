@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
+	"strings"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/internal/dao"
@@ -46,7 +47,7 @@ func SaveChunksData(ctx context.Context, documentsId string, chunks []entity.Kno
 		gormChunks[i] = gormModel.KnowledgeChunks{
 			ID:             chunk.Id,
 			KnowledgeDocID: chunk.KnowledgeDocId,
-			Content:        chunk.Content,
+			Content:        sanitizeText(chunk.Content), // 清理NULL字节
 			CollectionName: chunk.CollectionName,
 			Ext:            string(extJSON),
 			Status:         int8(chunk.Status),
@@ -208,4 +209,11 @@ func extractChunkOrder(ext string) int {
 	}
 
 	return 999999
+}
+
+// sanitizeText 清理文本中的NULL字节和其他PostgreSQL不支持的字符
+// PostgreSQL不允许在TEXT/VARCHAR字段中存储NULL字节(0x00)
+func sanitizeText(text string) string {
+	// 移除NULL字节(0x00)
+	return strings.ReplaceAll(text, "\x00", "")
 }

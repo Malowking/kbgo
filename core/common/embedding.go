@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/Malowking/kbgo/core/errors"
@@ -64,16 +63,13 @@ func NewEmbedding(ctx context.Context, conf EmbeddingConfig) (*CustomEmbedder, e
 	model := conf.GetEmbeddingModel()
 
 	if apiKey == "" {
-		apiKey = os.Getenv("OPENAI_API_KEY")
+		return nil, errors.Newf(errors.ErrInvalidParameter, "embedding apiKey is required")
 	}
 	if baseURL == "" {
-		baseURL = os.Getenv("OPENAI_BASE_URL")
-		if baseURL == "" {
-			baseURL = "https://api.openai.com/v1"
-		}
+		return nil, errors.Newf(errors.ErrInvalidParameter, "embedding baseURL is required")
 	}
 	if model == "" {
-		model = "text-embedding-3-large"
+		return nil, errors.Newf(errors.ErrInvalidParameter, "embedding model not found")
 	}
 
 	// 创建自定义HTTP客户端，设置合理的超时时间

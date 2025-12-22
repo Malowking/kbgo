@@ -145,6 +145,13 @@ func (s *DocumentIndexer) DocumentIndex(ctx context.Context, req *IndexReq) erro
 		separator:   req.Separator,
 	}
 
+	// 立即将文档状态设置为"索引中"，以便前端可以实时看到状态变化
+	err := knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusIndexing))
+	if err != nil {
+		g.Log().Errorf(ctx, "Failed to update document status to indexing, documentId=%s, err=%v", req.DocumentId, err)
+		// 即使更新状态失败，也继续执行索引流程
+	}
+
 	// Define Pipeline steps
 	pipeline := []struct {
 		name string
@@ -244,7 +251,7 @@ func (s *DocumentIndexer) stepParseDocument(idxCtx *indexContext) error {
 	fileParseLoader, err := NewFileParseLoader(idxCtx.ctx, idxCtx.chunkSize, idxCtx.overlapSize, idxCtx.separator)
 	if err != nil {
 		g.Log().Errorf(idxCtx.ctx, "Failed to create file_parse loader, documentId=%s, err=%v", idxCtx.documentId, err)
-		// 不修改数据库状态，直接返回错误
+		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))
 		return err
 	}
 
@@ -252,16 +259,16 @@ func (s *DocumentIndexer) stepParseDocument(idxCtx *indexContext) error {
 	chunks, err := fileParseLoader.Load(idxCtx.ctx, idxCtx.localFilePath)
 	if err != nil {
 		g.Log().Errorf(idxCtx.ctx, "Failed to parse document with file_parse service, documentId=%s, err=%v", idxCtx.documentId, err)
+		// 所有解析错误都应该标记文档为失败状态，包括服务不可用、超时等
+		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))
+
 		errMsg := err.Error()
-		// 检查是否是 file_parse 服务未启动或超时的错误
+		// 检查是否是 file_parse 服务未启动或超时的错误，提供更明确的错误信息
 		if strings.Contains(errMsg, "file_parse server is not running") ||
 			strings.Contains(errMsg, "timeout") ||
 			strings.Contains(errMsg, "unreachable") {
-			// 对于服务未启动或超时错误，不修改状态，直接返回
 			return errors.Newf(errors.ErrDocumentParseFailed, "file_parse service unavailable: %v", err)
 		}
-		// 其他错误（如文件解析失败），标记为失败
-		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))
 		return errors.Newf(errors.ErrDocumentParseFailed, "failed to parse document: %v", err)
 	}
 
@@ -280,6 +287,18 @@ func (s *DocumentIndexer) stepSaveChunks(idxCtx *indexContext) error {
 	for i, chunk := range idxCtx.chunks {
 		chunkId := uuid.New().String()
 
+		// 使用统一的文本清洗工具：ProfileDatabase 包含所有数据库安全特性
+		normalizedContent, err := common.CleanString(chunk.Content, common.ProfileDatabase)
+		if err != nil {
+			g.Log().Errorf(idxCtx.ctx, "Failed to clean chunk content, documentId=%s, chunkIndex=%d, err=%v",
+				idxCtx.documentId, i, err)
+			knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))
+			return errors.Newf(errors.ErrIndexingFailed, "failed to clean chunk content: %v", err)
+		}
+
+		// 更新chunk内容为清洗后的内容
+		chunk.Content = normalizedContent
+
 		// 从 metadata 中提取 chunk_index，存储到 ext 字段
 		var extData string
 		if chunkIndex, ok := chunk.MetaData["chunk_index"].(int); ok {
@@ -295,7 +314,7 @@ func (s *DocumentIndexer) stepSaveChunks(idxCtx *indexContext) error {
 		chunkEntities[i] = entity.KnowledgeChunks{
 			Id:             chunkId,
 			KnowledgeDocId: idxCtx.documentId,
-			Content:        chunk.Content,
+			Content:        normalizedContent, // 使用清洗后的内容
 			Ext:            extData,
 			CollectionName: idxCtx.collectionName,
 			Status:         int(v1.StatusPending),
@@ -306,7 +325,7 @@ func (s *DocumentIndexer) stepSaveChunks(idxCtx *indexContext) error {
 	err := knowledge.SaveChunksData(idxCtx.ctx, idxCtx.documentId, chunkEntities)
 	if err != nil {
 		g.Log().Errorf(idxCtx.ctx, "Failed to save chunks to database, documentId=%s, err=%v", idxCtx.documentId, err)
-		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusIndexing))
+		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))
 		return errors.Newf(errors.ErrIndexingFailed, "failed to save chunks to database: %v", err)
 	}
 
@@ -349,7 +368,7 @@ func (s *DocumentIndexer) stepVectorizeAndStore(idxCtx *indexContext) error {
 	embedder, err := NewVectorStoreEmbedder(idxCtx.ctx, dynamicConfig, s.VectorStore, modelConfig, s.Config.Dim)
 	if err != nil {
 		g.Log().Errorf(idxCtx.ctx, "Failed to create vector embedder, documentId=%s, err=%v", idxCtx.documentId, err)
-		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusIndexing))
+		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))
 		return errors.Newf(errors.ErrEmbeddingFailed, "failed to create vector embedder: %v", err)
 	}
 
@@ -363,7 +382,7 @@ func (s *DocumentIndexer) stepVectorizeAndStore(idxCtx *indexContext) error {
 	chunkIds, err := embedder.EmbedAndStore(ctx, idxCtx.collectionName, idxCtx.chunks)
 	if err != nil {
 		g.Log().Errorf(idxCtx.ctx, "Failed to vectorize and store, documentId=%s, err=%v", idxCtx.documentId, err)
-		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusIndexing))
+		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))
 		return errors.Newf(errors.ErrVectorInsert, "failed to vectorize and store: %v", err)
 	}
 

@@ -8,7 +8,6 @@ import (
 	"math"
 	"net"
 	"net/http"
-	"os"
 	"sort"
 	"time"
 
@@ -125,16 +124,13 @@ func NewReranker(ctx context.Context, conf RerankConfig) (*CustomReranker, error
 	model := conf.GetRerankModel()
 
 	if apiKey == "" {
-		apiKey = os.Getenv("RERANK_API_KEY")
+		return nil, errors.Newf(errors.ErrInvalidParameter, "rerank apiKey is required")
 	}
 	if baseURL == "" {
-		baseURL = os.Getenv("RERANK_BASE_URL")
-		if baseURL == "" {
-			return nil, errors.New(errors.ErrInvalidParameter, "rerank baseURL is required")
-		}
+		return nil, errors.New(errors.ErrInvalidParameter, "rerank baseURL is required")
 	}
 	if model == "" {
-		model = "rerank-v1"
+		return nil, errors.Newf(errors.ErrInvalidParameter, "rerank model not found")
 	}
 
 	// 创建自定义HTTP客户端，优化连接复用和超时
@@ -564,7 +560,7 @@ func (r *CustomReranker) RerankWithSubChunks(ctx context.Context, query string, 
 			// 如果没有找到分数，给一个默认的低分
 			doc.Score = 0.0
 		} else {
-			// ✅ 优化：使用相对阈值过滤低分子切片
+			// 使用相对阈值过滤低分子切片
 			// 保留 score >= max_score * threshold 的子切片
 			// 自动适配不同 query，避免某些 query 整体分数偏低的问题
 			filteredScores := filterLowScoreSubChunks(scores, config.ScoreThreshold)
