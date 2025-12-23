@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Edit2, Trash2, Save, X, Bot, Settings, Database, MessageSquare, ChevronDown } from 'lucide-react';
-import { agentApi, knowledgeBaseApi, modelApi, mcpApi } from '@/services';
+import { agentApi, knowledgeBaseApi, modelApi, mcpApi, conversationApi } from '@/services';
 import type { AgentPresetItem, AgentConfig, KnowledgeBase, Model, MCPRegistry } from '@/types';
 import ModelSelectorModal from '@/components/ModelSelectorModal';
 import { logger } from '@/lib/logger';
@@ -268,10 +268,36 @@ export default function AgentBuilder() {
 
   // 删除 Agent 的所有对话记录
   const deleteAgentConversations = async (presetId: string) => {
-    // TODO: 实现删除该 Agent 的所有对话
-    // 这里可以调用批量删除 API，根据 agent_preset_id 筛选
-    logger.info('Deleting conversations for preset:', presetId);
-    // 暂时不实现，因为后端可能需要添加按 preset_id 删除的接口
+    try {
+      logger.info('Deleting conversations for preset:', presetId);
+
+      // 1. 获取该 Agent 的所有对话列表
+      const listResponse = await conversationApi.list({
+        page: 1,
+        page_size: 1000, // 假设最多1000条对话
+      });
+
+      // 2. 从元数据中筛选出属于该 Agent 的对话
+      const agentConvs = listResponse.conversations.filter((conv: any) => {
+        // 检查元数据中是否有 agent_preset_id
+        return conv.metadata?.agent_preset_id === presetId ||
+               conv.agent_preset_id === presetId; // 兼容直接字段和元数据字段
+      });
+
+      if (agentConvs.length === 0) {
+        logger.info(`No conversations found for preset ${presetId}`);
+        return;
+      }
+
+      // 3. 批量删除这些对话
+      const convIds = agentConvs.map((conv: any) => conv.conv_id);
+      await conversationApi.batchDelete(convIds);
+
+      logger.info(`Successfully deleted ${convIds.length} conversations for preset ${presetId}`);
+    } catch (error) {
+      logger.error('Failed to delete agent conversations:', error);
+      throw error;
+    }
   };
 
   return (

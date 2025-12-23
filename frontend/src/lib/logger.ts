@@ -31,8 +31,25 @@ export const logger = {
     if (isDev) {
       console.error('[ERROR]', ...args);
     }
-    // TODO: 在生产环境可以添加错误上报逻辑
-    // 例如：Sentry.captureException(args[0]);
+
+    // 生产环境错误上报
+    // 在生产环境中应该配置错误上报服务，例如：
+    // 1. Sentry: Sentry.captureException(args[0]);
+    // 2. 其他监控服务: trackError(args[0]);
+    //
+    // 示例配置:
+    // if (!isDev && typeof window !== 'undefined') {
+    //   try {
+    //     if (args[0] instanceof Error) {
+    //       // Sentry.captureException(args[0]);
+    //     } else {
+    //       // Sentry.captureMessage(String(args[0]), 'error');
+    //     }
+    //   } catch (reportError) {
+    //     // 错误上报失败不应影响主流程
+    //     console.warn('Failed to report error:', reportError);
+    //   }
+    // }
   },
 
   /**

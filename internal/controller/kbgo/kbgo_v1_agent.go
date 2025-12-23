@@ -7,6 +7,8 @@ import (
 	"github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/agent"
 	"github.com/Malowking/kbgo/core/common"
+	"github.com/Malowking/kbgo/internal/dao"
+	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -108,7 +110,21 @@ func (c *ControllerV1) handleAgentStreamChat(ctx context.Context, req *v1.AgentC
 	convID := req.ConvID
 	if convID == "" {
 		convID = "conv_" + generateUUID()
-		// TODO: 创建会话记录（与AgentChat保持一致）
+
+		// 创建会话记录（与AgentChat保持一致）
+		conversation := &gormModel.Conversation{
+			ConvID:        convID,
+			UserID:        req.UserID,
+			Title:         "Agent: " + preset.PresetName,
+			ModelName:     preset.Config.ModelID,
+			Status:        "active",
+			AgentPresetID: req.PresetID, // 关联Agent预设
+		}
+
+		if err := dao.Conversation.Create(ctx, conversation); err != nil {
+			g.Log().Warningf(ctx, "创建会话记录失败: %v", err)
+			// 不阻断流程，继续执行
+		}
 	}
 
 	// 构造ChatReq

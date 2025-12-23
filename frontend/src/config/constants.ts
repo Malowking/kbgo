@@ -35,8 +35,17 @@ export const API_CONFIG = {
 
 /** 用户配置 */
 export const USER = {
-  /** 当前用户 ID - TODO: 从认证上下文获取 */
-  ID: 'user_001',
+  /**
+   * 当前用户 ID - 从 localStorage 获取，如果不存在则使用默认值
+   * 在实现完整的认证系统之前，可以在浏览器控制台通过以下命令设置：
+   * localStorage.setItem('user_id', 'your_user_id')
+   */
+  get ID(): string {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('user_id') || 'user_001';
+    }
+    return 'user_001';
+  },
 } as const;
 
 /** 检索模式选项 */

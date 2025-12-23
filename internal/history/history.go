@@ -913,3 +913,39 @@ func GetGlobalAsyncSaver() *AsyncMessageSaver {
 	})
 	return globalAsyncSaver
 }
+
+// DeleteConversationHistory 删除指定会话的所有消息历史
+func (h *Manager) DeleteConversationHistory(ctx context.Context, convID string) error {
+	// 获取该会话的所有消息
+	messages, _, err := dao.Message.ListByConvID(ctx, convID, 1, 10000) // 假设最多10000条消息
+	if err != nil {
+		g.Log().Errorf(ctx, "查询会话消息失败: %v", err)
+		return errors.Newf(errors.ErrDatabaseQuery, "failed to query messages: %v", err)
+	}
+
+	// 如果没有消息，直接返回
+	if len(messages) == 0 {
+		return nil
+	}
+
+	// 收集所有消息ID
+	msgIDs := make([]string, 0, len(messages))
+	for _, msg := range messages {
+		msgIDs = append(msgIDs, msg.MsgID)
+	}
+
+	// 批量删除消息内容
+	if err := dao.MessageContent.BatchDeleteByMsgIDs(ctx, msgIDs); err != nil {
+		g.Log().Warningf(ctx, "批量删除消息内容失败: %v", err)
+		// 继续执行，不阻断流程
+	}
+
+	// 批量删除消息
+	if err := dao.Message.BatchDeleteByConvID(ctx, convID); err != nil {
+		g.Log().Errorf(ctx, "批量删除消息失败: %v", err)
+		return errors.Newf(errors.ErrDatabaseDelete, "failed to delete messages: %v", err)
+	}
+
+	g.Log().Infof(ctx, "成功删除会话 %s 的 %d 条消息", convID, len(messages))
+	return nil
+}

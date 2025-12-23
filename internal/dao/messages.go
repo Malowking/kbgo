@@ -120,3 +120,12 @@ func (d *MessageDAO) Delete(ctx context.Context, msgID string) error {
 	}
 	return nil
 }
+
+// BatchDeleteByConvID 根据会话ID批量删除消息
+func (d *MessageDAO) BatchDeleteByConvID(ctx context.Context, convID string) error {
+	if err := GetDB().WithContext(ctx).Where("conv_id = ?", convID).Delete(&gormModel.Message{}).Error; err != nil {
+		g.Log().Errorf(ctx, "批量删除消息失败: %v", err)
+		return err
+	}
+	return nil
+}

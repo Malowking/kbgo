@@ -20,9 +20,17 @@ func RecoverPanic(ctx context.Context, taskName string) {
 			"[PANIC RECOVERED] Task: %s\nError: %v\nStack Trace:\n%s",
 			taskName, r, string(stack))
 
-		// TODO: 可选 - 发送告警通知
-		// 例如：发送到 Sentry, Slack, 钉钉等
-		// alerting.SendPanicAlert(taskName, r, stack)
+		// 发送告警通知（可选）
+		// 在生产环境中应该配置告警服务，例如：
+		// 1. 集成 Sentry: sentry.CaptureException(fmt.Errorf("%v", r))
+		// 2. 发送到钉钉/企业微信: SendDingTalkAlert(taskName, r, stack)
+		// 3. 发送到 Slack: SendSlackAlert(taskName, r, stack)
+		//
+		// 示例配置（需要在配置文件中启用）:
+		// if alertConfig := g.Cfg().Get(ctx, "alert"); alertConfig != nil {
+		//     SendPanicAlert(ctx, taskName, r, stack)
+		// }
+		g.Log().Noticef(ctx, "[ALERT] 生产环境应配置告警通知服务，当前仅记录日志")
 	}
 }
 

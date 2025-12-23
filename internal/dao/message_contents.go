@@ -99,3 +99,15 @@ func (d *MessageContentDAO) DeleteByMsgID(ctx context.Context, msgID string) err
 	}
 	return nil
 }
+
+// BatchDeleteByMsgIDs 根据多个消息ID批量删除内容块
+func (d *MessageContentDAO) BatchDeleteByMsgIDs(ctx context.Context, msgIDs []string) error {
+	if len(msgIDs) == 0 {
+		return nil
+	}
+	if err := GetDB().WithContext(ctx).Where("msg_id IN ?", msgIDs).Delete(&gormModel.MessageContent{}).Error; err != nil {
+		g.Log().Errorf(ctx, "批量删除消息内容块失败: %v", err)
+		return err
+	}
+	return nil
+}

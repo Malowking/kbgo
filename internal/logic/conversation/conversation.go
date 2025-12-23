@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/Malowking/kbgo/core/errors"
+	"github.com/Malowking/kbgo/core/formatter"
 	"strings"
 	"time"
 
@@ -183,8 +184,11 @@ func (m *Manager) DeleteConversation(ctx context.Context, convID string) error {
 		return err
 	}
 
-	// TODO: 删除关联的消息历史（如果需要）
-	// 目前消息历史存储在 Redis 中，会自动过期
+	// 删除关联的消息历史
+	if err := m.historyManager.DeleteConversationHistory(ctx, convID); err != nil {
+		g.Log().Warningf(ctx, "删除消息历史失败: %v，但会话已删除", err)
+		// 不返回错误，因为会话已经删除
+	}
 
 	return nil
 }
@@ -207,19 +211,19 @@ func (m *Manager) BatchDeleteConversations(ctx context.Context, convIDs []string
 // GenerateSummary 生成会话摘要
 func (m *Manager) GenerateSummary(ctx context.Context, convID, modelID, length string) (string, error) {
 	// 查询会话消息
-	messages, err := m.historyManager.GetHistory(convID, 100) // 最多取100条消息
+	historyMessages, err := m.historyManager.GetHistory(convID, 100) // 最多取100条消息
 	if err != nil {
 		return "", errors.Newf(errors.ErrDatabaseQuery, "查询会话消息失败: %v", err)
 	}
 
-	if len(messages) == 0 {
+	if len(historyMessages) == 0 {
 		return "空会话", nil
 	}
 
 	// 构建摘要提示词
 	var conversationText strings.Builder
 	conversationText.WriteString("以下是一段对话内容，请生成摘要：\n\n")
-	for _, msg := range messages {
+	for _, msg := range historyMessages {
 		conversationText.WriteString(fmt.Sprintf("%s: %s\n", msg.Role, msg.Content))
 	}
 
@@ -242,9 +246,45 @@ func (m *Manager) GenerateSummary(ctx context.Context, convID, modelID, length s
 		return "", errors.Newf(errors.ErrModelNotFound, "模型不存在: %s", modelID)
 	}
 
-	// TODO: 这里需要调用模型生成摘要
-	// 暂时返回一个简单的摘要
-	summary := fmt.Sprintf("包含 %d 条消息的对话", len(messages))
+	// 检查模型是否启用
+	if !mc.Enabled {
+		return "该模型已被禁用", nil
+	}
+
+	// 创建消息格式化器和模型服务
+	msgFormatter := formatter.NewOpenAIFormatter()
+	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
+
+	// 构造消息
+	messages := []*schema.Message{
+		{
+			Role:    schema.User,
+			Content: conversationText.String(),
+		},
+	}
+
+	// 调用模型生成摘要
+	resp, err := modelService.ChatCompletion(ctx, coreModel.ChatCompletionParams{
+		ModelName:           mc.Name,
+		Messages:            messages,
+		Temperature:         0.3, // 较低温度以获得更稳定的摘要
+		MaxCompletionTokens: 200, // 限制摘要长度
+	})
+
+	if err != nil {
+		g.Log().Warningf(ctx, "调用模型生成摘要失败: %v，使用默认摘要", err)
+		return fmt.Sprintf("包含 %d 条消息的对话", len(historyMessages)), nil
+	}
+
+	if len(resp.Choices) == 0 {
+		g.Log().Warningf(ctx, "模型返回为空，使用默认摘要")
+		return fmt.Sprintf("包含 %d 条消息的对话", len(historyMessages)), nil
+	}
+
+	summary := strings.TrimSpace(resp.Choices[0].Message.Content)
+	if summary == "" {
+		summary = fmt.Sprintf("包含 %d 条消息的对话", len(historyMessages))
+	}
 
 	return summary, nil
 }

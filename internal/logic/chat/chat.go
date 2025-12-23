@@ -303,7 +303,7 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 		g.Log().Warningf(ctx, "查询重写失败: %v，使用原查询", err)
 		rewrittenQuestion = question
 	}
-	// TODO: rewrittenQuestion 可用于文档检索优化，当前版本文档已预先检索
+	// 注意: rewrittenQuestion 可用于文档检索优化，当前版本文档已预先检索
 	_ = rewrittenQuestion
 
 	// 保存用户消息（使用原始问题）
