@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Malowking/kbgo/core/errors"
+	internalCache "github.com/Malowking/kbgo/internal/cache"
 	"github.com/Malowking/kbgo/internal/dao"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/Malowking/kbgo/pkg/schema"
@@ -220,6 +221,14 @@ func (h *Manager) SaveMessageWithMetadata(message *schema.Message, convID string
 		contents = append(contents, content)
 	}
 
+	// 使用缓存层保存消息
+	messageCache := internalCache.GetMessageCache()
+	if messageCache != nil {
+		// 使用缓存层（异步刷盘到数据库）
+		return messageCache.SaveMessage(context.Background(), msg, contents)
+	}
+
+	// 缓存层不可用，直接写数据库
 	return dao.Message.CreateWithContents(nil, msg, contents)
 }
 

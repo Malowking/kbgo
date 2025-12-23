@@ -9,6 +9,7 @@ import (
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/errors"
+	internalCache "github.com/Malowking/kbgo/internal/cache"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/chat"
 	"github.com/Malowking/kbgo/internal/mcp/client"
@@ -413,8 +414,18 @@ func (tc *MCPToolCaller) callSingleTool(
 		Duration:        duration,
 	}
 
-	if logErr := dao.MCPCallLog.Create(ctx, callLog); logErr != nil {
-		g.Log().Errorf(ctx, "创建 MCP 调用日志失败: %v", logErr)
+	// 使用缓存层保存MCP调用日志
+	mcpLogCache := internalCache.GetMCPCallLogCache()
+	if mcpLogCache != nil {
+		// 使用缓存层（异步刷盘到数据库）
+		if logErr := mcpLogCache.SaveMCPCallLog(ctx, callLog); logErr != nil {
+			g.Log().Errorf(ctx, "保存 MCP 调用日志到缓存失败: %v", logErr)
+		}
+	} else {
+		// 缓存层不可用，直接写数据库
+		if logErr := dao.MCPCallLog.Create(ctx, callLog); logErr != nil {
+			g.Log().Errorf(ctx, "创建 MCP 调用日志失败: %v", logErr)
+		}
 	}
 
 	if err != nil {

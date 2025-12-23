@@ -7,6 +7,7 @@ import (
 	"github.com/Malowking/kbgo/core/config"
 	"github.com/Malowking/kbgo/core/file_store"
 	"github.com/Malowking/kbgo/core/model"
+	internalCache "github.com/Malowking/kbgo/internal/cache"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/chat"
 	"github.com/Malowking/kbgo/internal/logic/index"
@@ -40,6 +41,24 @@ func init() {
 		g.Log().Warning(ctx, "Agent preset caching will be disabled")
 	} else {
 		g.Log().Info(ctx, "✓ Redis cache initialized successfully")
+
+		// Initialize message cache layer
+		g.Log().Info(ctx, "Initializing message cache layer...")
+		err = internalCache.InitMessageCache(ctx)
+		if err != nil {
+			g.Log().Warningf(ctx, "Message cache layer initialization failed (non-fatal): %v", err)
+		} else {
+			g.Log().Info(ctx, "✓ Message cache layer initialized successfully")
+		}
+
+		// Initialize MCP call log cache layer
+		g.Log().Info(ctx, "Initializing MCP call log cache layer...")
+		err = internalCache.InitMCPCallLogCache(ctx)
+		if err != nil {
+			g.Log().Warningf(ctx, "MCP call log cache layer initialization failed (non-fatal): %v", err)
+		} else {
+			g.Log().Info(ctx, "✓ MCP call log cache layer initialized successfully")
+		}
 	}
 
 	// Initialize storage system
