@@ -8,6 +8,7 @@ import { logger } from '@/lib/logger';
 import { showSuccess, showError } from '@/lib/toast';
 import UploadModal from '../UploadModal';
 import IndexModal from '@/components/IndexModal';
+import { useConfirm } from '@/hooks/useConfirm';
 
 interface DocumentsTabProps {
   kbId: string;
@@ -23,6 +24,7 @@ export default function DocumentsTab({ kbId }: DocumentsTabProps) {
   const [showReindexModal, setShowReindexModal] = useState(false);
   const [pendingDocumentIds, setPendingDocumentIds] = useState<string[]>([]);
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const fetchDocuments = useCallback(async () => {
     if (!kbId) return;
@@ -47,7 +49,11 @@ export default function DocumentsTab({ kbId }: DocumentsTabProps) {
   }, [kbId, fetchDocuments]);
 
   const handleDelete = useCallback(async (docIds: string[]) => {
-    if (!window.confirm(`确定要删除选中的 ${docIds.length} 个文档吗?`)) return;
+    const confirmed = await confirm({
+      message: `确定要删除选中的 ${docIds.length} 个文档吗?`,
+      type: 'danger'
+    });
+    if (!confirmed) return;
 
     try {
       await documentApi.delete(docIds);
@@ -58,7 +64,7 @@ export default function DocumentsTab({ kbId }: DocumentsTabProps) {
       logger.error('Failed to delete documents:', error);
       showError('删除失败');
     }
-  }, [fetchDocuments]);
+  }, [fetchDocuments, confirm]);
 
   const handleUploadSuccess = (documentIds: string[]) => {
     // 上传成功后，打开索引模态框
@@ -285,6 +291,9 @@ export default function DocumentsTab({ kbId }: DocumentsTabProps) {
           isReindex={true}
         />
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog />
     </div>
   );
 }

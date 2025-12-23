@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger';
 import { showError, showWarning, showSuccess } from '@/lib/toast';
 import { USER } from '@/config/constants';
 import { getLLMModels, getRerankModels } from '@/lib/model-utils';
+import { useConfirm } from '@/hooks/useConfirm';
 
 export default function AgentBuilder() {
   const [presets, setPresets] = useState<AgentPresetItem[]>([]);
@@ -14,6 +15,7 @@ export default function AgentBuilder() {
   const [showForm, setShowForm] = useState(false);
   const [editingPresetId, setEditingPresetId] = useState<string>('');
   const [showModelSelector, setShowModelSelector] = useState(false);
+  const { confirm, ConfirmDialog } = useConfirm();
 
   // Form state
   const [presetName, setPresetName] = useState('');
@@ -137,7 +139,11 @@ export default function AgentBuilder() {
   }, []);
 
   const handleDelete = useCallback(async (presetId: string) => {
-    if (!window.confirm('确定要删除这个Agent预设吗？')) return;
+    const confirmed = await confirm({
+      message: '确定要删除这个Agent预设吗？',
+      type: 'danger'
+    });
+    if (!confirmed) return;
 
     try {
       await agentApi.delete(presetId, USER.ID);
@@ -147,7 +153,7 @@ export default function AgentBuilder() {
       logger.error('Failed to delete preset:', error);
       showError('删除失败');
     }
-  }, [fetchPresets]);
+  }, [fetchPresets, confirm]);
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -159,9 +165,10 @@ export default function AgentBuilder() {
 
     // 如果是编辑模式，提示用户会清除历史对话
     if (editingPresetId) {
-      const confirmed = window.confirm(
-        '修改配置后，将会清除该 Agent 的历史对话记录。\n\n确定要继续吗？'
-      );
+      const confirmed = await confirm({
+        message: '修改配置后，将会清除该 Agent 的历史对话记录。\n\n确定要继续吗？',
+        type: 'warning'
+      });
       if (!confirmed) {
         return;
       }
@@ -212,7 +219,7 @@ export default function AgentBuilder() {
     } finally {
       setLoading(false);
     }
-  }, [presetName, config, editingPresetId, selectedMcpTools, description, isPublic, fetchPresets]);
+  }, [presetName, config, editingPresetId, selectedMcpTools, description, isPublic, fetchPresets, confirm]);
 
   const handleCancel = () => {
     setShowForm(false);
@@ -490,6 +497,37 @@ export default function AgentBuilder() {
                           Embedding 模型将自动使用知识库绑定的模型
                         </p>
                       </div>
+
+                      {/* Rerank权重配置 - 只在rerank模式下显示 */}
+                      {config.retrieve_mode === 'rerank' && (
+                        <div className="pt-4 border-t border-gray-100">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Rerank 权重: {((config.rerank_weight ?? 1.0) * 100).toFixed(0)}%
+                            <span className="text-xs text-gray-500 ml-2">
+                              (BM25: {((1 - (config.rerank_weight ?? 1.0)) * 100).toFixed(0)}%)
+                            </span>
+                          </label>
+                          <input
+                            type="range"
+                            value={config.rerank_weight ?? 1.0}
+                            onChange={(e) => setConfig(prev => ({ ...prev, rerank_weight: parseFloat(e.target.value) }))}
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            className="w-full"
+                          />
+                          <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>纯BM25</span>
+                            <span>混合</span>
+                            <span>纯Rerank</span>
+                          </div>
+                          <div className="mt-2 text-xs text-gray-600 bg-gray-50 rounded p-2">
+                            {(config.rerank_weight ?? 1.0) === 1.0 && '🔹 当前使用纯 Rerank 语义检索'}
+                            {(config.rerank_weight ?? 1.0) === 0.0 && '🔹 当前使用纯 BM25 关键词检索'}
+                            {(config.rerank_weight ?? 1.0) > 0 && (config.rerank_weight ?? 1.0) < 1 && `🔹 混合检索：${((config.rerank_weight ?? 1.0) * 100).toFixed(0)}% Rerank + ${((1 - (config.rerank_weight ?? 1.0)) * 100).toFixed(0)}% BM25`}
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -692,6 +730,9 @@ export default function AgentBuilder() {
           modelTypes={['llm', 'multimodal']}
         />
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog />
     </div>
   );
 }

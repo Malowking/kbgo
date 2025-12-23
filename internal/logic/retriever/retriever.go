@@ -186,6 +186,11 @@ func ProcessRetrieval(ctx context.Context, req *v1.RetrieverReq) (*v1.RetrieverR
 		}
 	}
 
+	// RerankWeight 参数传递
+	if req.RerankWeight != nil {
+		retrieveReq.RerankWeight = req.RerankWeight
+	}
+
 	// 使用动态配置调用 retriever
 	msg, err := retriever.Retrieve(ctx, dynamicConfig, retrieveReq)
 	if err != nil {

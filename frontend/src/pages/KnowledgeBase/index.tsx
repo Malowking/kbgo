@@ -8,6 +8,7 @@ import { formatDate } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 import { showSuccess, showError } from '@/lib/toast';
 import CreateKBModal from './CreateKBModal';
+import { useConfirm } from '@/hooks/useConfirm';
 
 export default function KnowledgeBasePage() {
   const navigate = useNavigate();
@@ -17,6 +18,7 @@ export default function KnowledgeBasePage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingKB, setEditingKB] = useState<KnowledgeBase | null>(null);
   const { setCurrentKB } = useAppStore();
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const fetchKBList = useCallback(async () => {
     try {
@@ -36,7 +38,11 @@ export default function KnowledgeBasePage() {
   }, [fetchKBList]);
 
   const handleDelete = useCallback(async (id: string) => {
-    if (!window.confirm('确定要删除这个知识库吗?')) return;
+    const confirmed = await confirm({
+      message: '确定要删除这个知识库吗?',
+      type: 'danger'
+    });
+    if (!confirmed) return;
 
     try {
       await knowledgeBaseApi.delete(id);
@@ -46,7 +52,7 @@ export default function KnowledgeBasePage() {
       logger.error('Failed to delete knowledge base:', error);
       showError('删除失败');
     }
-  }, [fetchKBList]);
+  }, [fetchKBList, confirm]);
 
   const handleToggleStatus = useCallback(async (kb: KnowledgeBase) => {
     try {
@@ -199,6 +205,9 @@ export default function KnowledgeBasePage() {
           onSuccess={fetchKBList}
         />
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog />
     </div>
   );
 }

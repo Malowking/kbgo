@@ -91,6 +91,7 @@ export interface ChatRequest {
   top_k?: number;
   score?: number;
   retrieve_mode?: 'milvus' | 'rerank' | 'rrf';
+  rerank_weight?: number;
   use_mcp?: boolean;
   mcp_service_tools?: Record<string, string[]>;
   stream?: boolean;
@@ -256,6 +257,7 @@ export interface AgentConfig {
   top_k?: number;
   score?: number;
   retrieve_mode?: 'milvus' | 'rerank' | 'rrf';
+  rerank_weight?: number;
   use_mcp?: boolean;
   mcp_service_tools?: Record<string, string[]>;
   jsonformat?: boolean;

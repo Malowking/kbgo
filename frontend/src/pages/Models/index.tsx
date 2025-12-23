@@ -5,6 +5,7 @@ import type { Model } from '@/types';
 import CreateModelModal from './CreateModelModal';
 import { logger } from '@/lib/logger';
 import { showSuccess, showError, showInfo } from '@/lib/toast';
+import { useConfirm } from '@/hooks/useConfirm';
 
 export default function Models() {
   const [models, setModels] = useState<Model[]>([]);
@@ -14,6 +15,7 @@ export default function Models() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingModel, setEditingModel] = useState<Model | null>(null);
   const [rewriteModel, setRewriteModel] = useState<Model | null>(null);
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const fetchModels = useCallback(async () => {
     try {
@@ -48,7 +50,11 @@ export default function Models() {
   }, [fetchModels, fetchRewriteModel]);
 
   const handleReload = useCallback(async () => {
-    if (!window.confirm('确定要重新加载模型配置吗?')) return;
+    const confirmed = await confirm({
+      message: '确定要重新加载模型配置吗?',
+      type: 'warning'
+    });
+    if (!confirmed) return;
 
     try {
       setReloading(true);
@@ -61,10 +67,14 @@ export default function Models() {
     } finally {
       setReloading(false);
     }
-  }, [fetchModels]);
+  }, [fetchModels, confirm]);
 
   const handleDelete = useCallback(async (id: string, name: string) => {
-    if (!window.confirm(`确定要删除模型 "${name}" 吗？\n\n注意：如果该模型正被知识库或Agent使用，将无法删除。`)) return;
+    const confirmed = await confirm({
+      message: `确定要删除模型 "${name}" 吗？\n\n注意：如果该模型正被知识库或Agent使用，将无法删除。`,
+      type: 'danger'
+    });
+    if (!confirmed) return;
 
     try {
       const response = await modelApi.delete(id);
@@ -85,7 +95,7 @@ export default function Models() {
       const errorMessage = error.response?.data?.message || error.message || '删除失败';
       showError(`删除失败：${errorMessage}`);
     }
-  }, [fetchModels]);
+  }, [fetchModels, confirm]);
 
   const handleEdit = useCallback((model: Model) => {
     setEditingModel(model);
@@ -98,7 +108,11 @@ export default function Models() {
   }, []);
 
   const handleSetRewriteModel = useCallback(async (modelId: string, modelName: string) => {
-    if (!window.confirm(`确定要将 "${modelName}" 设为查询重写模型吗？\n\n重写模型用于对话中的指代消解，建议选择小参数量的非思考模型以获得更快的响应速度。`)) return;
+    const confirmed = await confirm({
+      message: `确定要将 "${modelName}" 设为查询重写模型吗？\n\n重写模型用于对话中的指代消解，建议选择小参数量的非思考模型以获得更快的响应速度。`,
+      type: 'info'
+    });
+    if (!confirmed) return;
 
     try {
       await modelApi.setRewriteModel(modelId);
@@ -109,7 +123,7 @@ export default function Models() {
       logger.error('Failed to set rewrite model:', error);
       showError(`设置失败: ${error.message || '未知错误'}`);
     }
-  }, [fetchModels, fetchRewriteModel]);
+  }, [fetchModels, fetchRewriteModel, confirm]);
 
   const isRewriteModel = (modelId: string) => {
     return rewriteModel?.model_id === modelId;
@@ -393,6 +407,9 @@ export default function Models() {
           onSuccess={fetchModels}
         />
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog />
     </div>
   );
 }

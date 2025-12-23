@@ -79,7 +79,7 @@ export default function IndexModal({ documentIds, knowledgeBaseId, onClose, onSu
 
       await documentApi.index(indexData);
 
-      showSuccess(isReindex ? '文档重新索引成功' : '文档索引成功');
+      showSuccess(isReindex ? '文档开始重新索引' : '文档开始索引');
       onSuccess();
       onClose();
     } catch (error) {

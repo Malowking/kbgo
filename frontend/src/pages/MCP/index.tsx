@@ -19,6 +19,7 @@ import { formatDate } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 import { showSuccess, showError } from '@/lib/toast';
 import CreateMCPModal from './CreateMCPModal';
+import { useConfirm } from '@/hooks/useConfirm';
 
 export default function MCPPage() {
   const [mcpList, setMcpList] = useState<MCPRegistry[]>([]);
@@ -29,6 +30,7 @@ export default function MCPPage() {
   const [expandedMCP, setExpandedMCP] = useState<string | null>(null);
   const [mcpTools, setMcpTools] = useState<Record<string, MCPTool[]>>({});
   const [mcpStats, setMcpStats] = useState<Record<string, MCPStats>>({});
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const fetchMCPList = useCallback(async () => {
     try {
@@ -48,7 +50,11 @@ export default function MCPPage() {
   }, [fetchMCPList]);
 
   const handleDelete = useCallback(async (id: string) => {
-    if (!window.confirm('确定要删除这个MCP服务吗？')) return;
+    const confirmed = await confirm({
+      message: '确定要删除这个MCP服务吗？',
+      type: 'danger'
+    });
+    if (!confirmed) return;
 
     try {
       await mcpApi.delete(id);
@@ -58,7 +64,7 @@ export default function MCPPage() {
       logger.error('Failed to delete MCP service:', error);
       showError('删除失败');
     }
-  }, [fetchMCPList]);
+  }, [fetchMCPList, confirm]);
 
   const handleToggleStatus = useCallback(async (mcp: MCPRegistry) => {
     try {
@@ -391,6 +397,9 @@ export default function MCPPage() {
           onSuccess={fetchMCPList}
         />
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog />
     </div>
   );
 }

@@ -32,6 +32,7 @@ export default function Chat() {
   const [topK, setTopK] = useState<number>(CHAT_CONFIG.DEFAULT_TOP_K);
   const [score, setScore] = useState<number>(CHAT_CONFIG.DEFAULT_SCORE);
   const [retrieveMode, setRetrieveMode] = useState<'milvus' | 'rerank' | 'rrf'>(CHAT_CONFIG.DEFAULT_RETRIEVE_MODE);
+  const [rerankWeight, setRerankWeight] = useState<number>(1.0);
   const [useMCP, setUseMCP] = useState(false);
   const [mcpServices, setMcpServices] = useState<MCPRegistry[]>([]);
   const [selectedMCPService, setSelectedMCPService] = useState<string>('');
@@ -175,6 +176,7 @@ export default function Chat() {
           top_k: topK,
           score: score,
           retrieve_mode: retrieveMode,
+          rerank_weight: rerankWeight,
           use_mcp: useMCP && !!selectedMCPService,
           stream: true,
           files: currentFiles, // 传递文件
@@ -216,7 +218,7 @@ export default function Chat() {
     } finally {
       setLoading(false);
     }
-  }, [input, selectedModel, currentConvId, attachedFiles, selectedRerankModel, selectedKB, enableRetriever, topK, score, retrieveMode, useMCP, selectedMCPService]);
+  }, [input, selectedModel, currentConvId, attachedFiles, selectedRerankModel, selectedKB, enableRetriever, topK, score, retrieveMode, rerankWeight, useMCP, selectedMCPService]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -429,6 +431,37 @@ export default function Chat() {
                       <p className="text-xs text-gray-500 mt-1">检索策略选择</p>
                     </div>
                   </div>
+
+                  {/* Rerank权重配置 - 只在rerank模式下显示 */}
+                  {retrieveMode === 'rerank' && (
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                      <label className="block text-xs text-gray-600 mb-2">
+                        Rerank 权重: {(rerankWeight * 100).toFixed(0)}%
+                        <span className="text-xs text-gray-500 ml-2">
+                          (BM25: {((1 - rerankWeight) * 100).toFixed(0)}%)
+                        </span>
+                      </label>
+                      <input
+                        type="range"
+                        value={rerankWeight}
+                        onChange={(e) => setRerankWeight(parseFloat(e.target.value))}
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        className="w-full"
+                      />
+                      <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>纯BM25</span>
+                        <span>混合</span>
+                        <span>纯Rerank</span>
+                      </div>
+                      <div className="mt-2 text-xs text-gray-600 bg-gray-50 rounded p-2">
+                        {rerankWeight === 1.0 && '🔹 当前使用纯 Rerank 语义检索'}
+                        {rerankWeight === 0.0 && '🔹 当前使用纯 BM25 关键词检索'}
+                        {rerankWeight > 0 && rerankWeight < 1 && `🔹 混合检索：${(rerankWeight * 100).toFixed(0)}% Rerank + ${((1 - rerankWeight) * 100).toFixed(0)}% BM25`}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

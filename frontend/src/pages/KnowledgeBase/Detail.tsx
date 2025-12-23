@@ -7,6 +7,7 @@ import type { KnowledgeBase } from '@/types';
 import DocumentsTab from './tabs/DocumentsTab';
 import RetrieverTestTab from './tabs/RetrieverTestTab';
 import SettingsTab from './tabs/SettingsTab';
+import { showError } from '@/lib/toast';
 
 type TabType = 'documents' | 'retriever' | 'settings';
 
@@ -36,7 +37,7 @@ export default function KnowledgeBaseDetail() {
       setCurrentKB(response);
     } catch (error) {
       console.error('Failed to fetch knowledge base:', error);
-      alert('获取知识库信息失败');
+      showError('获取知识库信息失败');
       navigate('/knowledge-base');
     } finally {
       setLoading(false);

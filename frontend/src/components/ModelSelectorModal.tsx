@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Search, Info } from 'lucide-react';
 import { modelApi } from '@/services';
 import type { Model } from '@/types';
+import { showError } from '@/lib/toast';
 
 interface ModelSelectorModalProps {
   onClose: () => void;
@@ -39,7 +40,7 @@ export default function ModelSelectorModal({
       setModels(filteredModels);
     } catch (error) {
       console.error('Failed to fetch models:', error);
-      alert('加载模型列表失败');
+      showError('加载模型列表失败');
     } finally {
       setLoading(false);
     }

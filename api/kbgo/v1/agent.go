@@ -29,6 +29,7 @@ type AgentConfig struct {
 	TopK             int                 `json:"top_k"`                          // 检索Top K（默认5）
 	Score            float64             `json:"score"`                          // 相似度分数阈值（默认0.2）
 	RetrieveMode     string              `json:"retrieve_mode"`                  // 检索模式: milvus/rerank/rrf
+	RerankWeight     *float64            `json:"rerank_weight"`                  // Rerank权重 (0-1范围，默认1.0)
 	UseMCP           bool                `json:"use_mcp"`                        // 是否使用MCP
 	MCPServiceTools  map[string][]string `json:"mcp_service_tools"`              // MCP服务工具配置
 	JsonFormat       bool                `json:"jsonformat"`                     // 是否需要JSON格式化输出

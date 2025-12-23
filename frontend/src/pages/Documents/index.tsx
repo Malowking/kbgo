@@ -4,6 +4,8 @@ import { documentApi, knowledgeBaseApi } from '@/services';
 import { useAppStore } from '@/store';
 import type { Document, KnowledgeBase } from '@/types';
 import { formatDate, formatBytes } from '@/lib/utils';
+import { showSuccess, showError } from '@/lib/toast';
+import { useConfirm } from '@/hooks/useConfirm';
 import UploadModal from './UploadModal';
 
 export default function Documents() {
@@ -15,6 +17,7 @@ export default function Documents() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
   const { currentKB } = useAppStore();
+  const { confirm, ConfirmDialog } = useConfirm();
 
   useEffect(() => {
     fetchKBList();
@@ -51,35 +54,44 @@ export default function Documents() {
     } catch (error) {
       console.error('Failed to fetch documents:', error);
       setDocuments([]); // 错误时清空列表
-      alert('加载文档失败: ' + (error as Error).message);
+      showError('加载文档失败: ' + (error as Error).message);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (docIds: string[]) => {
-    if (!confirm(`确定要删除选中的 ${docIds.length} 个文档吗?`)) return;
+    const confirmed = await confirm({
+      message: `确定要删除选中的 ${docIds.length} 个文档吗?`,
+      type: 'danger'
+    });
+    if (!confirmed) return;
 
     try {
       await documentApi.delete(docIds);
       fetchDocuments();
       setSelectedDocs(new Set());
+      showSuccess('删除成功');
     } catch (error) {
       console.error('Failed to delete documents:', error);
-      alert('删除失败');
+      showError('删除失败');
     }
   };
 
   const handleReindex = async (docIds: string[]) => {
-    if (!confirm(`确定要重新索引选中的 ${docIds.length} 个文档吗?`)) return;
+    const confirmed = await confirm({
+      message: `确定要重新索引选中的 ${docIds.length} 个文档吗?`,
+      type: 'warning'
+    });
+    if (!confirmed) return;
 
     try {
       await documentApi.reindex(docIds);
-      alert('重新索引任务已提交');
+      showSuccess('重新索引任务已提交');
       fetchDocuments();
     } catch (error) {
       console.error('Failed to reindex documents:', error);
-      alert('重新索引失败');
+      showError('重新索引失败');
     }
   };
 
@@ -307,6 +319,9 @@ export default function Documents() {
           onSuccess={fetchDocuments}
         />
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog />
     </div>
   );
 }

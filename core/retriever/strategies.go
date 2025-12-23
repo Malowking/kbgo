@@ -46,6 +46,7 @@ func convertFromRerankDocs(rerankDocs []common.RerankDocument, originalDocs []*s
 }
 
 // retrieveWithRerank 使用Milvus检索后进行Rerank重排序
+// 当 RerankWeight < 1.0 时，混合使用Rerank和BM25关键词检索
 func retrieveWithRerank(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveReq) ([]*schema.Document, error) {
 	startTime := time.Now()
 
@@ -62,6 +63,111 @@ func retrieveWithRerank(ctx context.Context, conf *config.RetrieverConfig, req *
 
 	g.Log().Infof(ctx, "Retrieved %d documents before rerank", len(docs))
 
+	// 检查是否需要混合BM25（当权重不为1时）
+	rerankWeight := *req.RerankWeight
+	bm25Weight := 1.0 - rerankWeight
+
+	// 如果权重为1.0，则纯使用rerank（原有逻辑）
+	if rerankWeight >= 0.9999 {
+		return retrieveWithPureRerank(ctx, conf, req, docs, startTime)
+	}
+
+	// 如果权重为0.0，则纯使用BM25
+	if rerankWeight <= 0.0001 {
+		return retrieveWithPureBM25(ctx, req, docs, startTime)
+	}
+
+	// 混合模式：同时计算Rerank和BM25分数，按权重融合
+	g.Log().Infof(ctx, "Using hybrid retrieval: rerank_weight=%.2f, bm25_weight=%.2f", rerankWeight, bm25Weight)
+
+	// 1. 执行Rerank
+	reranker, err := common.NewReranker(ctx, conf)
+	if err != nil {
+		g.Log().Errorf(ctx, "Failed to create reranker, err=%v", err)
+		return nil, err
+	}
+
+	rerankDocs := convertToRerankDocs(docs)
+	subChunkConfig := common.DefaultSubChunkConfig()
+	subChunkConfig.AggregateStrategy = common.AggregateStrategyMax
+
+	g.Log().Infof(ctx, "Starting sub-chunk parallel rerank with config: size=%d, overlap=%d, strategy=%s",
+		subChunkConfig.SubChunkSize, subChunkConfig.OverlapSize, subChunkConfig.AggregateStrategy)
+
+	rerankResults, err := reranker.RerankWithSubChunks(ctx, req.optQuery, rerankDocs, len(docs), subChunkConfig)
+	if err != nil {
+		g.Log().Errorf(ctx, "RerankWithSubChunks failed, err=%v", err)
+		return nil, err
+	}
+
+	// 2. 执行BM25关键词检索
+	bm25Docs := make([]common.BM25Document, len(docs))
+	for i, doc := range docs {
+		bm25Docs[i] = common.BM25Document{
+			ID:      doc.ID,
+			Content: doc.Content,
+		}
+	}
+
+	bm25Scorer := common.NewBM25Scorer(bm25Docs, common.DefaultBM25Parameters())
+	bm25Results := bm25Scorer.Score(req.optQuery)
+
+	// 归一化BM25分数
+	bm25Results = common.NormalizeBM25Scores(bm25Results)
+
+	g.Log().Infof(ctx, "BM25 scoring completed for %d documents", len(bm25Results))
+
+	// 3. 创建分数映射
+	rerankScoreMap := make(map[string]float64)
+	for _, doc := range rerankResults {
+		rerankScoreMap[doc.ID] = doc.Score
+	}
+
+	bm25ScoreMap := make(map[string]float64)
+	for _, doc := range bm25Results {
+		bm25ScoreMap[doc.ID] = doc.Score
+	}
+
+	// 4. 混合分数
+	for _, doc := range docs {
+		rerankScore := rerankScoreMap[doc.ID]
+		bm25Score := bm25ScoreMap[doc.ID]
+
+		// 加权融合：hybridScore = rerankWeight * rerankScore + bm25Weight * bm25Score
+		hybridScore := rerankWeight*rerankScore + bm25Weight*bm25Score
+		doc.Score = float32(hybridScore)
+
+		g.Log().Debugf(ctx, "Doc %s: rerank=%.4f, bm25=%.4f, hybrid=%.4f",
+			doc.ID[:8], rerankScore, bm25Score, hybridScore)
+	}
+
+	// 5. 按混合分数排序
+	sort.Slice(docs, func(i, j int) bool {
+		return docs[i].Score > docs[j].Score
+	})
+
+	// 6. 截取TopK
+	if len(docs) > *req.TopK {
+		docs = docs[:*req.TopK]
+	}
+
+	// 7. 过滤低分文档
+	var relatedDocs []*schema.Document
+	for _, doc := range docs {
+		if doc.Score < float32(*req.Score) {
+			continue
+		}
+		relatedDocs = append(relatedDocs, doc)
+	}
+
+	elapsed := time.Since(startTime)
+	g.Log().Infof(ctx, "Hybrid retrieval completed in %v, returned %d documents", elapsed, len(relatedDocs))
+
+	return relatedDocs, nil
+}
+
+// retrieveWithPureRerank 纯Rerank检索（原有逻辑）
+func retrieveWithPureRerank(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveReq, docs []*schema.Document, startTime time.Time) ([]*schema.Document, error) {
 	// 创建 rerank 客户端
 	reranker, err := common.NewReranker(ctx, conf)
 	if err != nil {
@@ -74,10 +180,7 @@ func retrieveWithRerank(ctx context.Context, conf *config.RetrieverConfig, req *
 
 	// 使用子切片滑窗并行 Rerank（新的优化方案）
 	subChunkConfig := common.DefaultSubChunkConfig()
-	// 使用 Max Pooling 作为聚合策略（推荐）
 	subChunkConfig.AggregateStrategy = common.AggregateStrategyMax
-	// 可选：限制每个文档的最大子片段数以控制成本
-	// subChunkConfig.MaxSubChunksPerDoc = 8 // 例如：最多切8个片段
 
 	g.Log().Infof(ctx, "Starting sub-chunk parallel rerank with config: size=%d, overlap=%d, strategy=%s",
 		subChunkConfig.SubChunkSize, subChunkConfig.OverlapSize, subChunkConfig.AggregateStrategy)
@@ -101,8 +204,60 @@ func retrieveWithRerank(ctx context.Context, conf *config.RetrieverConfig, req *
 	}
 
 	elapsed := time.Since(startTime)
-	g.Log().Infof(ctx, "Rerank completed in %v, returned %d documents", elapsed, len(relatedDocs))
+	g.Log().Infof(ctx, "Pure rerank completed in %v, returned %d documents", elapsed, len(relatedDocs))
 
+	return relatedDocs, nil
+}
+
+// retrieveWithPureBM25 纯BM25关键词检索
+func retrieveWithPureBM25(ctx context.Context, req *RetrieveReq, docs []*schema.Document, startTime time.Time) ([]*schema.Document, error) {
+	// 转换为BM25文档格式
+	bm25Docs := make([]common.BM25Document, len(docs))
+	for i, doc := range docs {
+		bm25Docs[i] = common.BM25Document{
+			ID:      doc.ID,
+			Content: doc.Content,
+		}
+	}
+
+	// 创建BM25评分器
+	bm25Scorer := common.NewBM25Scorer(bm25Docs, common.DefaultBM25Parameters())
+	bm25Results := bm25Scorer.Score(req.optQuery)
+
+	// 归一化BM25分数
+	bm25Results = common.NormalizeBM25Scores(bm25Results)
+
+	g.Log().Infof(ctx, "BM25 scoring completed for %d documents", len(bm25Results))
+
+	// 创建BM25分数映射
+	bm25ScoreMap := make(map[string]float64)
+	for _, doc := range bm25Results {
+		bm25ScoreMap[doc.ID] = doc.Score
+	}
+
+	// 更新文档分数
+	for _, doc := range docs {
+		doc.Score = float32(bm25ScoreMap[doc.ID])
+	}
+
+	// 按BM25分数排序
+	sort.Slice(docs, func(i, j int) bool {
+		return docs[i].Score > docs[j].Score
+	})
+
+	// 截取TopK
+	if len(docs) > *req.TopK {
+		docs = docs[:*req.TopK]
+	}
+
+	// 过滤低分文档
+	var relatedDocs []*schema.Document
+	for _, doc := range docs {
+		if doc.Score < float32(*req.Score) {
+			continue
+		}
+		relatedDocs = append(relatedDocs, doc)
+	}
 	return relatedDocs, nil
 }
 

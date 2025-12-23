@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { mcpApi } from '@/services';
 import type { MCPRegistry } from '@/types';
+import { showError } from '@/lib/toast';
 
 interface CreateMCPModalProps {
   mcp?: MCPRegistry | null;
@@ -37,12 +38,12 @@ export default function CreateMCPModal({ mcp, onClose, onSuccess }: CreateMCPMod
     e.preventDefault();
 
     if (!formData.name.trim()) {
-      alert('请输入服务名称');
+      showError('请输入服务名称');
       return;
     }
 
     if (!formData.endpoint.trim()) {
-      alert('请输入服务端点');
+      showError('请输入服务端点');
       return;
     }
 
@@ -54,7 +55,8 @@ export default function CreateMCPModal({ mcp, onClose, onSuccess }: CreateMCPMod
         try {
           headers = JSON.parse(formData.headers);
         } catch {
-          alert('Headers格式错误，请输入有效的JSON');
+          showError('Headers格式错误，请输入有效的JSON');
+          setLoading(false);
           return;
         }
       }
@@ -78,7 +80,7 @@ export default function CreateMCPModal({ mcp, onClose, onSuccess }: CreateMCPMod
       onClose(); // 再关闭模态框
     } catch (error) {
       console.error('Failed to save MCP service:', error);
-      alert('保存失败');
+      showError('保存失败');
     } finally {
       setLoading(false);
     }

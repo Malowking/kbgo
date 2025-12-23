@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { knowledgeBaseApi, modelApi } from '@/services';
 import type { KnowledgeBase, CreateKBRequest, Model } from '@/types';
+import { showError } from '@/lib/toast';
 
 interface CreateKBModalProps {
   kb?: KnowledgeBase | null;
@@ -29,7 +30,7 @@ export default function CreateKBModal({ kb, onClose, onSuccess }: CreateKBModalP
         setEmbeddingModels(response.models || []);
       } catch (error) {
         console.error('Failed to load embedding models:', error);
-        alert('加载 Embedding 模型列表失败');
+        showError('加载 Embedding 模型列表失败');
       } finally {
         setLoadingModels(false);
       }
@@ -53,12 +54,12 @@ export default function CreateKBModal({ kb, onClose, onSuccess }: CreateKBModalP
     e.preventDefault();
 
     if (!formData.name.trim() || !formData.description.trim()) {
-      alert('请填写名称和描述');
+      showError('请填写名称和描述');
       return;
     }
 
     if (!formData.embedding_model_id && !kb) {
-      alert('请选择 Embedding 模型');
+      showError('请选择 Embedding 模型');
       return;
     }
 
@@ -73,7 +74,7 @@ export default function CreateKBModal({ kb, onClose, onSuccess }: CreateKBModalP
       onClose(); // 再关闭模态框
     } catch (error) {
       console.error('Failed to save knowledge base:', error);
-      alert('保存失败');
+      showError('保存失败');
     } finally {
       setSubmitting(false);
     }

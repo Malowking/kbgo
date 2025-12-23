@@ -37,6 +37,19 @@ func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 		req.RetrieveMode = &defaultMode
 	}
 
+	// 设置默认的Rerank权重为1.0（100%使用rerank，0%使用BM25）
+	if req.RerankWeight == nil {
+		defaultWeight := 1.0
+		req.RerankWeight = &defaultWeight
+	}
+
+	// 验证权重范围
+	if *req.RerankWeight < 0.0 || *req.RerankWeight > 1.0 {
+		defaultWeight := 1.0
+		req.RerankWeight = &defaultWeight
+		g.Log().Warningf(ctx, "RerankWeight must be in [0.0, 1.0], reset to default 1.0")
+	}
+
 	// 根据 EnableRewrite 参数决定是否启用查询重写
 	if !*req.EnableRewrite {
 		// 不启用查询重写，直接使用原始查询进行检索

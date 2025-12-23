@@ -78,6 +78,9 @@ func (h *ChatHandler) loadAgentPresetConfig(ctx context.Context, req *v1.ChatReq
 	if req.RetrieveMode == "" {
 		req.RetrieveMode = config.RetrieveMode
 	}
+	if req.RerankWeight == nil {
+		req.RerankWeight = config.RerankWeight
+	}
 	if !req.UseMCP {
 		req.UseMCP = config.UseMCP
 	}

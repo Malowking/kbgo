@@ -8,9 +8,13 @@ import (
 	"github.com/Malowking/kbgo/pkg/schema"
 )
 
-// imageURLPattern 匹配图片占位符的正则表达式
+// imageURLPattern 匹配Markdown格式的图片
 // 匹配格式: ![image-0](http://127.0.0.1:8002/images/xxx.jpeg)
 var imageURLPattern = regexp.MustCompile(`!\[image-\d+\]\((http://[^)]+/images/([^)]+))\)`)
+
+// httpImageURLPattern 匹配独立的HTTP图片URL（不在Markdown语法中）
+// 匹配格式: http://127.0.0.1:8002/images/xxx.jpeg
+var httpImageURLPattern = regexp.MustCompile(`http://[^/]+/images/([a-f0-9]+\.jpeg)`)
 
 // ConvertImageURLsInDocument 转换文档中的图片URL为可访问的代理URL
 // baseURL: 当前服务的基础URL，例如 "http://localhost:8000"
@@ -29,13 +33,13 @@ func ConvertImageURLsInDocuments(docs []*schema.Document, baseURL string) {
 }
 
 // ConvertImageURLsInContent 转换内容中的图片URL
-// 将 ![image-0](http://127.0.0.1:8002/images/xxx.jpeg)
-// 转换为 ![image-0](http://localhost:8000/api/v1/images/xxx.jpeg)
+// 1. 将 ![image-0](http://127.0.0.1:8002/images/xxx.jpeg) 转换为 ![image-0](http://localhost:8000/api/v1/images/xxx.jpeg)
+// 2. 将 http://127.0.0.1:8002/images/xxx.jpeg 转换为 ![image](http://localhost:8000/api/v1/images/xxx.jpeg)
 func ConvertImageURLsInContent(content string, baseURL string) string {
 	// 确保 baseURL 没有尾部斜杠
 	baseURL = strings.TrimRight(baseURL, "/")
 
-	// 使用正则表达式替换
+	// 第一步：处理Markdown格式的图片URL
 	result := imageURLPattern.ReplaceAllStringFunc(content, func(match string) string {
 		// 提取匹配的子组
 		matches := imageURLPattern.FindStringSubmatch(match)
@@ -52,6 +56,23 @@ func ConvertImageURLsInContent(content string, baseURL string) string {
 		// 替换为新的Markdown格式
 		// 保留原始的 ![image-N] 部分，只替换URL
 		return strings.Replace(match, originalURL, proxyURL, 1)
+	})
+
+	// 第二步：处理完整HTTP URL格式的图片（http://127.0.0.1:8002/images/xxx.jpeg）
+	// 将其转换为Markdown格式
+	result = httpImageURLPattern.ReplaceAllStringFunc(result, func(match string) string {
+		// 提取文件名
+		matches := httpImageURLPattern.FindStringSubmatch(match)
+		if len(matches) < 2 {
+			return match
+		}
+		imageName := matches[1] // xxx.jpeg
+
+		// 构建新的代理URL
+		proxyURL := fmt.Sprintf("%s/api/v1/images/%s", baseURL, imageName)
+
+		// 返回Markdown格式的图片
+		return fmt.Sprintf("![image](%s)", proxyURL)
 	})
 
 	return result

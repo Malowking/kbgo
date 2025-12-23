@@ -72,6 +72,7 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 				EnableRewrite:    true, // chat接口默认开启查询重写
 				RewriteAttempts:  rewriteAttempts,
 				RetrieveMode:     retrieveMode,
+				RerankWeight:     req.RerankWeight,
 			})
 			if err != nil {
 				result.err = err

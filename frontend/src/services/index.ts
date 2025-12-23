@@ -93,7 +93,7 @@ export const documentApi = {
   },
 
   // 获取分块列表
-  getChunks: (params: { knowledge_doc_id: string; page?: number; page_size?: number }) =>
+  getChunks: (params: { knowledge_doc_id: string; page?: number; size?: number }) =>
     apiClient.get<{ data: Chunk[]; total?: number; page?: number; size?: number }>('/api/v1/chunks', { params }),
 };
 

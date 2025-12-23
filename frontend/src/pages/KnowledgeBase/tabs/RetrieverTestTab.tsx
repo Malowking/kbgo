@@ -31,6 +31,7 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
   const [topK, setTopK] = useState(5);
   const [score, setScore] = useState(0.3);
   const [retrieveMode, setRetrieveMode] = useState<'milvus' | 'rerank' | 'rrf'>('rerank');
+  const [rerankWeight, setRerankWeight] = useState(1.0);
   const [enableRewrite, setEnableRewrite] = useState(false);
   const [rewriteAttempts, setRewriteAttempts] = useState(3);
 
@@ -73,6 +74,7 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
         top_k: topK,
         score: score,
         retrieve_mode: retrieveMode,
+        rerank_weight: rerankWeight,
         enable_rewrite: enableRewrite,
         rewrite_attempts: enableRewrite ? rewriteAttempts : undefined,
       };
@@ -103,7 +105,7 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
     } finally {
       setLoading(false);
     }
-  }, [question, kbId, rerankModelId, topK, score, retrieveMode, enableRewrite, rewriteAttempts]);
+  }, [question, kbId, rerankModelId, topK, score, retrieveMode, rerankWeight, enableRewrite, rewriteAttempts]);
 
   return (
     <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -157,23 +159,56 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
 
             {/* Rerank Model */}
             {(retrieveMode === 'rerank' || retrieveMode === 'rrf') && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Rerank 模型
-                </label>
-                <select
-                  value={rerankModelId}
-                  onChange={(e) => setRerankModelId(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">选择模型</option>
-                  {rerankModels.map((model) => (
-                    <option key={model.model_id} value={model.model_id}>
-                      {model.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Rerank 模型
+                  </label>
+                  <select
+                    value={rerankModelId}
+                    onChange={(e) => setRerankModelId(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">选择模型</option>
+                    {rerankModels.map((model) => (
+                      <option key={model.model_id} value={model.model_id}>
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Rerank Weight Slider - Only for rerank mode */}
+                {retrieveMode === 'rerank' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Rerank 权重: {(rerankWeight * 100).toFixed(0)}%
+                      <span className="text-xs text-gray-500 ml-2">
+                        (BM25: {((1 - rerankWeight) * 100).toFixed(0)}%)
+                      </span>
+                    </label>
+                    <input
+                      type="range"
+                      value={rerankWeight}
+                      onChange={(e) => setRerankWeight(parseFloat(e.target.value))}
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      className="w-full"
+                    />
+                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                      <span>纯BM25</span>
+                      <span>混合</span>
+                      <span>纯Rerank</span>
+                    </div>
+                    <div className="mt-2 text-xs text-gray-600 bg-gray-50 rounded p-2">
+                      {rerankWeight === 1.0 && '🔹 当前使用纯 Rerank 语义检索'}
+                      {rerankWeight === 0.0 && '🔹 当前使用纯 BM25 关键词检索'}
+                      {rerankWeight > 0 && rerankWeight < 1 && `🔹 混合检索：${(rerankWeight * 100).toFixed(0)}% Rerank + ${((1 - rerankWeight) * 100).toFixed(0)}% BM25`}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {/* Top K */}

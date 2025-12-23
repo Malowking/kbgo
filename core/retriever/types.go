@@ -26,6 +26,7 @@ type RetrieveReq struct {
 	EnableRewrite   *bool         // 是否启用查询重写（可选）
 	RewriteAttempts *int          // 查询重写尝试次数（可选）
 	RetrieveMode    *RetrieveMode // 检索模式（可选）
+	RerankWeight    *float64      // Rerank权重（可选，0-1范围，默认1.0）当为1.0时仅使用rerank，0.0时仅使用BM25，中间值为混合
 
 	// 内部使用字段
 	optQuery   string   // 优化后的检索关键词（内部使用）
@@ -42,6 +43,7 @@ func (r *RetrieveReq) Copy() *RetrieveReq {
 		EnableRewrite:   r.EnableRewrite,
 		RewriteAttempts: r.RewriteAttempts,
 		RetrieveMode:    r.RetrieveMode,
+		RerankWeight:    r.RerankWeight,
 		optQuery:        r.optQuery,
 		excludeIDs:      r.excludeIDs,
 	}

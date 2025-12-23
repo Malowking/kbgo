@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Upload, Link as LinkIcon } from 'lucide-react';
 import { documentApi } from '@/services';
+import { showSuccess, showError } from '@/lib/toast';
 
 interface UploadModalProps {
   kbId: string;
@@ -24,12 +25,12 @@ export default function UploadModal({ kbId, onClose, onSuccess }: UploadModalPro
     e.preventDefault();
 
     if (uploadMode === 'file' && files.length === 0) {
-      alert('请选择文件');
+      showError('请选择文件');
       return;
     }
 
     if (uploadMode === 'url' && !urls.trim()) {
-      alert('请输入 URL');
+      showError('请输入 URL');
       return;
     }
 
@@ -53,7 +54,7 @@ export default function UploadModal({ kbId, onClose, onSuccess }: UploadModalPro
             }
           } catch (error) {
             console.error(`Failed to upload ${file.name}:`, error);
-            alert(`上传文件 ${file.name} 失败`);
+            showError(`上传文件 ${file.name} 失败`);
             // 继续上传其他文件
           }
         }
@@ -72,22 +73,22 @@ export default function UploadModal({ kbId, onClose, onSuccess }: UploadModalPro
             }
           } catch (error) {
             console.error(`Failed to upload URL ${url}:`, error);
-            alert(`上传 URL ${url} 失败`);
+            showError(`上传 URL ${url} 失败`);
             // 继续上传其他URL
           }
         }
       }
 
       if (documentIds.length > 0) {
-        alert(`成功上传 ${documentIds.length} 个文档，请继续进行索引`);
+        showSuccess(`成功上传 ${documentIds.length} 个文档，请继续进行索引`);
         onSuccess(documentIds); // 返回上传成功的文档 ID
         onClose();
       } else {
-        alert('上传失败，请重试');
+        showError('上传失败，请重试');
       }
     } catch (error) {
       console.error('Failed to upload documents:', error);
-      alert('上传失败');
+      showError('上传失败');
     } finally {
       setUploading(false);
     }
