@@ -13,7 +13,7 @@ import (
 type CleanProfile int
 
 const (
-	ProfileCommon    CleanProfile = iota // MySQL + PostgreSQL 通用安全集
+	ProfileCommon    CleanProfile = iota // PostgreSQL 通用安全集
 	ProfileJSON                          // JSON 专用（严格模式）
 	ProfileEmbedding                     // 向量化友好（标准化空格和换行）
 	ProfileDatabase                      // 数据库存储（包含PUA过滤）
@@ -78,7 +78,7 @@ func CleanText(input []byte, profile CleanProfile) (string, error) {
 
 	s := string(input)
 
-	// 2. NULL 字符清理（MySQL和PostgreSQL都不支持）
+	// 2. NULL 字符清理（PostgreSQL 不支持）
 	s = strings.ReplaceAll(s, "\u0000", "")
 
 	// 3. 控制字符清理（保留 \n, \t, \r）

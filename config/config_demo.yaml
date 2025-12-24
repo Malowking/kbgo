@@ -15,19 +15,6 @@ logger:
   rotateBackupCompress: 9   # 日志压缩级别 (0-9)
 
 # 主数据库配置（用于存储知识库元数据、文档信息等）
-# 支持 MySQL 和 PostgreSQL
-#database:
-#  default:
-#    host: "localhost" # 地址
-#    port: "3306" # MySQL端口: 3306, PostgreSQL端口: 5432
-#    user: "root" # MySQL默认用户: root, PostgreSQL默认用户: postgres
-#    pass: "your_password" # 密码
-#    name: "kbgo" # 数据库名称
-#    type: "mysql" # 数据库类型: mysql 或 pgsql
-#    charset: "utf8mb4" # 数据库编码
-#    maxLifeTime: 3600 # 连接最大生命周期(秒)
-
-# === 使用 PostgreSQL 作为主数据库的示例配置 ===
 database:
   default:
      host: "kbgo-postgres"
@@ -36,7 +23,6 @@ database:
      pass: "kbgo123"
      name: "kbgo"
      type: "pgsql"
-     charset: "utf8mb4"
      maxLifeTime: 3600
 
 # 向量数据库配置

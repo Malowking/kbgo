@@ -7,7 +7,6 @@ import (
 
 	"github.com/Malowking/kbgo/core/errors"
 	"github.com/gogf/gf/v2/frame/g"
-	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -17,13 +16,12 @@ import (
 
 // DBConfig 数据库配置
 type DBConfig struct {
-	Type    string `json:"type"`    // 数据库类型: mysql, pgsql, postgresql 或 postgres
-	Host    string `json:"host"`    // 主机地址
-	Port    string `json:"port"`    // 端口
-	User    string `json:"user"`    // 用户名
-	Pass    string `json:"pass"`    // 密码
-	Name    string `json:"name"`    // 数据库名
-	Charset string `json:"charset"` // 字符集 (主要用于 MySQL)
+	Type string `json:"type"` // 数据库类型: pgsql, postgresql 或 postgres
+	Host string `json:"host"` // 主机地址
+	Port string `json:"port"` // 端口
+	User string `json:"user"` // 用户名
+	Pass string `json:"pass"` // 密码
+	Name string `json:"name"` // 数据库名
 }
 
 // getDBConfig 从配置文件中获取数据库配置
@@ -38,28 +36,23 @@ func getDBConfig() *DBConfig {
 	dbUser := g.Cfg().MustGet(ctx, "database.default.user").String()
 	dbPass := g.Cfg().MustGet(ctx, "database.default.pass").String()
 	dbName := g.Cfg().MustGet(ctx, "database.default.name").String()
-	dbCharset := g.Cfg().MustGet(ctx, "database.default.charset", "utf8mb4").String()
 
 	g.Log().Infof(ctx, "Config from file - type:%s, host:%s, port:%s, user:%s, name:%s",
 		dbType, dbHost, dbPort, dbUser, dbName)
 
 	return &DBConfig{
-		Type:    dbType,
-		Host:    dbHost,
-		Port:    dbPort,
-		User:    dbUser,
-		Pass:    dbPass,
-		Name:    dbName,
-		Charset: dbCharset,
+		Type: dbType,
+		Host: dbHost,
+		Port: dbPort,
+		User: dbUser,
+		Pass: dbPass,
+		Name: dbName,
 	}
 }
 
 // buildDSN 构建数据库连接字符串
 func buildDSN(config *DBConfig) (string, error) {
 	switch config.Type {
-	case "mysql":
-		return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=%s&parseTime=True&loc=Local",
-			config.User, config.Pass, config.Host, config.Port, config.Name, config.Charset), nil
 	case "postgresql", "postgres", "pgsql":
 		// 构建 PostgreSQL DSN，如果密码为空则不包含 password 参数
 		dsn := fmt.Sprintf("host=%s user=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Shanghai",
@@ -99,8 +92,6 @@ func initDatabase() (*gorm.DB, error) {
 
 	// 根据数据库类型选择对应的驱动
 	switch config.Type {
-	case "mysql":
-		db, err = gorm.Open(mysql.Open(dsn), gormConfig)
 	case "postgresql", "postgres", "pgsql":
 		db, err = gorm.Open(postgres.Open(dsn), gormConfig)
 	default:

@@ -85,7 +85,7 @@ func (c *ControllerV1) RegisterModel(ctx context.Context, req *v1.RegisterModelR
 	}
 
 	// 序列化 Extra 为 JSON 字符串
-	// 注意：MySQL JSON字段不接受空字符串，至少要是空对象 {}
+	// 注意：PostgreSQL JSON字段不接受空字符串，至少要是空对象 {}
 	extraJSON := "{}"
 	if len(extra) > 0 {
 		extraBytes, err := gjson.Marshal(extra)
