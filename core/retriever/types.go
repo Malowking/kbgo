@@ -4,9 +4,9 @@ package retriever
 type RetrieveMode string
 
 const (
-	// RetrieveModeMilvus 仅使用Milvus向量检索，按相似度排序
-	RetrieveModeMilvus RetrieveMode = "milvus"
-	// RetrieveModeRerank 使用Milvus检索后进行Rerank重排序（默认）
+	// RetrieveModeSimple 普通向量检索，按相似度排序
+	RetrieveModeSimple RetrieveMode = "simple"
+	// RetrieveModeRerank 使用向量检索后进行Rerank重排序（默认）
 	RetrieveModeRerank RetrieveMode = "rerank"
 	// RetrieveModeRRF 使用RRF (Reciprocal Rank Fusion) 混合检索
 	RetrieveModeRRF RetrieveMode = "rrf"

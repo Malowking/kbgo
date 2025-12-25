@@ -64,7 +64,7 @@ rustfs:
 retriever:
   enableRewrite: false       # 是否启用查询重写（默认 false）
   rewriteAttempts: 3         # 查询重写尝试次数（默认 3）
-  retrieveMode: "rerank"     # 检索模式: milvus/rerank/rrf（默认 rerank）
+  retrieveMode: "rerank"     # 检索模式: simple（普通检索）/rerank/rrf（默认 rerank）
 
 # 文档解析服务配置（Python file_parse 服务）
 fileParse:

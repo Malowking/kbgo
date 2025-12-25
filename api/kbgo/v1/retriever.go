@@ -15,7 +15,7 @@ type RetrieverReq struct {
 	KnowledgeId      string   `json:"knowledge_id" v:"required"`
 	EnableRewrite    bool     `json:"enable_rewrite"`   // Whether to enable query rewriting (default false)
 	RewriteAttempts  int      `json:"rewrite_attempts"` // Number of query rewriting attempts (default 3, only effective when enable_rewrite=true)
-	RetrieveMode     string   `json:"retrieve_mode"`    // Retrieval mode: milvus/rerank/rrf (default rerank)
+	RetrieveMode     string   `json:"retrieve_mode"`    // Retrieval mode: simple（普通检索）/rerank/rrf (default rerank)
 	RerankWeight     *float64 `json:"rerank_weight"`    // Rerank权重 (0-1范围，默认1.0)，1.0为纯rerank，0.0为纯BM25，中间值为混合
 }
 

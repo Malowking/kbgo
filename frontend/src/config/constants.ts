@@ -52,7 +52,7 @@ export const USER = {
 export const RETRIEVE_MODES = [
   { value: 'rrf', label: 'RRF（推荐）' },
   { value: 'rerank', label: 'Rerank' },
-  { value: 'milvus', label: 'Milvus' },
+  { value: 'simple', label: '普通检索' },
 ] as const;
 
 /** 模型类型 */

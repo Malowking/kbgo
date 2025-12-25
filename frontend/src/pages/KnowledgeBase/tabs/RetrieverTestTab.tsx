@@ -30,7 +30,7 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
   const [rerankModelId, setRerankModelId] = useState('');
   const [topK, setTopK] = useState(5);
   const [score, setScore] = useState(0.3);
-  const [retrieveMode, setRetrieveMode] = useState<'milvus' | 'rerank' | 'rrf'>('rerank');
+  const [retrieveMode, setRetrieveMode] = useState<'simple' | 'rerank' | 'rrf'>('rerank');
   const [rerankWeight, setRerankWeight] = useState(1.0);
   const [enableRewrite, setEnableRewrite] = useState(false);
   const [rewriteAttempts, setRewriteAttempts] = useState(3);
@@ -151,7 +151,7 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
                 onChange={(e) => setRetrieveMode(e.target.value as any)}
                 className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="milvus">Milvus (向量召回)</option>
+                <option value="simple">普通检索（向量召回）</option>
                 <option value="rerank">Rerank (重排序)</option>
                 <option value="rrf">RRF (融合排序)</option>
               </select>

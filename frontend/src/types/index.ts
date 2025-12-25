@@ -90,7 +90,7 @@ export interface ChatRequest {
   enable_retriever?: boolean;
   top_k?: number;
   score?: number;
-  retrieve_mode?: 'milvus' | 'rerank' | 'rrf';
+  retrieve_mode?: 'simple' | 'rerank' | 'rrf';
   rerank_weight?: number;
   use_mcp?: boolean;
   mcp_service_tools?: Record<string, string[]>;
@@ -256,11 +256,15 @@ export interface AgentConfig {
   enable_retriever?: boolean;
   top_k?: number;
   score?: number;
-  retrieve_mode?: 'milvus' | 'rerank' | 'rrf';
+  retrieve_mode?: 'simple' | 'rerank' | 'rrf';
   rerank_weight?: number;
   use_mcp?: boolean;
   mcp_service_tools?: Record<string, string[]>;
   jsonformat?: boolean;
+  // NL2SQL相关配置
+  enable_nl2sql?: boolean;
+  nl2sql_datasource_id?: string;
+  nl2sql_embedding_model_id?: string; // NL2SQL Schema向量化使用的embedding模型
 }
 
 export interface AgentPreset {
