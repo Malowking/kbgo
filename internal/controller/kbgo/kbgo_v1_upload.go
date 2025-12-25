@@ -12,7 +12,7 @@ import (
 	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/core/file_store"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
-	"github.com/Malowking/kbgo/internal/model/entity"
+	"github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gfile"
 	"github.com/google/uuid"
@@ -61,7 +61,7 @@ func (c *ControllerV1) uploadToRustFS(ctx context.Context, req *v1.UploadFileReq
 	if err != nil {
 		g.Log().Errorf(ctx, "Failed to query existing document: %v", err)
 		// Continue processing, don't interrupt upload process
-	} else if existingDoc.Id != "" {
+	} else if existingDoc.ID != "" {
 		// File already exists, reject upload
 		g.Log().Infof(ctx, "File already exists, SHA256: %s, upload rejected", fileSha256)
 
@@ -86,8 +86,8 @@ func (c *ControllerV1) uploadToRustFS(ctx context.Context, req *v1.UploadFileReq
 	}
 
 	// Save document information to database
-	documents := entity.KnowledgeDocuments{
-		Id:             strings.ReplaceAll(uuid.New().String(), "-", ""),
+	documents := gorm.KnowledgeDocuments{
+		ID:             strings.ReplaceAll(uuid.New().String(), "-", ""),
 		KnowledgeId:    req.KnowledgeId,
 		FileName:       fileName,
 		FileExtension:  fileExt,
@@ -96,7 +96,7 @@ func (c *ControllerV1) uploadToRustFS(ctx context.Context, req *v1.UploadFileReq
 		RustfsBucket:   rustfsConfig.BucketName,
 		RustfsLocation: rustfsKey,
 		LocalFilePath:  localPath, // Save local file path
-		Status:         int(v1.StatusPending),
+		Status:         int8(v1.StatusPending),
 	}
 
 	// Save to database
@@ -109,7 +109,7 @@ func (c *ControllerV1) uploadToRustFS(ctx context.Context, req *v1.UploadFileReq
 		_ = gfile.Remove(localPath)
 		return res, errors.Newf(errors.ErrDatabaseInsert, "failed to save document information: %v", err)
 	}
-	res.DocumentId = documents.Id
+	res.DocumentId = documents.ID
 	res.Status = "success"
 	res.Message = "File uploaded successfully"
 	return res, nil
@@ -137,7 +137,7 @@ func (c *ControllerV1) uploadToLocal(ctx context.Context, req *v1.UploadFileReq)
 	if err != nil {
 		g.Log().Errorf(ctx, "Failed to query existing document: %v", err)
 		// Continue processing, don't interrupt upload process
-	} else if existingDoc.Id != "" {
+	} else if existingDoc.ID != "" {
 		// File already exists, reject upload
 		g.Log().Infof(ctx, "File already exists, SHA256: %s, upload rejected", fileSha256)
 
@@ -199,15 +199,15 @@ func (c *ControllerV1) uploadToLocal(ctx context.Context, req *v1.UploadFileReq)
 	}
 
 	// Save document information to database
-	documents := entity.KnowledgeDocuments{
-		Id:             strings.ReplaceAll(uuid.New().String(), "-", ""),
+	documents := gorm.KnowledgeDocuments{
+		ID:             strings.ReplaceAll(uuid.New().String(), "-", ""),
 		KnowledgeId:    req.KnowledgeId,
 		FileName:       fileName,
 		FileExtension:  fileExt,
 		CollectionName: req.KnowledgeId, // Use knowledge base ID as default CollectionName
 		SHA256:         fileSha256,
 		LocalFilePath:  finalPath,
-		Status:         int(v1.StatusPending),
+		Status:         int8(v1.StatusPending),
 	}
 
 	// Save to database
@@ -220,7 +220,7 @@ func (c *ControllerV1) uploadToLocal(ctx context.Context, req *v1.UploadFileReq)
 		_ = gfile.Remove(finalPath)
 		return res, errors.Newf(errors.ErrDatabaseInsert, "failed to save document information: %v", err)
 	}
-	res.DocumentId = documents.Id
+	res.DocumentId = documents.ID
 	res.Status = "success"
 	res.Message = "File uploaded successfully"
 	return res, nil

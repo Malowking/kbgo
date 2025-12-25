@@ -9,7 +9,7 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// retrieve 执行底层的 Milvus 检索
+// retrieve 执行底层的向量检索
 func retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveReq) ([]*schema.Document, error) {
 	var filter string
 	// 如果有需要排除的ID，添加到 filter 中

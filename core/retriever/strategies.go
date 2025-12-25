@@ -45,7 +45,7 @@ func convertFromRerankDocs(rerankDocs []common.RerankDocument, originalDocs []*s
 	return result
 }
 
-// retrieveWithRerank 使用Milvus检索后进行Rerank重排序
+// retrieveWithRerank 使用普通向量检索后进行Rerank重排序
 // 当 RerankWeight < 1.0 时，混合使用Rerank和BM25关键词检索
 func retrieveWithRerank(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveReq) ([]*schema.Document, error) {
 	startTime := time.Now()

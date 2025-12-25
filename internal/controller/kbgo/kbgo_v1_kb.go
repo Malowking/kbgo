@@ -12,7 +12,6 @@ import (
 	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/index"
-	"github.com/Malowking/kbgo/internal/model/do"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gfile"
@@ -261,11 +260,22 @@ func (c *ControllerV1) KBGetList(ctx context.Context, req *v1.KBGetListReq) (res
 		req.Name, req.Status, req.Category)
 
 	res = &v1.KBGetListRes{}
-	err = dao.KnowledgeBase.Ctx(ctx).Where(do.KnowledgeBase{
-		Status:   req.Status,
-		Name:     req.Name,
-		Category: req.Category,
-	}).Scan(&res.List)
+
+	// Build query with GORM
+	query := dao.GetDB().WithContext(ctx).Model(&gormModel.KnowledgeBase{})
+
+	// Apply filters only if they are set
+	if req.Status != nil {
+		query = query.Where("status = ?", *req.Status)
+	}
+	if req.Name != nil {
+		query = query.Where("name = ?", *req.Name)
+	}
+	if req.Category != nil {
+		query = query.Where("category = ?", *req.Category)
+	}
+
+	err = query.Find(&res.List).Error
 	return
 }
 
@@ -274,7 +284,7 @@ func (c *ControllerV1) KBGetOne(ctx context.Context, req *v1.KBGetOneReq) (res *
 	g.Log().Infof(ctx, "KBGetOne request received - Id: %s", req.Id)
 
 	res = &v1.KBGetOneRes{}
-	err = dao.KnowledgeBase.Ctx(ctx).WherePri(req.Id).Scan(&res.KnowledgeBase)
+	err = dao.GetDB().WithContext(ctx).Model(&gormModel.KnowledgeBase{}).Where("id = ?", req.Id).First(&res.KnowledgeBase).Error
 	return
 }
 

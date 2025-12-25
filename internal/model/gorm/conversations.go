@@ -26,7 +26,7 @@ func (Conversation) TableName() string {
 	return "conversations"
 }
 
-// JSON 自定义JSON类型，兼容MySQL和PostgreSQL
+// JSON 自定义JSON类型
 type JSON json.RawMessage
 
 // Scan 实现sql.Scanner接口

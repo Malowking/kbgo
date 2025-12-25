@@ -16,7 +16,7 @@ import (
 	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/core/vector_store"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
-	"github.com/Malowking/kbgo/internal/model/entity"
+	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gfile"
@@ -52,7 +52,7 @@ type indexContext struct {
 	ctx            context.Context
 	modelID        string
 	documentId     string
-	doc            entity.KnowledgeDocuments
+	doc            gormModel.KnowledgeDocuments
 	storageType    file_store.StorageType
 	localFilePath  string
 	chunks         []*schema.Document
@@ -283,7 +283,7 @@ func (s *DocumentIndexer) stepSaveChunks(idxCtx *indexContext) error {
 		return nil
 	}
 
-	chunkEntities := make([]entity.KnowledgeChunks, len(idxCtx.chunks))
+	chunkEntities := make([]gormModel.KnowledgeChunks, len(idxCtx.chunks))
 	for i, chunk := range idxCtx.chunks {
 		chunkId := uuid.New().String()
 
@@ -311,13 +311,13 @@ func (s *DocumentIndexer) stepSaveChunks(idxCtx *indexContext) error {
 			}
 		}
 
-		chunkEntities[i] = entity.KnowledgeChunks{
-			Id:             chunkId,
-			KnowledgeDocId: idxCtx.documentId,
+		chunkEntities[i] = gormModel.KnowledgeChunks{
+			ID:             chunkId,
+			KnowledgeDocID: idxCtx.documentId,
 			Content:        normalizedContent, // 使用清洗后的内容
 			Ext:            extData,
 			CollectionName: idxCtx.collectionName,
-			Status:         int(v1.StatusPending),
+			Status:         int8(v1.StatusPending),
 		}
 		chunk.ID = chunkId
 	}

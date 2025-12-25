@@ -28,7 +28,7 @@ type AgentConfig struct {
 	EnableRetriever  bool                `json:"enable_retriever"`               // 是否启用检索器
 	TopK             int                 `json:"top_k"`                          // 检索Top K（默认5）
 	Score            float64             `json:"score"`                          // 相似度分数阈值（默认0.2）
-	RetrieveMode     string              `json:"retrieve_mode"`                  // 检索模式: milvus/rerank/rrf
+	RetrieveMode     string              `json:"retrieve_mode"`                  // 检索模式: simple（普通检索）/rerank/rrf
 	RerankWeight     *float64            `json:"rerank_weight"`                  // Rerank权重 (0-1范围，默认1.0)
 	UseMCP           bool                `json:"use_mcp"`                        // 是否使用MCP
 	MCPServiceTools  map[string][]string `json:"mcp_service_tools"`              // MCP服务工具配置
@@ -114,7 +114,7 @@ type DeleteAgentPresetRes struct {
 
 // ============ Agent调用接口 ============
 
-// AgentChatReq Agent对话请求（简化版）
+// AgentChatReq Agent对话请求
 type AgentChatReq struct {
 	g.Meta   `path:"/v1/agent/chat" method:"post" tags:"agent" summary:"使用Agent预设进行对话"`
 	PresetID string                  `json:"preset_id" v:"required#预设ID不能为空"` // Agent预设ID

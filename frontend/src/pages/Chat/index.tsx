@@ -31,7 +31,7 @@ export default function Chat() {
   const [enableRetriever, setEnableRetriever] = useState(false);
   const [topK, setTopK] = useState<number>(CHAT_CONFIG.DEFAULT_TOP_K);
   const [score, setScore] = useState<number>(CHAT_CONFIG.DEFAULT_SCORE);
-  const [retrieveMode, setRetrieveMode] = useState<'milvus' | 'rerank' | 'rrf'>(CHAT_CONFIG.DEFAULT_RETRIEVE_MODE);
+  const [retrieveMode, setRetrieveMode] = useState<'simple' | 'rerank' | 'rrf'>(CHAT_CONFIG.DEFAULT_RETRIEVE_MODE as 'simple' | 'rerank' | 'rrf');
   const [rerankWeight, setRerankWeight] = useState<number>(1.0);
   const [useMCP, setUseMCP] = useState(false);
   const [mcpServices, setMcpServices] = useState<MCPRegistry[]>([]);
@@ -373,7 +373,7 @@ export default function Chat() {
                         value={selectedRerankModel}
                         onChange={(e) => setSelectedRerankModel(e.target.value)}
                         className="input text-sm"
-                        disabled={retrieveMode === 'milvus'}
+                        disabled={retrieveMode === 'simple'}
                       >
                         {rerankModels.length === 0 && (
                           <option value="">无可用的 Rerank 模型</option>
@@ -421,12 +421,12 @@ export default function Chat() {
                       <label className="block text-xs text-gray-600 mb-1">检索模式</label>
                       <select
                         value={retrieveMode}
-                        onChange={(e) => setRetrieveMode(e.target.value as 'milvus' | 'rerank' | 'rrf')}
+                        onChange={(e) => setRetrieveMode(e.target.value as 'simple' | 'rerank' | 'rrf')}
                         className="input text-sm"
                       >
                         <option value="rrf">RRF（推荐）</option>
                         <option value="rerank">Rerank</option>
-                        <option value="milvus">Milvus</option>
+                        <option value="simple">普通检索</option>
                       </select>
                       <p className="text-xs text-gray-500 mt-1">检索策略选择</p>
                     </div>

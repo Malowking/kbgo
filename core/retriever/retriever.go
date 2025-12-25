@@ -89,7 +89,6 @@ func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 		rewriteAttempts = 3
 	}
 
-	// 优化策略：串行执行查询重写（保证查询多样性），并发执行检索（提高速度）
 	// 第一步：串行生成多个优化查询
 	optimizedQueries := make([]string, 0, rewriteAttempts)
 
@@ -187,8 +186,8 @@ func retrieveDoOnce(ctx context.Context, conf *config.RetrieverConfig, req *Retr
 
 	// 根据检索模式选择不同的处理策略
 	switch *req.RetrieveMode {
-	case RetrieveModeMilvus:
-		// 模式1: 仅使用Milvus向量检索，直接调用VectorStore的方法
+	case RetrieveModeSimple:
+		// 模式1: 普通向量检索，直接调用VectorStore的方法
 		return conf.VectorStore.VectorSearchOnly(ctx, conf, req.optQuery, req.KnowledgeId, *req.TopK, *req.Score)
 	case RetrieveModeRerank:
 		// 模式2: Milvus + Rerank

@@ -40,7 +40,7 @@
 
 - **后端框架**: [GoFrame v2](https://goframe.org/)
 - **向量数据库**: [Milvus](https://milvus.io/) / PostgreSQL + pgvector
-- **关系数据库**: MySQL / PostgreSQL
+- **关系数据库**: PostgreSQL
 - **文件存储**: RustFS (MinIO) / 本地文件系统
 - **AI 模型**: OpenAI 兼容接口
 
@@ -49,7 +49,7 @@
 ### 1. 环境要求
 
 - Go 1.24+
-- MySQL 5.7+ 或 PostgreSQL 9.6+
+- PostgreSQL 9.6+
 - Milvus 2.6+ 或 PostgreSQL 16+ (with pgvector)
 
 ### 2. 配置文件
