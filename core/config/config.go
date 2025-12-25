@@ -105,7 +105,6 @@ type IndexerConfig struct {
 	BaseURL        string                   // API基础URL（用于调用embedding服务）
 	EmbeddingModel string                   // Embedding模型名称
 	MetricType     string                   // 向量相似度度量类型
-	Dim            int                      // 向量维度（fallback）
 }
 
 // Config 实现 embedding config 接口

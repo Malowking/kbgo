@@ -5,10 +5,11 @@ import (
 
 	"encoding/json"
 	"fmt"
-	"github.com/Malowking/kbgo/core/errors"
-	"github.com/Malowking/kbgo/core/formatter"
 	"strings"
 	"time"
+
+	"github.com/Malowking/kbgo/core/errors"
+	"github.com/Malowking/kbgo/core/formatter"
 
 	coreModel "github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/internal/dao"

@@ -28,12 +28,9 @@ func DefaultLLMRetryConfig() *LLMRetryConfig {
 }
 
 // LLMCallFunc LLM调用函数类型
-// 参数：context, modelID
-// 返回：result, error
 type LLMCallFunc func(context.Context, string) (interface{}, error)
 
 // RetryWithDifferentLLM 使用不同的LLM模型重试
-// 如果一个模型失败，会自动切换到另一个可用的模型重试
 func RetryWithDifferentLLM(ctx context.Context, config *LLMRetryConfig, callFunc LLMCallFunc) (interface{}, error) {
 	if config == nil {
 		config = DefaultLLMRetryConfig()
@@ -118,7 +115,6 @@ func RetryWithDifferentLLM(ctx context.Context, config *LLMRetryConfig, callFunc
 }
 
 // SelectRandomLLMModel 随机选择一个LLM模型
-// 这是一个辅助函数，用于需要快速选择模型的场景
 func SelectRandomLLMModel(ctx context.Context, modelType ModelType) (string, error) {
 	models := Registry.GetByType(modelType)
 	if len(models) == 0 {
@@ -148,12 +144,9 @@ func DefaultSingleModelRetryConfig() *SingleModelRetryConfig {
 }
 
 // SingleModelCallFunc 单个模型调用函数类型
-// 参数：context
-// 返回：result, error
 type SingleModelCallFunc func(context.Context) (interface{}, error)
 
-// RetryWithSameModel 使用同一个模型重试
-// 如果调用失败，会重试相同的模型，而不是切换到其他模型
+// RetryWithSameModel 模型重试
 func RetryWithSameModel(ctx context.Context, modelName string, config *SingleModelRetryConfig, callFunc SingleModelCallFunc) (interface{}, error) {
 	if config == nil {
 		config = DefaultSingleModelRetryConfig()

@@ -114,7 +114,6 @@ func NewMCPToolCaller(ctx context.Context) (*MCPToolCaller, error) {
 }
 
 // GetAllLLMTools 获取所有 LLM 工具定义
-// serviceToolsFilter: 如果不为 nil，则只返回指定服务的指定工具
 func (tc *MCPToolCaller) GetAllLLMTools(serviceToolsFilter map[string][]string) []*schema.ToolInfo {
 	var llmTools []*schema.ToolInfo
 

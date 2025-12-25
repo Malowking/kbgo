@@ -271,14 +271,7 @@ func (c *ControllerV1) MCPListTools(ctx context.Context, req *v1.MCPListToolsReq
 	if useCache && registry.Tools != "" && registry.Tools != "[]" {
 		var tools []v1.MCPToolInfo
 		if err := json.Unmarshal([]byte(registry.Tools), &tools); err == nil {
-			// 检查缓存是否过期（简单实现，可根据需要增强）
-			// cacheTTL := 300 // 默认5分钟
-			// if req.CacheTTL != nil {
-			// 	cacheTTL = *req.CacheTTL
-			// }
-
-			// 这里可以添加更复杂的缓存过期逻辑
-			// 简单起见，我们直接使用缓存数据
+			// 检查缓存是否过期
 			return &v1.MCPListToolsRes{Tools: tools}, nil
 		}
 	}
@@ -331,7 +324,7 @@ func (c *ControllerV1) MCPCallTool(ctx context.Context, req *v1.MCPCallToolReq) 
 
 	startTime := time.Now()
 
-	// 查询MCP服务（支持ID或名称）
+	// 查询MCP服务
 	var registry *gormModel.MCPRegistry
 	if strings.HasPrefix(req.RegistryID, "mcp_") {
 		registry, err = dao.MCPRegistry.GetByID(ctx, req.RegistryID)

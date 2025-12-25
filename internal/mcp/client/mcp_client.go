@@ -595,49 +595,11 @@ func (c *MCPClient) Initialize(ctx context.Context, clientInfo map[string]interf
 	return nil
 }
 
-// ConvertToLLMTools 将 MCP 工具列表转换为 LLM Function Calling 格式
-func ConvertToLLMTools(mcpTools []MCPTool, serviceName string) []LLMTool {
-	llmTools := make([]LLMTool, 0, len(mcpTools))
-
-	for _, mcpTool := range mcpTools {
-		// 为工具名添加服务前缀，避免不同服务的工具名冲突
-		toolName := fmt.Sprintf("%s__%s", serviceName, mcpTool.Name)
-
-		// 构建 LLM 工具定义
-		llmTool := LLMTool{
-			Type: "function",
-			Function: LLMFunctionDefinition{
-				Name:        toolName,
-				Description: mcpTool.Description,
-				Parameters:  mcpTool.InputSchema,
-			},
-		}
-
-		// 确保 parameters 有基本结构
-		if llmTool.Function.Parameters == nil {
-			llmTool.Function.Parameters = map[string]interface{}{
-				"type":       "object",
-				"properties": map[string]interface{}{},
-			}
-		}
-
-		// 如果 InputSchema 没有 type 字段，添加默认的
-		if _, hasType := llmTool.Function.Parameters["type"]; !hasType {
-			llmTool.Function.Parameters["type"] = "object"
-		}
-
-		llmTools = append(llmTools, llmTool)
-	}
-
-	return llmTools
-}
-
 // ParseToolName 解析带服务前缀的工具名，返回 (serviceName, toolName)
 func ParseToolName(fullToolName string) (string, string) {
 	parts := strings.SplitN(fullToolName, "__", 2)
 	if len(parts) == 2 {
 		return parts[0], parts[1]
 	}
-	// 如果没有前缀，返回空服务名和原工具名
 	return "", fullToolName
 }

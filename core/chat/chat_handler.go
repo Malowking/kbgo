@@ -91,7 +91,7 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 		retrievalChan <- result
 	}()
 
-	// 2. 并行处理文件（如果有上传文件）
+	// 2. 并行处理文件
 	go func() {
 		var result fileParseResult
 		if len(uploadedFiles) > 0 {
@@ -155,7 +155,7 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 		res.References = retrievalRes.documents
 	}
 
-	// 4. 如果启用MCP，先进行MCP工具调用（在LLM生成答案之前）
+	// 4. 如果启用MCP，先进行MCP工具调用
 	var mcpDocs []*schema.Document
 	if req.UseMCP {
 		g.Log().Infof(ctx, "Checking if MCP tools are needed...")
@@ -166,7 +166,7 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 		if req.MCPServiceTools == nil || len(req.MCPServiceTools) == 0 || h.countTotalTools(req.MCPServiceTools) > 12 {
 			g.Log().Infof(ctx, "工具列表为空或超过20个，使用LLM进行工具选择")
 
-			// 构建用于工具选择的完整问题（包含检索内容和文件内容）
+			// 构建用于工具选择的完整问题
 			toolSelectionQuestion := h.buildToolSelectionQuestion(ctx, req.Question, documents, fileParseRes.fileContent)
 
 			// 使用LLM选择工具
@@ -195,7 +195,7 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 				res.Answer = mcpFinalAnswer
 				res.MCPResults = mcpResults
 
-				// 将MCP返回的文档添加到references中（仅用于展示工具调用结果）
+				// 将MCP返回的文档添加到references中
 				if len(mcpDocs) > 0 {
 					res.References = append(res.References, mcpDocs...)
 				}
@@ -227,7 +227,7 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 		}
 	}
 
-	// 5. 调用Chat逻辑生成最终答案（仅在MCP未返回最终答案时）
+	// 5. 调用Chat逻辑生成最终答案
 	chatI := chat.GetChat()
 
 	// 根据是否有文件或文档内容选择不同的处理方式

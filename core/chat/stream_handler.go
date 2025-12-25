@@ -91,7 +91,7 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 		retrievalChan <- result
 	}()
 
-	// 并行处理文件（如果有上传文件）
+	// 并行处理文件
 	go func() {
 		var result fileParseResult
 		if len(uploadedFiles) > 0 {
@@ -160,8 +160,7 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 		g.Log().Infof(ctx, "Added parsed document content to documents (%d chars)", len(fileParseRes.fileContent))
 	}
 
-	// 2. 执行MCP工具调用（检索完成后，MCP需要检索结果）
-	// MCP调用是同步的，会等待所有工具调用完成后才返回
+	// 2. 执行MCP工具调用
 	var mcpRes mcpResult
 	if req.UseMCP {
 		g.Log().Infof(ctx, "开始执行MCP工具调用...")
@@ -252,7 +251,7 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 	return nil
 }
 
-// buildAllDocuments 构建所有文档（包括MCP结果）
+// buildAllDocuments 构建所有文档
 func (h *StreamHandler) buildAllDocuments(documents []*schema.Document, mcpResults []*v1.MCPResult) []*schema.Document {
 	var allDocuments []*schema.Document
 	allDocuments = append(allDocuments, documents...)

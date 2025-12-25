@@ -28,7 +28,7 @@ const (
 	ModelTypeAudio      ModelType = "audio"      // 文生音频模型
 )
 
-// ModelConfig 模型配置（内存缓存）
+// ModelConfig 模型配置
 type ModelConfig struct {
 	ModelID  string         `json:"model_id"` // UUID
 	Name     string         `json:"name"`     // 模型名称
@@ -42,7 +42,7 @@ type ModelConfig struct {
 	Client   *openai.Client `json:"-"`        // OpenAI 客户端（不序列化）
 }
 
-// ModelRegistry 全局模型注册表（内存缓存）
+// ModelRegistry 全局模型注册表
 type ModelRegistry struct {
 	mu           sync.RWMutex
 	models       map[string]*ModelConfig // key = model_id (UUID)
@@ -55,7 +55,7 @@ var Registry = &ModelRegistry{
 	rewriteModel: nil, // 初始为空，等待用户配置
 }
 
-// Get 获取模型配置（并发安全读取）
+// Get 获取模型配置
 func (r *ModelRegistry) Get(modelID string) *ModelConfig {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -88,7 +88,7 @@ func (r *ModelRegistry) List() []*ModelConfig {
 	return result
 }
 
-// Reload 从数据库重新加载模型配置（热更新）
+// Reload 从数据库重新加载模型配置
 func (r *ModelRegistry) Reload(ctx context.Context, db *gormdb.DB) error {
 	// 查询所有模型（包括禁用的，以便前端显示完整列表）
 	var models []gorm.AIModel
@@ -185,14 +185,14 @@ func (r *ModelRegistry) Count() int {
 	return len(r.models)
 }
 
-// GetRewriteModel 获取重写模型配置（并发安全读取）
+// GetRewriteModel 获取重写模型配置
 func (r *ModelRegistry) GetRewriteModel() *ModelConfig {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.rewriteModel
 }
 
-// SetRewriteModel 设置重写模型（并发安全写入）
+// SetRewriteModel 设置重写模型
 func (r *ModelRegistry) SetRewriteModel(modelID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -80,7 +80,7 @@ func initDatabase() (*gorm.DB, error) {
 		return nil, errors.Newf(errors.ErrDatabaseInit, "failed to build DSN: %v", err)
 	}
 
-	// 打印 DSN 用于调试（注意：生产环境应移除密码）
+	// 打印 DSN 用于调试
 	g.Log().Infof(context.Background(), "DSN: %s", dsn)
 
 	// GORM 配置

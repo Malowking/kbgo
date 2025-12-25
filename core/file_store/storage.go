@@ -30,7 +30,7 @@ func InitUploadDirectories() {
 		return
 	}
 
-	// 查找项目根目录（包含 kbgo 的目录）
+	// 查找项目根目录
 	projectRoot := wd
 	for !strings.HasSuffix(projectRoot, "kbgo") && projectRoot != "/" {
 		projectRoot = filepath.Dir(projectRoot)
@@ -49,6 +49,8 @@ func InitUploadDirectories() {
 		filepath.Join(projectRoot, "upload/audio"),
 		filepath.Join(projectRoot, "upload/file"),
 		filepath.Join(projectRoot, "upload/knowledge_file"),
+		filepath.Join(projectRoot, "file"),
+		filepath.Join(projectRoot, "upload/nl2sql"),
 	}
 
 	// 创建所有目录

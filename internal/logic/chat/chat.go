@@ -2,18 +2,14 @@ package chat
 
 import (
 	"context"
-
-	"encoding/base64"
 	"errors"
 	"fmt"
-	coreErrors "github.com/Malowking/kbgo/core/errors"
 	"io"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/Malowking/kbgo/core/common"
+	coreErrors "github.com/Malowking/kbgo/core/errors"
+
 	"github.com/Malowking/kbgo/core/formatter"
 	coreModel "github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/internal/history"
@@ -295,7 +291,7 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 		return nil, err
 	}
 
-	// 使用查询重写器进行指代消解（如果需要）
+	// 使用查询重写器进行指代消解
 	rewriteConfig := rewriter.DefaultConfig()
 	rewriteConfig.ModelID = modelID // 使用相同的模型进行重写
 	rewrittenQuestion, err := x.queryRewriter.RewriteQuery(ctx, question, chatHistory, rewriteConfig)
@@ -303,7 +299,6 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 		g.Log().Warningf(ctx, "查询重写失败: %v，使用原查询", err)
 		rewrittenQuestion = question
 	}
-	// 注意: rewrittenQuestion 可用于文档检索优化，当前版本文档已预先检索
 	_ = rewrittenQuestion
 
 	// 保存用户消息（使用原始问题）
@@ -381,7 +376,7 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 	}
 
 	// 创建 Pipe 用于流式传输
-	// 优先使用 Redis Stream（支持更大缓冲和分布式），Redis 不可用时回退到内存 channel
+	// 优先使用 Redis Stream，Redis 不可用时回退到内存 channel
 	streamReader, streamWriter := CreateStreamPipe(ctx, convID)
 
 	// 保留原始 context 用于取消控制
@@ -489,191 +484,6 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 	}()
 
 	return streamReader, nil
-}
-
-// preprocessMultimodalMessages 预处理多模态消息，将文件路径转换为base64
-func preprocessMultimodalMessages(ctx context.Context, messages []*schema.Message) error {
-	for _, msg := range messages {
-		// 处理 UserInputMultiContent
-		if len(msg.UserInputMultiContent) > 0 {
-			for i := range msg.UserInputMultiContent {
-				part := &msg.UserInputMultiContent[i]
-
-				// 处理图片
-				if part.Type == schema.ChatMessagePartTypeImageURL && part.Image != nil {
-					// 如果已经有base64数据，跳过
-					if part.Image.Base64Data != nil && *part.Image.Base64Data != "" {
-						continue
-					}
-
-					// 如果URL是文件路径，读取并转换为base64
-					if part.Image.URL != nil && *part.Image.URL != "" {
-						urlStr := *part.Image.URL
-						if len(urlStr) > 0 && (urlStr[0] == '/' || urlStr[0] == '.') {
-							data, err := os.ReadFile(urlStr)
-							if err != nil {
-								g.Log().Warningf(ctx, "Failed to read image file %s: %v, skipping", urlStr, err)
-								continue
-							}
-
-							// 获取MIME类型
-							mimeType := part.Image.MIMEType
-							if mimeType == "" {
-								ext := filepath.Ext(urlStr)
-								mimeType = getMimeType(ext)
-							}
-
-							base64Data := base64.StdEncoding.EncodeToString(data)
-							// 构造data URI格式
-							dataURI := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
-							part.Image.URL = &dataURI
-						}
-					}
-				}
-
-				// 处理音频
-				if part.Type == schema.ChatMessagePartTypeAudioURL && part.Audio != nil {
-					// 如果已经有base64数据，跳过
-					if part.Audio.Base64Data != nil && *part.Audio.Base64Data != "" {
-						continue
-					}
-
-					// 如果URL是文件路径，读取并转换为base64
-					if part.Audio.URL != nil && *part.Audio.URL != "" {
-						urlStr := *part.Audio.URL
-						if len(urlStr) > 0 && (urlStr[0] == '/' || urlStr[0] == '.') {
-							data, err := os.ReadFile(urlStr)
-							if err != nil {
-								g.Log().Warningf(ctx, "Failed to read audio file %s: %v, skipping", urlStr, err)
-								continue
-							}
-
-							// 获取MIME类型
-							mimeType := part.Audio.MIMEType
-							if mimeType == "" {
-								ext := filepath.Ext(urlStr)
-								mimeType = getMimeType(ext)
-							}
-
-							base64Data := base64.StdEncoding.EncodeToString(data)
-							// 构造data URI格式
-							dataURI := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
-							part.Audio.URL = &dataURI
-						}
-					}
-				}
-
-				// 处理视频
-				if part.Type == schema.ChatMessagePartTypeVideoURL && part.Video != nil {
-					// 如果已经有base64数据，跳过
-					if part.Video.Base64Data != nil && *part.Video.Base64Data != "" {
-						continue
-					}
-
-					// 如果URL是文件路径，读取并转换为base64
-					if part.Video.URL != nil && *part.Video.URL != "" {
-						urlStr := *part.Video.URL
-						if len(urlStr) > 0 && (urlStr[0] == '/' || urlStr[0] == '.') {
-							data, err := os.ReadFile(urlStr)
-							if err != nil {
-								g.Log().Warningf(ctx, "Failed to read video file %s: %v, skipping", urlStr, err)
-								continue
-							}
-
-							// 获取MIME类型
-							mimeType := part.Video.MIMEType
-							if mimeType == "" {
-								ext := filepath.Ext(urlStr)
-								mimeType = getMimeType(ext)
-							}
-
-							base64Data := base64.StdEncoding.EncodeToString(data)
-							// 构造data URI格式
-							dataURI := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
-							part.Video.URL = &dataURI
-						}
-					}
-				}
-			}
-		}
-
-		// 处理 MultiContent（旧版字段）
-		if len(msg.MultiContent) > 0 {
-			for i := range msg.MultiContent {
-				part := &msg.MultiContent[i]
-
-				// 处理图片
-				if part.Type == schema.ChatMessagePartTypeImageURL && part.ImageURL != nil {
-					urlStr := part.ImageURL.URL
-					// 如果是文件路径，读取并转换为base64
-					if len(urlStr) > 0 && (urlStr[0] == '/' || urlStr[0] == '.') {
-						data, err := os.ReadFile(urlStr)
-						if err != nil {
-							g.Log().Warningf(ctx, "Failed to read image file %s: %v, skipping", urlStr, err)
-							continue
-						}
-
-						// 获取MIME类型
-						ext := filepath.Ext(urlStr)
-						mimeType := getMimeType(ext)
-
-						base64Data := base64.StdEncoding.EncodeToString(data)
-						// 构造data URI格式
-						part.ImageURL.URL = fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
-					}
-				}
-
-				// 处理音频
-				if part.Type == schema.ChatMessagePartTypeAudioURL && part.AudioURL != nil {
-					urlStr := part.AudioURL.URL
-					// 如果是文件路径，读取并转换为base64
-					if len(urlStr) > 0 && (urlStr[0] == '/' || urlStr[0] == '.') {
-						data, err := os.ReadFile(urlStr)
-						if err != nil {
-							g.Log().Warningf(ctx, "Failed to read audio file %s: %v, skipping", urlStr, err)
-							continue
-						}
-
-						// 获取MIME类型
-						ext := filepath.Ext(urlStr)
-						mimeType := getMimeType(ext)
-
-						base64Data := base64.StdEncoding.EncodeToString(data)
-						// 构造data URI格式
-						part.AudioURL.URL = fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
-					}
-				}
-
-				// 处理视频
-				if part.Type == schema.ChatMessagePartTypeVideoURL && part.VideoURL != nil {
-					urlStr := part.VideoURL.URL
-					// 如果是文件路径，读取并转换为base64
-					if len(urlStr) > 0 && (urlStr[0] == '/' || urlStr[0] == '.') {
-						data, err := os.ReadFile(urlStr)
-						if err != nil {
-							g.Log().Warningf(ctx, "Failed to read video file %s: %v, skipping", urlStr, err)
-							continue
-						}
-
-						// 获取MIME类型
-						ext := filepath.Ext(urlStr)
-						mimeType := getMimeType(ext)
-
-						base64Data := base64.StdEncoding.EncodeToString(data)
-						// 构造data URI格式
-						part.VideoURL.URL = fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
-					}
-				}
-			}
-		}
-	}
-	return nil
-}
-
-// getMimeType 根据文件扩展名获取MIME类型
-// 已废弃：使用 common.GetMimeType 替代
-func getMimeType(ext string) string {
-	return common.GetMimeType(ext)
 }
 
 // GenerateWithTools 使用指定模型进行工具调用（支持 Function Calling）

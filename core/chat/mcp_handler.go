@@ -28,7 +28,7 @@ func (h *MCPHandler) CallMCPToolsWithLLM(ctx context.Context, req *v1.ChatReq, d
 	}
 	defer toolCaller.Close()
 
-	// 构建完整的用户问题（包含知识检索和文件解析的结果）
+	// 构建完整的用户问题
 	fullQuestion := h.buildFullQuestion(ctx, req.Question, documents, fileContent)
 
 	// 使用 LLM 智能选择并调用工具

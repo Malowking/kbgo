@@ -31,11 +31,12 @@ database:
 vectorStore:
   type: "pgvector"
 
+
 # Milvus 向量数据库配置
 #milvus:
-#  address: "localhost:19530"  # Milvus 服务地址
+#  address: "localhost:19530"   # Milvus 服务地址
 #  database: "kbgo"             # Milvus 数据库名称
-#  dim: 1024                    # 向量维度
+#  metricType: "COSINE"         # 向量距离度量类型,COSINE(余弦相似度), L2(欧式距离), IP(内积), 默认 COSINE
 
 # PostgreSQL 向量数据库配置 (pgvector)
 # 使用前需要先安装 pgvector 扩展: CREATE EXTENSION vector;
@@ -45,6 +46,7 @@ postgres:
   user: "kbgo"                 # PostgreSQL 用户名
   password: "kbgo123"          # PostgreSQL 密码
   database: "kbgo"             # PostgreSQL 数据库名称
+  metricType: "COSINE"         # 向量距离度量类型,COSINE(余弦相似度), L2(欧式距离), IP(内积), 默认 COSINE
   sslmode: "disable"           # SSL 模式: disable, require, verify-ca, verify-full
 
 # 文件存储配置
@@ -59,12 +61,6 @@ rustfs:
   secretKey: "your_secret_key"
   bucketName: ""
   ssl: false
-
-# 知识库检索默认参数配置
-retriever:
-  enableRewrite: false       # 是否启用查询重写（默认 false）
-  rewriteAttempts: 3         # 查询重写尝试次数（默认 3）
-  retrieveMode: "rerank"     # 检索模式: simple（普通检索）/rerank/rrf（默认 rerank）
 
 # 文档解析服务配置（Python file_parse 服务）
 fileParse:

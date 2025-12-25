@@ -11,7 +11,6 @@ import (
 )
 
 // ModelService 统一的模型服务
-// 整合了OpenAI客户端和消息格式适配器
 type ModelService struct {
 	client    *client.OpenAIClient
 	formatter formatter.MessageFormatter

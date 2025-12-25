@@ -346,7 +346,7 @@ func topKMeanScore(scores []float64, k int) float64 {
 		return 0.0
 	}
 
-	// 复制分数数组并排序（从大到小）
+	// 复制分数数组并排序
 	sortedScores := make([]float64, len(scores))
 	copy(sortedScores, scores)
 	sort.Slice(sortedScores, func(i, j int) bool {
@@ -466,7 +466,6 @@ func (r *CustomReranker) RerankWithSubChunks(ctx context.Context, query string, 
 
 	// 并发批量 rerank 策略：
 	// 由于 rerank API 支持一次调用多个文档，我们可以分批并行调用
-	// 这里使用一个合理的批大小（如 20-50 个 sub-chunk 一批）
 	batchSize := 30
 	numBatches := int(math.Ceil(float64(totalSubChunks) / float64(batchSize)))
 

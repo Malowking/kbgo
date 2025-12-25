@@ -111,7 +111,7 @@ func (mc *MCPCallLogCache) saveToCache(ctx context.Context, log *gormModel.MCPCa
 		return fmt.Errorf("保存MCP日志到Redis失败: %w", err)
 	}
 
-	// 2. 将日志ID添加到会话的日志列表中（使用sorted set，按创建时间排序）
+	// 2. 将日志ID添加到会话的日志列表中
 	if log.ConversationID != "" {
 		convListKey := fmt.Sprintf("%s%s", convMCPLogListPrefix, log.ConversationID)
 		score := float64(log.CreateTime.Unix())
@@ -177,7 +177,7 @@ func (mc *MCPCallLogCache) GetMCPCallLog(ctx context.Context, id string) (*gormM
 	return log, nil
 }
 
-// GetMCPCallLogsByConvID 获取会话的MCP调用日志列表（优先从缓存读取）
+// GetMCPCallLogsByConvID 获取会话的MCP调用日志列表
 func (mc *MCPCallLogCache) GetMCPCallLogsByConvID(ctx context.Context, convID string, page, pageSize int) ([]*gormModel.MCPCallLog, int64, error) {
 	convListKey := fmt.Sprintf("%s%s", convMCPLogListPrefix, convID)
 
@@ -190,7 +190,7 @@ func (mc *MCPCallLogCache) GetMCPCallLogsByConvID(ctx context.Context, convID st
 			g.Log().Errorf(ctx, "获取会话MCP日志总数失败: %v", err)
 		}
 
-		// 分页读取日志ID（倒序，最新的在前）
+		// 分页读取日志ID
 		offset := int64((page - 1) * pageSize)
 		start := -offset - int64(pageSize)
 		end := -offset - 1
@@ -223,7 +223,7 @@ func (mc *MCPCallLogCache) GetMCPCallLogsByConvID(ctx context.Context, convID st
 		return nil, 0, err
 	}
 
-	// 3. 回写缓存（异步）
+	// 3. 回写缓存
 	go func() {
 		for _, log := range logs {
 			mc.saveToCache(context.Background(), log)
@@ -233,7 +233,7 @@ func (mc *MCPCallLogCache) GetMCPCallLogsByConvID(ctx context.Context, convID st
 	return logs, total, nil
 }
 
-// GetMCPCallLogsByRegistryID 获取MCP服务的调用日志列表（优先从缓存读取）
+// GetMCPCallLogsByRegistryID 获取MCP服务的调用日志列表
 func (mc *MCPCallLogCache) GetMCPCallLogsByRegistryID(ctx context.Context, registryID string, page, pageSize int) ([]*gormModel.MCPCallLog, int64, error) {
 	registryListKey := fmt.Sprintf("%s%s", mcpRegistryLogListPrefix, registryID)
 
@@ -246,7 +246,7 @@ func (mc *MCPCallLogCache) GetMCPCallLogsByRegistryID(ctx context.Context, regis
 			g.Log().Errorf(ctx, "获取MCP服务日志总数失败: %v", err)
 		}
 
-		// 分页读取日志ID（倒序，最新的在前）
+		// 分页读取日志ID
 		offset := int64((page - 1) * pageSize)
 		start := -offset - int64(pageSize)
 		end := -offset - 1
@@ -279,7 +279,7 @@ func (mc *MCPCallLogCache) GetMCPCallLogsByRegistryID(ctx context.Context, regis
 		return nil, 0, err
 	}
 
-	// 3. 回写缓存（异步）
+	// 3. 回写缓存
 	go func() {
 		for _, log := range logs {
 			mc.saveToCache(context.Background(), log)

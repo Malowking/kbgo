@@ -39,7 +39,6 @@ var MimeTypeMap = map[string]string{
 }
 
 // GetMimeType 根据文件扩展名获取MIME类型
-// 如果未找到匹配的类型，返回 "application/octet-stream"
 func GetMimeType(ext string) string {
 	if mime, ok := MimeTypeMap[ext]; ok {
 		return mime
@@ -48,7 +47,6 @@ func GetMimeType(ext string) string {
 }
 
 // GetMimeTypeOrDefault 根据文件扩展名获取MIME类型
-// 如果未找到匹配的类型，返回指定的默认值
 func GetMimeTypeOrDefault(ext string, defaultType string) string {
 	if mime, ok := MimeTypeMap[ext]; ok {
 		return mime

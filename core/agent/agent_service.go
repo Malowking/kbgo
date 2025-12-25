@@ -50,7 +50,7 @@ func (s *AgentService) CreatePreset(ctx context.Context, req *v1.CreateAgentPres
 
 	g.Log().Infof(ctx, "创建Agent预设成功: %s, User: %s", preset.PresetID, req.UserID)
 
-	// 【新增】创建成功后立即写入Redis缓存
+	// 创建成功后立即写入Redis缓存
 	if err := cache.SetAgentPreset(ctx, preset); err != nil {
 		g.Log().Warningf(ctx, "写入Agent预设缓存失败（非致命）: %v", err)
 		// 不阻断流程，缓存失败不影响返回
@@ -249,7 +249,7 @@ func (s *AgentService) DeletePreset(ctx context.Context, req *v1.DeleteAgentPres
 
 // AgentChat 使用Agent预设进行对话
 func (s *AgentService) AgentChat(ctx context.Context, req *v1.AgentChatReq, uploadedFiles []*common.MultimodalFile) (*v1.AgentChatRes, error) {
-	// 获取Agent预设配置（带缓存）
+	// 获取Agent预设配置
 	preset, err := s.GetPreset(ctx, req.PresetID)
 	if err != nil {
 		return nil, err
@@ -325,7 +325,7 @@ func (s *AgentService) AgentChat(ctx context.Context, req *v1.AgentChatReq, uplo
 				Content: ref.Content,
 				Score:   float64(ref.Score),
 			}
-			// 从metadata中提取document_id和chunk_id（如果存在）
+			// 从metadata中提取document_id和chunk_id
 			if ref.MetaData != nil {
 				if docID, ok := ref.MetaData["document_id"].(string); ok {
 					doc.DocumentID = docID

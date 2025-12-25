@@ -7,13 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	coreErrors "github.com/Malowking/kbgo/core/errors"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	coreErrors "github.com/Malowking/kbgo/core/errors"
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/formatter"
@@ -205,7 +206,7 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 
 	// 如果本次有新的文档文件上传，解析它们
 	if len(documentFiles) > 0 {
-		fileContent, fileImages, err = parseDocumentFiles(ctx, documentFiles)
+		fileContent, fileImages, err = ParseDocumentFiles(ctx, documentFiles)
 		if err != nil {
 			g.Log().Warningf(ctx, "Failed to parse document files: %v", err)
 			fileContent = ""
@@ -353,7 +354,7 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 
 	// 如果本次有新的文档文件上传，解析它们
 	if len(documentFiles) > 0 {
-		fileContent, fileImages, err = parseDocumentFiles(ctx, documentFiles)
+		fileContent, fileImages, err = ParseDocumentFiles(ctx, documentFiles)
 		if err != nil {
 			g.Log().Warningf(ctx, "Failed to parse document files: %v", err)
 			fileContent = ""
@@ -433,7 +434,7 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 	}
 
 	// 创建 Pipe 用于流式传输
-	// 优先使用 Redis Stream（支持更大缓冲和分布式），Redis 不可用时回退到内存 channel
+	// 优先使用 Redis Stream，Redis 不可用时回退到内存 channel
 	streamReader, streamWriter := CreateStreamPipe(ctx, convID)
 
 	// 保留原始 context 用于取消控制
@@ -531,7 +532,7 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 					}
 				}
 
-				// 累计token数量（如果有usage信息）
+				// 累计token数量
 				if response.Usage != nil {
 					tokenCount = response.Usage.TotalTokens
 				}
@@ -554,7 +555,7 @@ func buildMultimodalMessageWithImages(ctx context.Context, text string, files []
 	// 添加文本部分
 	if text != "" {
 		userInputParts = append(userInputParts, schema.MessageInputPart{
-			Type: schema.ChatMessagePartTypeText,
+			Type: schema.MessagePartTypeText,
 			Text: text,
 		})
 	}
@@ -579,7 +580,7 @@ func buildMultimodalMessageWithImages(ctx context.Context, text string, files []
 			}
 
 			imagePart := schema.MessageInputPart{
-				Type: schema.ChatMessagePartTypeImageURL,
+				Type: schema.MessagePartTypeImageURL,
 				Image: &schema.MessageInputImage{
 					MessagePartCommon: schema.MessagePartCommon{
 						URL:        &imgURL,
@@ -618,14 +619,14 @@ func buildFilePart(file *common.MultimodalFile) (schema.MessageInputPart, error)
 
 		// 获取MIME类型
 		ext := filepath.Ext(file.FileName)
-		mimeType := getMimeTypeForFile(ext)
+		mimeType := common.GetMimeType(ext)
 
 		// 编码为base64
 		base64Data := base64.StdEncoding.EncodeToString(data)
 
 		// 使用MessageInputPart，存储文件路径到URL，base64用于API调用
 		return schema.MessageInputPart{
-			Type: schema.ChatMessagePartTypeImageURL,
+			Type: schema.MessagePartTypeImageURL,
 			Image: &schema.MessageInputImage{
 				MessagePartCommon: schema.MessagePartCommon{
 					URL:        &file.FilePath, // 存储文件路径
@@ -637,16 +638,10 @@ func buildFilePart(file *common.MultimodalFile) (schema.MessageInputPart, error)
 
 	default:
 		return schema.MessageInputPart{
-			Type: schema.ChatMessagePartTypeText,
+			Type: schema.MessagePartTypeText,
 			Text: fmt.Sprintf("[文件: %s]", file.FileName),
 		}, nil
 	}
-}
-
-// getMimeTypeForFile 获取MIME类型
-// 已废弃：使用 common.GetMimeType 替代
-func getMimeTypeForFile(ext string) string {
-	return common.GetMimeType(ext)
 }
 
 // 辅助函数
@@ -678,13 +673,8 @@ func separateFilesByType(files []*common.MultimodalFile) (multimodalFiles []*com
 	return
 }
 
-// ParseDocumentFiles 解析文档文件，调用Python服务获取全文和图片（公开函数）
+// ParseDocumentFiles 解析文档文件，调用Python服务获取全文和图片
 func ParseDocumentFiles(ctx context.Context, files []*common.MultimodalFile) (string, []string, error) {
-	return parseDocumentFiles(ctx, files)
-}
-
-// parseDocumentFiles 解析文档文件，调用Python服务获取全文和图片（内部函数）
-func parseDocumentFiles(ctx context.Context, files []*common.MultimodalFile) (string, []string, error) {
 	if len(files) == 0 {
 		return "", nil, nil
 	}
@@ -775,7 +765,7 @@ func buildSystemPrompt(modelType coreModel.ModelType, docs []*schema.Document, f
 		}
 	}
 
-	// 如果有文件内容，移除其中的图片占位符（因为图片已通过user消息传入）
+	// 如果有文件内容，移除其中的图片占位符
 	if fileContent != "" {
 		// 移除图片占位符Markdown语法
 		cleanedContent := removeImagePlaceholders(fileContent)
@@ -908,7 +898,7 @@ func downloadImageFromURL(ctx context.Context, imageURL string) (string, string,
 
 		// 从文件路径获取扩展名并确定MIME类型
 		ext := filepath.Ext(imageURL)
-		mimeType := getMimeTypeForFile(ext)
+		mimeType := common.GetMimeType(ext)
 
 		g.Log().Infof(ctx, "Successfully read local image: %s, size: %d bytes, mime: %s", imageURL, len(data), mimeType)
 		return base64Data, mimeType, nil
@@ -937,7 +927,7 @@ func downloadImageFromURL(ctx context.Context, imageURL string) (string, string,
 
 	// 从URL获取文件扩展名并确定MIME类型
 	ext := filepath.Ext(imageURL)
-	mimeType := getMimeTypeForFile(ext)
+	mimeType := common.GetMimeType(ext)
 
 	g.Log().Infof(ctx, "Successfully downloaded image: %s, size: %d bytes, mime: %s", imageURL, len(data), mimeType)
 	return base64Data, mimeType, nil

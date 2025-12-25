@@ -94,7 +94,7 @@ func NewMilvusStore(config *VectorStoreConfig) (VectorStore, error) {
 	}, nil
 }
 
-// CreateDatabaseIfNotExists 创建数据库（如果不存在）
+// CreateDatabaseIfNotExists 创建数据库
 func (m *MilvusStore) CreateDatabaseIfNotExists(ctx context.Context) error {
 	dbNames, err := m.client.ListDatabase(ctx, milvusclient.NewListDatabaseOption())
 	if err != nil {
@@ -167,7 +167,7 @@ func (m *MilvusStore) DeleteCollection(ctx context.Context, collectionName strin
 	return nil
 }
 
-// InsertVectors 插入向量数据 - 直接使用float32向量
+// InsertVectors 插入向量数据
 func (m *MilvusStore) InsertVectors(ctx context.Context, collectionName string, chunks []*schema.Document, vectors [][]float32) ([]string, error) {
 	if len(chunks) != len(vectors) {
 		return nil, errors.Newf(errors.ErrInvalidParameter, "chunks and vectors length mismatch: %d vs %d", len(chunks), len(vectors))
@@ -191,13 +191,13 @@ func (m *MilvusStore) InsertVectors(ctx context.Context, collectionName string, 
 	}
 
 	for idx, chunk := range chunks {
-		// 生成chunk ID（如果不存在）
+		// 生成chunk ID
 		if len(chunk.ID) == 0 {
 			chunk.ID = uuid.New().String()
 		}
 		ids[idx] = chunk.ID
 
-		// 截断文本（如果需要）
+		// 截断文本
 		texts[idx] = truncateString(chunk.Content, 65535)
 
 		// 设置document_id
@@ -255,12 +255,12 @@ func (m *MilvusStore) InsertVectors(ctx context.Context, collectionName string, 
 
 // DeleteByDocumentID 根据文档ID删除所有相关chunks
 func (m *MilvusStore) DeleteByDocumentID(ctx context.Context, collectionName string, documentID string) error {
-	// 验证 documentID 格式（防止注入）
+	// 验证 documentID 格式
 	if !common.ValidateUUID(documentID) {
 		return errors.Newf(errors.ErrInvalidParameter, "invalid document ID format: %s (must be valid UUID)", documentID)
 	}
 
-	// 转义特殊字符（双重保护）
+	// 转义特殊字符
 	safeDocID := common.SanitizeMilvusString(documentID)
 	filterExpr := fmt.Sprintf(`document_id == "%s"`, safeDocID)
 
@@ -283,12 +283,12 @@ func (m *MilvusStore) DeleteByDocumentID(ctx context.Context, collectionName str
 
 // DeleteByChunkID 根据chunkID删除单个chunk
 func (m *MilvusStore) DeleteByChunkID(ctx context.Context, collectionName string, chunkID string) error {
-	// 验证 chunkID 格式（防止注入）
+	// 验证 chunkID 格式
 	if !common.ValidateUUID(chunkID) {
 		return errors.Newf(errors.ErrInvalidParameter, "invalid chunk ID format: %s (must be valid UUID)", chunkID)
 	}
 
-	// 转义特殊字符（双重保护）
+	// 转义特殊字符
 	safeChunkID := common.SanitizeMilvusString(chunkID)
 	filterExpr := fmt.Sprintf(`id == "%s"`, safeChunkID)
 
@@ -343,7 +343,7 @@ func (m *MilvusStore) GetMilvusClient() *milvusclient.Client {
 	return m.client
 }
 
-// NewRetriever 创建检索器实例（通用方法名）
+// NewRetriever 创建检索器实例
 func (m *MilvusStore) NewRetriever(ctx context.Context, conf interface{}, collectionName string) (Retriever, error) {
 	return m.NewMilvusRetriever(ctx, conf, collectionName)
 }
@@ -376,7 +376,7 @@ func (r *milvusRetriever) Retrieve(ctx context.Context, query string, opts ...Op
 		scoreThreshold = options.ScoreThreshold
 	}
 
-	// 获取 Milvus 特定选项（filter, partition）
+	// 获取 Milvus 特定选项
 	var filter, partition string
 	for _, opt := range opts {
 		// 尝试应用到临时Options来提取filter和partition
@@ -390,7 +390,7 @@ func (r *milvusRetriever) Retrieve(ctx context.Context, query string, opts ...Op
 		}
 	}
 
-	// 创建embedding实例 - 使用接口方法获取配置,避免反射
+	// 创建embedding实例
 	var apiKey, baseURL, embeddingModel string
 	if r.config != nil {
 		// 定义接口
@@ -406,7 +406,7 @@ func (r *milvusRetriever) Retrieve(ctx context.Context, query string, opts ...Op
 			baseURL = configGetter.GetBaseURL()
 			embeddingModel = configGetter.GetEmbeddingModel()
 		} else {
-			// Fallback: 尝试使用反射获取配置字段(兼容旧代码)
+			// Fallback: 尝试使用反射获取配置字段
 			configValue := reflect.ValueOf(r.config)
 			if configValue.Kind() == reflect.Ptr {
 				configValue = configValue.Elem()
@@ -446,7 +446,7 @@ func (r *milvusRetriever) Retrieve(ctx context.Context, query string, opts ...Op
 		return nil, errors.Newf(errors.ErrEmbeddingFailed, "failed to create embedder: %v", err)
 	}
 
-	// embedding查询 - 直接获取float32向量
+	// embedding查询
 	// 获取向量维度，优先从配置文件读取
 	dim := g.Cfg().MustGet(ctx, "milvus.dim", 1024).Int()
 	vectors, err := embedder.EmbedStrings(ctx, []string{query}, dim)
@@ -571,7 +571,6 @@ func (m *MilvusStore) NewMilvusRetriever(ctx context.Context, conf interface{}, 
 }
 
 // ConvertSearchResultsToDocuments converts Milvus search results to schema.Document
-// and filters out chunks with status != 1 for permission control
 func (m *MilvusStore) ConvertSearchResultsToDocuments(ctx context.Context, columns []column.Column, scores []float32) ([]*schema.Document, error) {
 	if len(columns) == 0 {
 		return nil, nil

@@ -18,38 +18,12 @@ const (
 	maxPageSize     = 100
 )
 
-// SaveDocumentsInfo 保存文档信息
-func SaveDocumentsInfo(ctx context.Context, documents gormModel.KnowledgeDocuments) (documentsSave gormModel.KnowledgeDocuments, err error) {
-	// 转换为 GORM 模型（GORM 会自动设置 CreateTime 和 UpdateTime）
-	gormDoc := gormModel.KnowledgeDocuments{
-		ID:             documents.ID,
-		KnowledgeId:    documents.KnowledgeId,
-		FileName:       documents.FileName,
-		FileExtension:  documents.FileExtension, // 添加文件扩展名
-		CollectionName: documents.CollectionName,
-		SHA256:         documents.SHA256,
-		RustfsBucket:   documents.RustfsBucket,
-		RustfsLocation: documents.RustfsLocation,
-		LocalFilePath:  documents.LocalFilePath, // 添加本地文件路径
-		Status:         int8(documents.Status),
-	}
-
-	// 使用 DAO 中的 GORM 数据库连接
-	result := dao.GetDB().WithContext(ctx).Create(&gormDoc)
-	if result.Error != nil {
-		g.Log().Errorf(ctx, "保存文档信息失败: %+v, 错误: %v", documents, result.Error)
-		return documents, errors.Newf(errors.ErrDatabaseInsert, "保存文档信息失败: %v", result.Error)
-	}
-	g.Log().Infof(ctx, "文档保存成功, ID: %s", documents.ID)
-	return documents, nil
-}
-
-// SaveDocumentsInfoWithTx 保存文档信息（事务版本）
+// SaveDocumentsInfoWithTx 保存文档信息
 func SaveDocumentsInfoWithTx(ctx context.Context, tx *gorm.DB, documents gormModel.KnowledgeDocuments) (documentsSave gormModel.KnowledgeDocuments, err error) {
 	id := strings.ReplaceAll(uuid.New().String(), "-", "")
 	documents.ID = id
 
-	// 转换为 GORM 模型（GORM 会自动设置 CreateTime 和 UpdateTime）
+	// 转换为 GORM 模型
 	gormDoc := gormModel.KnowledgeDocuments{
 		ID:             documents.ID,
 		KnowledgeId:    documents.KnowledgeId,
@@ -94,19 +68,19 @@ func UpdateDocumentsStatus(ctx context.Context, documentsId string, status int) 
 	return err
 }
 
-// UpdateDocumentsLocalPath 更新文档的本地文件路径
-func UpdateDocumentsLocalPath(ctx context.Context, documentsId string, localPath string) error {
-	data := map[string]interface{}{
-		"local_file_path": localPath,
-	}
-
-	err := dao.GetDB().WithContext(ctx).Model(&gormModel.KnowledgeDocuments{}).Where("id = ?", documentsId).Updates(data).Error
-	if err != nil {
-		g.Log().Errorf(ctx, "更新文档本地文件路径失败: ID=%s, 路径=%s, 错误: %v", documentsId, localPath, err)
-	}
-
-	return err
-}
+//// UpdateDocumentsLocalPath 更新文档的本地文件路径
+//func UpdateDocumentsLocalPath(ctx context.Context, documentsId string, localPath string) error {
+//	data := map[string]interface{}{
+//		"local_file_path": localPath,
+//	}
+//
+//	err := dao.GetDB().WithContext(ctx).Model(&gormModel.KnowledgeDocuments{}).Where("id = ?", documentsId).Updates(data).Error
+//	if err != nil {
+//		g.Log().Errorf(ctx, "更新文档本地文件路径失败: ID=%s, 路径=%s, 错误: %v", documentsId, localPath, err)
+//	}
+//
+//	return err
+//}
 
 // GetDocumentById 根据ID获取文档信息
 func GetDocumentById(ctx context.Context, id string) (document gormModel.KnowledgeDocuments, err error) {
@@ -175,7 +149,7 @@ func GetDocumentsList(ctx context.Context, where gormModel.KnowledgeDocuments, p
 	return documents, total, nil
 }
 
-// DeleteDocumentWithTx 删除文档及其相关数据（事务版本）
+// DeleteDocumentWithTx 删除文档及其相关数据
 func DeleteDocumentWithTx(ctx context.Context, tx *gorm.DB, id string) error {
 	// 先删除文档块
 	result := tx.WithContext(ctx).Where("knowledge_doc_id = ?", id).Delete(&gormModel.KnowledgeChunks{})

@@ -38,7 +38,7 @@ func InitializePostgresStore(ctx context.Context) (VectorStore, error) {
 		return nil, errors.New(errors.ErrVectorStoreInit, "postgres configuration is incomplete. Required: host, user, database")
 	}
 
-	// 构建连接字符串（去掉空密码的 password= 参数）
+	// 构建连接字符串
 	var connStr string
 	if password != "" {
 		connStr = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
@@ -100,7 +100,7 @@ func NewPostgresStore(config *VectorStoreConfig) (VectorStore, error) {
 	}, nil
 }
 
-// CreateDatabaseIfNotExists 创建数据库（如果不存在）- PostgreSQL版本
+// CreateDatabaseIfNotExists 创建数据库
 func (p *PostgresStore) CreateDatabaseIfNotExists(ctx context.Context) error {
 	// 1. 检查 pgvector 扩展是否已安装
 	var extensionExists bool
@@ -131,7 +131,7 @@ func (p *PostgresStore) CreateDatabaseIfNotExists(ctx context.Context) error {
 	return nil
 }
 
-// CreateCollection 创建集合（表）- 使用模型定义
+// CreateCollection 创建集合
 func (p *PostgresStore) CreateCollection(ctx context.Context, collectionName string, dimension int) error {
 	// 清理表名，防止SQL注入
 	tableName := p.sanitizeTableName(collectionName)
@@ -159,7 +159,7 @@ func (p *PostgresStore) CreateCollection(ctx context.Context, collectionName str
 	return nil
 }
 
-// CollectionExists 检查集合（表）是否存在
+// CollectionExists 检查集合
 func (p *PostgresStore) CollectionExists(ctx context.Context, collectionName string) (bool, error) {
 	tableName := p.sanitizeTableName(collectionName)
 
@@ -176,7 +176,7 @@ func (p *PostgresStore) CollectionExists(ctx context.Context, collectionName str
 	return exists, nil
 }
 
-// DeleteCollection 删除集合（表）
+// DeleteCollection 删除集合
 func (p *PostgresStore) DeleteCollection(ctx context.Context, collectionName string) error {
 	tableName := p.sanitizeTableName(collectionName)
 	fullTableName := fmt.Sprintf("%s.%s", p.schema, tableName)
@@ -225,7 +225,7 @@ func (p *PostgresStore) InsertVectors(ctx context.Context, collectionName string
 	`, fullTableName)
 
 	for idx, chunk := range chunks {
-		// 生成chunk ID（如果不存在）
+		// 生成chunk ID
 		if len(chunk.ID) == 0 {
 			chunk.ID = uuid.New().String()
 		}
@@ -236,14 +236,14 @@ func (p *PostgresStore) InsertVectors(ctx context.Context, collectionName string
 		// 但为了防御性编程，仍然使用统一的清洗工具确保安全
 		sanitizedText, err := common.CleanString(chunk.Content, common.ProfileDatabase)
 		if err != nil {
-			// 如果清洗失败，记录警告但不中断（因为前面已经清洗过了）
+			// 如果清洗失败，记录警告但不中断
 			g.Log().Warningf(ctx, "Failed to clean chunk content in InsertVectors, using original content. chunkID=%s, err=%v",
 				chunk.ID, err)
 			sanitizedText = chunk.Content
 		}
 		text := p.truncateString(sanitizedText, 65535)
 
-		// 转换向量为pgvector格式 - 直接使用float32向量
+		// 转换向量为pgvector格式
 		pgVector := pgvector.NewVector(vectors[idx])
 
 		// 设置document_id
@@ -451,11 +451,28 @@ type postgresRetriever struct {
 func (r *postgresRetriever) Retrieve(ctx context.Context, query string, opts ...Option) ([]*schema.Document, error) {
 	// 默认参数
 	topK := 5
+	var scoreThreshold *float64
 
-	// 解析选项（这里简化处理，实际使用时需要更完整的选项解析）
-	_ = opts // 暂时忽略选项
+	// 解析选项
+	options := GetCommonOptions(&Options{
+		TopK:           &topK,
+		ScoreThreshold: scoreThreshold,
+	}, opts...)
 
-	return r.vectorSearchWithThreshold(ctx, query, topK, 0.0)
+	if options.TopK != nil {
+		topK = *options.TopK
+	}
+	if options.ScoreThreshold != nil {
+		scoreThreshold = options.ScoreThreshold
+	}
+
+	// 如果没有设置阈值，使用默认值0.0
+	threshold := 0.0
+	if scoreThreshold != nil {
+		threshold = *scoreThreshold
+	}
+
+	return r.vectorSearchWithThreshold(ctx, query, topK, threshold)
 }
 
 // vectorSearchWithThreshold 带阈值的向量搜索
@@ -519,7 +536,7 @@ func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query
 	queryVector := pgvector.NewVector(vectors[0])
 
 	// 获取距离度量类型，从配置文件读取
-	metricType := g.Cfg().MustGet(ctx, "vectordb.metricType", "COSINE").String()
+	metricType := g.Cfg().MustGet(ctx, "vectorStore.metricType", "COSINE").String()
 
 	// 根据metricType选择pgvector操作符和分数计算方式
 	var scoreCalc, orderBy string

@@ -21,7 +21,7 @@ func GetAgentPresetTTL(ctx context.Context) time.Duration {
 	return time.Duration(ttl) * time.Second
 }
 
-// GetAgentPreset 从缓存获取Agent预设（如果不存在返回redis.Nil错误）
+// GetAgentPreset 从缓存获取Agent预设
 func GetAgentPreset(ctx context.Context, presetID string) (*gorm.AgentPreset, error) {
 	cacheKey := agentPresetCacheKeyPrefix + presetID
 
@@ -81,7 +81,7 @@ func InvalidateAgentPreset(ctx context.Context, presetID string) error {
 	return nil
 }
 
-// InvalidateAgentPresetsByUserID 删除用户的所有Agent预设缓存（通过模式匹配）
+// InvalidateAgentPresetsByUserID 删除用户的所有Agent预设缓存
 func InvalidateAgentPresetsByUserID(ctx context.Context, userID string) error {
 	// 注意：这个方法需要scan所有key，生产环境慎用
 	// 可以考虑维护一个user_id -> preset_ids的映射来优化

@@ -13,7 +13,7 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// Retrieve 执行检索（主方法）
+// Retrieve 执行检索
 func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveReq) ([]*schema.Document, error) {
 	// 使用配置中的默认值填充请求中未提供的参数
 	if req.TopK == nil {
@@ -92,7 +92,7 @@ func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 	// 第一步：串行生成多个优化查询
 	optimizedQueries := make([]string, 0, rewriteAttempts)
 
-	// 创建模型服务（使用重写模型）
+	// 创建模型服务
 	modelFormatter := formatter.NewOpenAIFormatter()
 	modelService := model.NewModelService(rewriteModel.APIKey, rewriteModel.BaseURL, modelFormatter)
 
@@ -190,7 +190,7 @@ func retrieveDoOnce(ctx context.Context, conf *config.RetrieverConfig, req *Retr
 		// 模式1: 普通向量检索，直接调用VectorStore的方法
 		return conf.VectorStore.VectorSearchOnly(ctx, conf, req.optQuery, req.KnowledgeId, *req.TopK, *req.Score)
 	case RetrieveModeRerank:
-		// 模式2: Milvus + Rerank
+		// 模式2: simple + Rerank
 		return retrieveWithRerank(ctx, conf, req)
 	case RetrieveModeRRF:
 		// 模式3: RRF混合检索

@@ -44,7 +44,7 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 
 	// 检查是否有其他知识库引用了相同的 SHA256 文件
 	if document.SHA256 != "" {
-		// 查询是否还有其他文档引用相同的 SHA256（使用事务）
+		// 查询是否还有其他文档引用相同的 SHA256
 		var count int64
 		err := tx.WithContext(ctx).Model(&gormModel.KnowledgeDocuments{}).Where("sha256 = ?", document.SHA256).Count(&count).Error
 		if err != nil {
@@ -85,7 +85,6 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 	if document.CollectionName == "" {
 		g.Log().Warningf(ctx, "DocumentsDelete: CollectionName is empty for document id %s, skipping Milvus deletion", req.DocumentId)
 	} else {
-		// 使用 DeleteDocument 函数删除 Milvus 中所有该文档的分片
 		err = docIndexSvr.DeleteDocument(ctx, document.CollectionName, req.DocumentId)
 		if err != nil {
 			g.Log().Errorf(ctx, "DocumentsDelete: Milvus DeleteDocument failed for documentId %s in collection %s, err: %v", req.DocumentId, document.CollectionName, err)
@@ -94,7 +93,7 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 		}
 	}
 
-	// 从数据库删除文档记录（会级联删除相关的 chunks）使用事务版本
+	// 从数据库删除文档记录
 	err = knowledge.DeleteDocumentWithTx(ctx, tx, req.DocumentId)
 	if err != nil {
 		g.Log().Errorf(ctx, "DocumentsDelete: DeleteDocument failed for id %s, err: %v", req.DocumentId, err)
@@ -108,7 +107,7 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 		return nil, errors.Newf(errors.ErrDatabaseDelete, "failed to commit transaction: %v", err)
 	}
 
-	// 事务成功提交后，删除存储中的文件（这个操作失败不影响数据一致性）
+	// 事务成功提交后，删除存储中的文件
 	if needDeleteFromRustFS && rustfsBucket != "" && rustfsLocation != "" {
 		g.Log().Infof(ctx, "DocumentsDelete: deleting file from RustFS, bucket=%s, location=%s", rustfsBucket, rustfsLocation)
 
@@ -122,7 +121,7 @@ func (c *ControllerV1) DocumentsDelete(ctx context.Context, req *v1.DocumentsDel
 		}
 	}
 
-	// 删除本地文件（RustFS 模式和本地存储模式都需要）
+	// 删除本地文件
 	if needDeleteLocalFile && localFilePath != "" {
 		g.Log().Infof(ctx, "DocumentsDelete: deleting local file, path=%s", localFilePath)
 

@@ -66,7 +66,7 @@ func ConvertImageURLsInContent(content string, baseURL string) string {
 		if len(matches) < 2 {
 			return match
 		}
-		imageName := matches[1] // xxx.jpeg
+		imageName := matches[1]
 
 		// 构建新的代理URL
 		proxyURL := fmt.Sprintf("%s/api/v1/images/%s", baseURL, imageName)
@@ -78,17 +78,17 @@ func ConvertImageURLsInContent(content string, baseURL string) string {
 	return result
 }
 
-// ExtractImageURLs 从内容中提取所有图片URL
-func ExtractImageURLs(content string) []string {
-	matches := imageURLPattern.FindAllStringSubmatch(content, -1)
-	urls := make([]string, 0, len(matches))
-	for _, match := range matches {
-		if len(match) >= 2 {
-			urls = append(urls, match[1]) // 完整的原始URL
-		}
-	}
-	return urls
-}
+//// ExtractImageURLs 从内容中提取所有图片URL
+//func ExtractImageURLs(content string) []string {
+//	matches := imageURLPattern.FindAllStringSubmatch(content, -1)
+//	urls := make([]string, 0, len(matches))
+//	for _, match := range matches {
+//		if len(match) >= 2 {
+//			urls = append(urls, match[1]) // 完整的原始URL
+//		}
+//	}
+//	return urls
+//}
 
 // GetBaseURL 从请求上下文获取基础URL
 // 优先使用 X-Forwarded-Host 和 X-Forwarded-Proto，否则使用 Host 和 Scheme

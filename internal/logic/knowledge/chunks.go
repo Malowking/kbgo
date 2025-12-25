@@ -49,7 +49,7 @@ func SaveChunksData(ctx context.Context, documentsId string, chunks []gormModel.
 			Content:        sanitizeText(chunk.Content), // 清理NULL字节
 			CollectionName: chunk.CollectionName,
 			Ext:            string(extJSON),
-			Status:         int8(chunk.Status),
+			Status:         chunk.Status,
 		}
 	}
 
@@ -129,14 +129,14 @@ func GetChunkById(ctx context.Context, id string) (chunk gormModel.KnowledgeChun
 	return
 }
 
-// DeleteChunkByIdWithTx 根据ID删除知识块（事务版本）
+// DeleteChunkByIdWithTx 根据ID删除知识块
 func DeleteChunkByIdWithTx(ctx context.Context, tx *gorm.DB, id string) error {
 	result := tx.WithContext(ctx).Where("id = ?", id).Delete(&gormModel.KnowledgeChunks{})
 	return result.Error
 }
 
-// DeleteChunksByDocumentId 根据文档ID删除该文档的所有chunks（事务版本）
-func DeleteChunksByDocumentId(ctx context.Context, tx *gorm.DB, documentId string) error {
+// DeleteChunksByDocumentIdWithTx 根据文档ID删除该文档的所有chunks
+func DeleteChunksByDocumentIdWithTx(ctx context.Context, tx *gorm.DB, documentId string) error {
 	result := tx.WithContext(ctx).Where("knowledge_doc_id = ?", documentId).Delete(&gormModel.KnowledgeChunks{})
 	if result.Error != nil {
 		g.Log().Errorf(ctx, "DeleteChunksByDocumentId failed for document %s, err: %v", documentId, result.Error)
@@ -146,7 +146,7 @@ func DeleteChunksByDocumentId(ctx context.Context, tx *gorm.DB, documentId strin
 	return nil
 }
 
-// UpdateChunkByIdsWithTx 根据ID更新知识块（事务版本）
+// UpdateChunkByIdsWithTx 根据ID更新知识块
 func UpdateChunkByIdsWithTx(ctx context.Context, tx *gorm.DB, ids []string, data gormModel.KnowledgeChunks) error {
 	updates := make(map[string]interface{})
 	if data.Content != "" {
@@ -159,26 +159,6 @@ func UpdateChunkByIdsWithTx(ctx context.Context, tx *gorm.DB, ids []string, data
 	return result.Error
 }
 
-// GetAllChunksByDocId gets all chunks by document id
-func GetAllChunksByDocId(ctx context.Context, docId string, fields ...string) (list []gormModel.KnowledgeChunks, err error) {
-	query := dao.GetDB().WithContext(ctx).Model(&gormModel.KnowledgeChunks{}).Where("knowledge_doc_id = ?", docId)
-
-	// GORM doesn't support selecting specific fields when scanning into structs the same way
-	// If you need specific fields, use Select()
-	if len(fields) > 0 {
-		query = query.Select(fields)
-	}
-
-	err = query.Find(&list).Error
-	if err != nil {
-		return
-	}
-
-	// 按照 ext 中的 chunk_order 字段排序
-	sortChunksByOrder(list)
-	return
-}
-
 // sortChunksByOrder 根据 ext 字段中的 chunk_order 对 chunks 进行排序
 func sortChunksByOrder(chunks []gormModel.KnowledgeChunks) {
 	sort.Slice(chunks, func(i, j int) bool {
@@ -189,7 +169,6 @@ func sortChunksByOrder(chunks []gormModel.KnowledgeChunks) {
 }
 
 // extractChunkOrder 从 ext 字段中提取 chunk_order 的值
-// 如果提取失败或不存在，返回一个很大的数字以保证排在最后
 func extractChunkOrder(ext string) int {
 	if ext == "" {
 		return 999999
@@ -215,7 +194,6 @@ func extractChunkOrder(ext string) int {
 }
 
 // sanitizeText 清理文本中的NULL字节和其他PostgreSQL不支持的字符
-// PostgreSQL不允许在TEXT/VARCHAR字段中存储NULL字节(0x00)
 func sanitizeText(text string) string {
 	// 移除NULL字节(0x00)
 	return strings.ReplaceAll(text, "\x00", "")

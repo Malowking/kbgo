@@ -11,8 +11,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// loadAgentPresetConfig 加载Agent预设配置（如果会话关联了Agent预设）
-// 优先级：请求参数 > Agent预设配置
+// loadAgentPresetConfig 加载Agent预设配置
 func (h *ChatHandler) loadAgentPresetConfig(ctx context.Context, req *v1.ChatReq) *v1.ChatReq {
 	// 查询会话信息
 	conv, err := dao.Conversation.GetByConvID(ctx, req.ConvID)

@@ -2,10 +2,12 @@ package retriever
 
 import (
 	"context"
+	"fmt"
 
 	"encoding/json"
-	"github.com/Malowking/kbgo/core/errors"
 	"sort"
+
+	"github.com/Malowking/kbgo/core/errors"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/config"
@@ -30,7 +32,6 @@ func InitRetrieverConfig() {
 	}
 
 	// 从数据库的 model 表中读取默认的 embedding 和 rerank 模型
-	// 获取第一个启用的 embedding 模型
 	embeddingModels := model.Registry.GetByType(model.ModelTypeEmbedding)
 	var embeddingAPIKey, embeddingBaseURL, embeddingModel string
 	if len(embeddingModels) > 0 {
@@ -54,21 +55,23 @@ func InitRetrieverConfig() {
 		g.Log().Warning(ctx, "No rerank model found in database, rerank config will be empty")
 	}
 
+	vectorDBType := g.Cfg().MustGet(ctx, "vectorStore.type", "milvus").String()
+	MetricType := g.Cfg().MustGet(ctx, fmt.Sprintf("%s.metricType", vectorDBType), "COSINE").String()
 	// 初始化 retrieverConfig，使用从数据库读取的模型配置
 	retrieverConfig = &config.RetrieverConfig{
 		RetrieverConfigBase: config.RetrieverConfigBase{
-			MetricType:      g.Cfg().MustGet(ctx, "milvus.metricType", "COSINE").String(),
+			MetricType:      MetricType,
 			APIKey:          embeddingAPIKey,
 			BaseURL:         embeddingBaseURL,
 			EmbeddingModel:  embeddingModel,
 			RerankAPIKey:    rerankAPIKey,
 			RerankBaseURL:   rerankBaseURL,
 			RerankModel:     rerankModel,
-			EnableRewrite:   g.Cfg().MustGet(ctx, "retriever.enableRewrite", false).Bool(),
-			RewriteAttempts: g.Cfg().MustGet(ctx, "retriever.rewriteAttempts", 3).Int(),
-			RetrieveMode:    g.Cfg().MustGet(ctx, "retriever.retrieveMode", "rerank").String(),
-			TopK:            g.Cfg().MustGet(ctx, "retriever.topK", 5).Int(),
-			Score:           g.Cfg().MustGet(ctx, "retriever.score", 0.2).Float64(),
+			EnableRewrite:   false,
+			RewriteAttempts: 3,
+			RetrieveMode:    "rerank",
+			TopK:            5,
+			Score:           0.2,
 		},
 		VectorStore: vectorStore,
 	}

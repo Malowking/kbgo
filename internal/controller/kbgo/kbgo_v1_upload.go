@@ -11,6 +11,7 @@ import (
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/core/file_store"
+	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
 	"github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
@@ -72,7 +73,6 @@ func (c *ControllerV1) uploadToRustFS(ctx context.Context, req *v1.UploadFileReq
 		return res, nil
 	}
 
-	// Upload to RustFS using new method
 	localPath, rustfsKey, err := file_store.SaveFileToRustFS(ctx, rustfsConfig.Client, rustfsConfig.BucketName, req.KnowledgeId, fileName, fileReader)
 	if err != nil {
 		g.Log().Errorf(ctx, "Failed to upload file to RustFS: %v", err)
@@ -85,7 +85,7 @@ func (c *ControllerV1) uploadToRustFS(ctx context.Context, req *v1.UploadFileReq
 		return res, errors.Newf(errors.ErrFileUploadFailed, "failed to upload file to RustFS: %v", err)
 	}
 
-	// Save document information to database
+	// Prepare document information
 	documents := gorm.KnowledgeDocuments{
 		ID:             strings.ReplaceAll(uuid.New().String(), "-", ""),
 		KnowledgeId:    req.KnowledgeId,
@@ -99,16 +99,69 @@ func (c *ControllerV1) uploadToRustFS(ctx context.Context, req *v1.UploadFileReq
 		Status:         int8(v1.StatusPending),
 	}
 
-	// Save to database
-	_, err = knowledge.SaveDocumentsInfo(ctx, documents)
-	if err != nil {
-		g.Log().Errorf(ctx, "Failed to save document information to database: %v", err)
-		res.Status = "failed"
-		res.Message = "Failed to save document information to database: " + err.Error()
+	db := dao.GetDB()
+	tx := db.WithContext(ctx).Begin()
+	if tx.Error != nil {
+		g.Log().Errorf(ctx, "Failed to start database transaction: %v", tx.Error)
+
+		// Rollback: Delete the file from RustFS since transaction couldn't start
+		deleteErr := file_store.DeleteObject(ctx, rustfsConfig.Client, rustfsConfig.BucketName, rustfsKey)
+		if deleteErr != nil {
+			g.Log().Errorf(ctx, "Failed to rollback file from RustFS after transaction start error: %v", deleteErr)
+		}
+
 		// Clean up local file
 		_ = gfile.Remove(localPath)
+
+		res.Status = "failed"
+		res.Message = "Failed to start database transaction"
+		return res, errors.Newf(errors.ErrFileUploadFailed, "failed to start database transaction: %v", tx.Error)
+	}
+
+	// Ensure transaction is rolled back on any error
+	defer func() {
+		if err != nil && tx != nil {
+			tx.Rollback()
+		}
+	}()
+
+	_, err = knowledge.SaveDocumentsInfoWithTx(ctx, tx, documents)
+	if err != nil {
+		g.Log().Errorf(ctx, "Failed to save document information to database: %v", err)
+
+		// Rollback: Delete the file from RustFS since database insert failed
+		deleteErr := file_store.DeleteObject(ctx, rustfsConfig.Client, rustfsConfig.BucketName, rustfsKey)
+		if deleteErr != nil {
+			g.Log().Errorf(ctx, "Failed to rollback file from RustFS after insert error: %v", deleteErr)
+		}
+
+		// Clean up local file
+		_ = gfile.Remove(localPath)
+
+		res.Status = "failed"
+		res.Message = "Failed to save document information to database: " + err.Error()
 		return res, errors.Newf(errors.ErrDatabaseInsert, "failed to save document information: %v", err)
 	}
+
+	if err = tx.Commit().Error; err != nil {
+		g.Log().Errorf(ctx, "Failed to commit database transaction: %v", err)
+
+		// Rollback: Delete the file from RustFS since transaction commit failed
+		deleteErr := file_store.DeleteObject(ctx, rustfsConfig.Client, rustfsConfig.BucketName, rustfsKey)
+		if deleteErr != nil {
+			g.Log().Errorf(ctx, "Failed to rollback file from RustFS after commit error: %v", deleteErr)
+		} else {
+			g.Log().Infof(ctx, "Successfully rolled back file from RustFS after commit error: %s", rustfsKey)
+		}
+
+		// Clean up local file
+		_ = gfile.Remove(localPath)
+
+		res.Status = "failed"
+		res.Message = "Failed to commit database transaction: " + err.Error()
+		return res, errors.Newf(errors.ErrFileUploadFailed, "failed to commit transaction: %v", err)
+	}
+
 	res.DocumentId = documents.ID
 	res.Status = "success"
 	res.Message = "File uploaded successfully"
@@ -198,7 +251,7 @@ func (c *ControllerV1) uploadToLocal(ctx context.Context, req *v1.UploadFileReq)
 		}
 	}
 
-	// Save document information to database
+	// Prepare document information
 	documents := gorm.KnowledgeDocuments{
 		ID:             strings.ReplaceAll(uuid.New().String(), "-", ""),
 		KnowledgeId:    req.KnowledgeId,
@@ -210,16 +263,52 @@ func (c *ControllerV1) uploadToLocal(ctx context.Context, req *v1.UploadFileReq)
 		Status:         int8(v1.StatusPending),
 	}
 
-	// Save to database
-	_, err = knowledge.SaveDocumentsInfo(ctx, documents)
+	// Start database transaction AFTER file operations
+	db := dao.GetDB()
+	tx := db.WithContext(ctx).Begin()
+	if tx.Error != nil {
+		g.Log().Errorf(ctx, "Failed to start database transaction: %v", tx.Error)
+
+		// Rollback: Delete the local file since transaction couldn't start
+		_ = gfile.Remove(finalPath)
+
+		res.Status = "failed"
+		res.Message = "Failed to start database transaction"
+		return res, errors.Newf(errors.ErrFileUploadFailed, "failed to start database transaction: %v", tx.Error)
+	}
+
+	// Ensure transaction is rolled back on any error
+	defer func() {
+		if err != nil && tx != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Save to database using transaction
+	_, err = knowledge.SaveDocumentsInfoWithTx(ctx, tx, documents)
 	if err != nil {
 		g.Log().Errorf(ctx, "Failed to save document information to database: %v", err)
+
+		// Rollback: Delete the local file since database insert failed
+		_ = gfile.Remove(finalPath)
+
 		res.Status = "failed"
 		res.Message = "Failed to save document information to database: " + err.Error()
-		// Clean up file
-		_ = gfile.Remove(finalPath)
 		return res, errors.Newf(errors.ErrDatabaseInsert, "failed to save document information: %v", err)
 	}
+
+	// Commit the transaction
+	if err = tx.Commit().Error; err != nil {
+		g.Log().Errorf(ctx, "Failed to commit database transaction: %v", err)
+
+		// Rollback: Delete the local file since transaction commit failed
+		_ = gfile.Remove(finalPath)
+
+		res.Status = "failed"
+		res.Message = "Failed to commit database transaction: " + err.Error()
+		return res, errors.Newf(errors.ErrFileUploadFailed, "failed to commit transaction: %v", err)
+	}
+
 	res.DocumentId = documents.ID
 	res.Status = "success"
 	res.Message = "File uploaded successfully"

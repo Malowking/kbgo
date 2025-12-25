@@ -43,7 +43,6 @@ func RemoveDuplicates[T any, K comparable](slice []T, keyFunc func(T) K) []T {
 }
 
 // HandleFileUpload 处理文件上传的通用逻辑
-// 返回文件名、文件扩展名、文件SHA256和文件读取器
 func HandleFileUpload(ctx context.Context, file *ghttp.UploadFile, urlStr string) (fileName string, fileExt string, fileSha256 string, fileReader io.ReadSeeker, err error) {
 	if file != nil {
 		fileName = file.Filename

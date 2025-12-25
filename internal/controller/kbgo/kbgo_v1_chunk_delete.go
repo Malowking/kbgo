@@ -46,8 +46,6 @@ func (c *ControllerV1) ChunkDelete(ctx context.Context, req *v1.ChunkDeleteReq) 
 	if chunk.CollectionName == "" {
 		g.Log().Warningf(ctx, "ChunkDelete: CollectionName is empty for chunk id %v, skipping Milvus deletion", req.ChunkId)
 	} else {
-		// 从 Milvus 删除 chunk（根据 chunk 的唯一 ID）
-		// 注意：chunk.Id 就是 Milvus 中的主键 id，直接删除即可
 		err = docIndexSvr.DeleteChunk(ctx, chunk.CollectionName, chunk.ID)
 		if err != nil {
 			g.Log().Errorf(ctx, "ChunkDelete: Milvus DeleteDocument failed for chunk id %v in collection %s, err: %v", chunk.ID, chunk.CollectionName, err)
@@ -58,7 +56,7 @@ func (c *ControllerV1) ChunkDelete(ctx context.Context, req *v1.ChunkDeleteReq) 
 		g.Log().Infof(ctx, "ChunkDelete: Successfully deleted chunk %v from Milvus collection %s", chunk.ID, chunk.CollectionName)
 	}
 
-	// 从数据库删除 chunk 记录（使用事务）
+	// 从数据库删除 chunk 记录
 	err = knowledge.DeleteChunkByIdWithTx(ctx, tx, req.ChunkId)
 	if err != nil {
 		g.Log().Errorf(ctx, "ChunkDelete: DeleteChunkById failed for id %v, err: %v", req.ChunkId, err)

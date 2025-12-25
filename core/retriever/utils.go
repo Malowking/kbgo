@@ -14,7 +14,6 @@ func retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 	var filter string
 	// 如果有需要排除的ID，添加到 filter 中
 	if len(req.excludeIDs) > 0 {
-		// 构建 id not in [...] 表达式
 		filter = "id not in ["
 		for i, id := range req.excludeIDs {
 			if i > 0 {
@@ -38,7 +37,7 @@ func retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 		return nil, err
 	}
 
-	// 获取 TopK 值（从配置或请求中）
+	// 获取 TopK 值
 	topK := conf.TopK
 	if req.TopK != nil {
 		topK = *req.TopK
@@ -64,9 +63,7 @@ func retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 		return nil, err
 	}
 
-	// 归一化Milvus的COSINE分数（0-2范围）到标准的0-1范围
-	// Milvus COSINE分数含义：0=完全相反, 1=正交, 2=完全相同
-	// 归一化后：0=完全相反, 0.5=正交, 1=完全相同
+	// 归一化COSINE分数
 	for _, s := range msg {
 		normalizedScore := s.Score / 2.0
 		s.Score = normalizedScore

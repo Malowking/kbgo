@@ -85,7 +85,7 @@ func (d *AIModelDAO) Update(ctx context.Context, model *gormModel.AIModel) error
 	return nil
 }
 
-// Delete 删除AI模型（硬删除）
+// Delete 删除AI模型
 func (d *AIModelDAO) Delete(ctx context.Context, modelID string) error {
 	if err := GetDB().WithContext(ctx).Where("model_id = ?", modelID).Delete(&gormModel.AIModel{}).Error; err != nil {
 		g.Log().Errorf(ctx, "删除AI模型失败: %v", err)
@@ -104,7 +104,7 @@ func (d *AIModelDAO) GetByType(ctx context.Context, modelType string) ([]*gormMo
 	return models, nil
 }
 
-// GetAll 获取所有模型（用于Registry加载）
+// GetAll 获取所有模型
 func (d *AIModelDAO) GetAll(ctx context.Context) ([]*gormModel.AIModel, error) {
 	var models []*gormModel.AIModel
 	if err := GetDB().WithContext(ctx).Order("create_time DESC").Find(&models).Error; err != nil {
