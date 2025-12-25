@@ -19,18 +19,14 @@ var (
 func InitDocumentIndexer() {
 	ctx := gctx.New()
 
-	vectorDBType := g.Cfg().MustGet(ctx, "vectordb.type", "milvus").String()
+	vectorDBType := g.Cfg().MustGet(ctx, "vectorStore.type", "milvus").String()
 	Database := g.Cfg().MustGet(ctx, fmt.Sprintf("%s.database", vectorDBType)).String()
 	APIKey := g.Cfg().MustGet(ctx, "embedding.apiKey").String()
 	BaseURL := g.Cfg().MustGet(ctx, "embedding.baseURL").String()
 	EmbeddingModel := g.Cfg().MustGet(ctx, "embedding.model").String()
 
 	// 距离度量类型
-	MetricType := g.Cfg().MustGet(ctx, "vectordb.metricType", "L2").String()
-
-	// 向量维度（用于fallback）
-	Dim := g.Cfg().MustGet(ctx, fmt.Sprintf("%s.dim", vectorDBType), 1024).Int()
-
+	MetricType := g.Cfg().MustGet(ctx, fmt.Sprintf("%s.metricType", vectorDBType), "COSINE").String()
 	// 初始化全局 IndexerConfig
 	vectorStore, err := service.GetVectorStore()
 	if err != nil {
@@ -50,7 +46,6 @@ func InitDocumentIndexer() {
 		BaseURL:        BaseURL,
 		EmbeddingModel: EmbeddingModel,
 		MetricType:     MetricType,
-		Dim:            Dim,
 	}
 
 	// 初始化 DocumentIndexer

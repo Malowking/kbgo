@@ -83,7 +83,7 @@ func GetMessageCache() *MessageCache {
 	return messageCache
 }
 
-// SaveMessage 保存消息到缓存（异步刷盘到数据库）
+// SaveMessage 保存消息到缓存
 func (mc *MessageCache) SaveMessage(ctx context.Context, message *gormModel.Message, contents []*gormModel.MessageContent) error {
 	// 1. 先写入Redis缓存
 	if err := mc.saveToCache(ctx, message, contents); err != nil {
@@ -133,7 +133,7 @@ func (mc *MessageCache) saveToCache(ctx context.Context, message *gormModel.Mess
 		}
 	}
 
-	// 3. 将消息ID添加到会话的消息列表中（使用sorted set，按创建时间排序）
+	// 3. 将消息ID添加到会话的消息列表中
 	convListKey := fmt.Sprintf("%s%s", convMessageListPrefix, message.ConvID)
 	score := float64(message.CreateTime.Unix())
 	if err := mc.rdb.ZAdd(ctx, convListKey, redis.Z{
@@ -153,7 +153,7 @@ func (mc *MessageCache) saveToDatabase(ctx context.Context, message *gormModel.M
 	return dao.Message.CreateWithContents(ctx, message, contents)
 }
 
-// GetMessage 获取消息（优先从缓存读取）
+// GetMessage 获取消息
 func (mc *MessageCache) GetMessage(ctx context.Context, msgID string) (*gormModel.Message, []*gormModel.MessageContent, error) {
 	// 1. 先从Redis缓存读取
 	msgKey := fmt.Sprintf("%s%s", messageKeyPrefix, msgID)
@@ -216,7 +216,7 @@ func (mc *MessageCache) getMessageContentsFromCache(ctx context.Context, msgID s
 	return contents, nil
 }
 
-// GetMessagesByConvID 获取会话的消息列表（优先从缓存读取）
+// GetMessagesByConvID 获取会话的消息列表
 func (mc *MessageCache) GetMessagesByConvID(ctx context.Context, convID string, page, pageSize int) ([]*gormModel.Message, int64, error) {
 	convListKey := fmt.Sprintf("%s%s", convMessageListPrefix, convID)
 
@@ -255,7 +255,7 @@ func (mc *MessageCache) GetMessagesByConvID(ctx context.Context, convID string, 
 		return nil, 0, err
 	}
 
-	// 3. 回写缓存（异步）
+	// 3. 回写缓存
 	go func() {
 		for _, msg := range messages {
 			contents, _ := dao.MessageContent.ListByMsgID(context.Background(), msg.MsgID)

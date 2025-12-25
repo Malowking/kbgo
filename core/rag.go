@@ -6,7 +6,6 @@ import (
 )
 
 // Rag represents the core RAG (Retrieval-Augmented Generation) service
-// It provides methods to build retrievers for RAG functionality
 type Rag struct {
 	VectorStore vector_store.VectorStore
 	conf        *config.Config

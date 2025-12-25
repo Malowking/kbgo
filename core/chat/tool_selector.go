@@ -139,7 +139,7 @@ func (h *ChatHandler) buildToolSelectionPrompt(ctx context.Context, question str
 	return builder.String()
 }
 
-// selectToolsWithLLM 使用LLM选择工具（带重试机制）
+// selectToolsWithLLM 使用LLM选择工具
 func (h *ChatHandler) selectToolsWithLLM(ctx context.Context, question string) (map[string][]string, error) {
 	// 1. 获取所有可用的MCP工具
 	allTools, err := h.getAllMCPTools(ctx)

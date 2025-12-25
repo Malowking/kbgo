@@ -20,12 +20,8 @@ type Message struct {
 	// ReasoningContent 思考内容（用于思考模型）
 	ReasoningContent string `json:"reasoning_content,omitempty"`
 
-	// UserInputMultiContent 用户多模态输入内容（新版字段）
+	// UserInputMultiContent 用户多模态输入内容
 	UserInputMultiContent []MessageInputPart `json:"user_input_multi_content,omitempty"`
-
-	// MultiContent 多模态内容（旧版字段，已废弃）
-	// Deprecated: 使用 UserInputMultiContent 代替
-	MultiContent []ChatMessagePart `json:"multi_content,omitempty"`
 
 	// ToolCalls 工具调用列表（Assistant消息使用）
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
@@ -37,13 +33,13 @@ type Message struct {
 	Extra map[string]any `json:"extra,omitempty"`
 }
 
-// MessageInputPart 消息输入部分（新版多模态字段）
+// MessageInputPart 消息输入部分
 type MessageInputPart struct {
-	Type  ChatMessagePartType `json:"type"`
-	Text  string              `json:"text,omitempty"`
-	Image *MessageInputImage  `json:"image,omitempty"`
-	Audio *MessageInputAudio  `json:"audio,omitempty"`
-	Video *MessageInputVideo  `json:"video,omitempty"`
+	Type  MessagePartType    `json:"type"`
+	Text  string             `json:"text,omitempty"`
+	Image *MessageInputImage `json:"image,omitempty"`
+	Audio *MessageInputAudio `json:"audio,omitempty"`
+	Video *MessageInputVideo `json:"video,omitempty"`
 }
 
 // MessagePartCommon 消息部分的公共字段
@@ -69,47 +65,21 @@ type MessageInputVideo struct {
 	MessagePartCommon
 }
 
-// ChatMessagePartType 消息部分类型
-type ChatMessagePartType string
+// MessagePartType 消息部分类型
+type MessagePartType string
 
 const (
-	ChatMessagePartTypeText     ChatMessagePartType = "text"
-	ChatMessagePartTypeImageURL ChatMessagePartType = "image_url"
-	ChatMessagePartTypeAudioURL ChatMessagePartType = "audio_url"
-	ChatMessagePartTypeVideoURL ChatMessagePartType = "video_url"
+	MessagePartTypeText     MessagePartType = "text"
+	MessagePartTypeImageURL MessagePartType = "image_url"
+	MessagePartTypeAudioURL MessagePartType = "audio_url"
+	MessagePartTypeVideoURL MessagePartType = "video_url"
 )
 
-// ChatMessagePart 聊天消息部分（旧版多模态字段）
-// Deprecated: 使用 MessageInputPart 代替
-type ChatMessagePart struct {
-	Type     ChatMessagePartType  `json:"type"`
-	Text     string               `json:"text,omitempty"`
-	ImageURL *ChatMessageImageURL `json:"image_url,omitempty"`
-	AudioURL *ChatMessageAudioURL `json:"audio_url,omitempty"`
-	VideoURL *ChatMessageVideoURL `json:"video_url,omitempty"`
-}
-
-// ChatMessageImageURL 图片URL
-type ChatMessageImageURL struct {
-	URL    string `json:"url"`
-	Detail string `json:"detail,omitempty"` // auto, low, high
-}
-
-// ChatMessageAudioURL 音频URL
-type ChatMessageAudioURL struct {
-	URL string `json:"url"`
-}
-
-// ChatMessageVideoURL 视频URL
-type ChatMessageVideoURL struct {
-	URL string `json:"url"`
-}
-
-// ImageURLDetail 图片详细程度
+// ImageDetailLevel 图片详细程度
 const (
-	ImageURLDetailAuto string = "auto"
-	ImageURLDetailLow  string = "low"
-	ImageURLDetailHigh string = "high"
+	ImageDetailAuto string = "auto"
+	ImageDetailLow  string = "low"
+	ImageDetailHigh string = "high"
 )
 
 // ToolCall 工具调用

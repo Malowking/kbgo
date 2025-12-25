@@ -19,7 +19,7 @@ func convertToRerankDocs(docs []*schema.Document) []common.RerankDocument {
 		result[i] = common.RerankDocument{
 			ID:      doc.ID,
 			Content: doc.Content,
-			Score:   float64(doc.Score), // Convert float32 to float64 for reranker
+			Score:   float64(doc.Score),
 		}
 	}
 	return result
@@ -166,7 +166,7 @@ func retrieveWithRerank(ctx context.Context, conf *config.RetrieverConfig, req *
 	return relatedDocs, nil
 }
 
-// retrieveWithPureRerank 纯Rerank检索（原有逻辑）
+// retrieveWithPureRerank 纯Rerank检索
 func retrieveWithPureRerank(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveReq, docs []*schema.Document, startTime time.Time) ([]*schema.Document, error) {
 	// 创建 rerank 客户端
 	reranker, err := common.NewReranker(ctx, conf)
@@ -291,7 +291,7 @@ func retrieveWithRRF(ctx context.Context, conf *config.RetrieverConfig, req *Ret
 	// 转换文档格式并执行子切片滑窗并行 rerank
 	rerankDocs2 := convertToRerankDocs(docs2)
 
-	// 使用子切片滑窗并行 Rerank（新的优化方案）
+	// 使用子切片滑窗并行 Rerank
 	subChunkConfig := common.DefaultSubChunkConfig()
 	subChunkConfig.AggregateStrategy = common.AggregateStrategyMax
 

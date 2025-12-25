@@ -13,8 +13,6 @@ const (
 )
 
 // RetrieveReq 检索请求参数
-// Query 和 KnowledgeId 是必需的
-// 其他参数是可选的，如果不提供则使用 RetrieverConfig 中的默认值
 type RetrieveReq struct {
 	Query       string // 检索关键词（必需）
 	KnowledgeId string // 知识库ID（必需）

@@ -9,7 +9,6 @@ import (
 
 // GetActiveChunkIDs 获取活跃状态的chunk ID列表
 // status = 2 表示活跃状态 (StatusActive)
-// 返回一个map[string]bool用作set，方便快速查找
 func GetActiveChunkIDs(ctx context.Context, chunkIDs []string) (map[string]bool, error) {
 	if len(chunkIDs) == 0 {
 		return make(map[string]bool), nil

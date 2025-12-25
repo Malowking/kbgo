@@ -11,7 +11,7 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// ImageProxy 图片代理接口 - 从 file_parse 服务获取图片并返回
+// ImageProxy 图片代理接口
 func (c *ControllerV1) ImageProxy(ctx context.Context, req *v1.ImageProxyReq) (res *v1.ImageProxyRes, err error) {
 	r := g.RequestFromCtx(ctx)
 

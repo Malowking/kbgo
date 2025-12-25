@@ -15,7 +15,6 @@ func (c *ControllerV1) Chat(ctx context.Context, req *v1.ChatReq) (res *v1.ChatR
 	g.Log().Infof(ctx, "Chat request received - ConvID: %s, Question: %s, ModelID: %s, EmbeddingModelID: %s, RerankModelID: %s, KnowledgeId: %s, EnableRetriever: %v, TopK: %d, Score: %f, UseMCP: %v, Stream: %v",
 		req.ConvID, req.Question, req.ModelID, req.EmbeddingModelID, req.RerankModelID, req.KnowledgeId, req.EnableRetriever, req.TopK, req.Score, req.UseMCP, req.Stream)
 
-	// 手动获取上传的文件（GoFrame 的 type:"file" 标签可能无法从独立 FormData 字段正确解析）
 	r := g.RequestFromCtx(ctx)
 	uploadFiles := r.GetUploadFiles("files")
 

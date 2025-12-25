@@ -10,9 +10,6 @@ import (
 )
 
 // DeleteDocumentDataOnly deletes the chunks data for the specified document, but keeps the document record
-// This includes:
-// 1. Deleting all chunks related to this document in the knowledge_chunks table
-// 2. Deleting all vector data related to this document in Milvus
 func DeleteDocumentDataOnly(ctx context.Context, documentId string, vectorStore vector_store.VectorStore) error {
 	// Begin transaction
 	tx := dao.GetDB().Begin()
@@ -45,7 +42,7 @@ func DeleteDocumentDataOnly(ctx context.Context, documentId string, vectorStore 
 	}
 
 	// Only delete chunks data, keep the document record
-	err = DeleteChunksByDocumentId(ctx, tx, documentId)
+	err = DeleteChunksByDocumentIdWithTx(ctx, tx, documentId)
 	if err != nil {
 		g.Log().Errorf(ctx, "DeleteDocumentDataOnly: DeleteChunksByDocumentId failed for id %s, err: %v", documentId, err)
 		tx.Rollback()

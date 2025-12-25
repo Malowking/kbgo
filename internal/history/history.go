@@ -149,11 +149,11 @@ func (h *Manager) SaveMessageWithMetadata(message *schema.Message, convID string
 			}
 
 			switch part.Type {
-			case schema.ChatMessagePartTypeText:
+			case schema.MessagePartTypeText:
 				content.ContentType = "text"
 				content.TextContent = part.Text
 
-			case schema.ChatMessagePartTypeImageURL:
+			case schema.MessagePartTypeImageURL:
 				if part.Image != nil {
 					content.ContentType = "image_url"
 					// 存储文件路径到media_url
@@ -162,38 +162,16 @@ func (h *Manager) SaveMessageWithMetadata(message *schema.Message, convID string
 					}
 				}
 
-			case schema.ChatMessagePartTypeAudioURL:
+			case schema.MessagePartTypeAudioURL:
 				content.ContentType = "audio_url"
 				if part.Audio != nil && part.Audio.URL != nil {
 					content.MediaURL = *part.Audio.URL
 				}
 
-			case schema.ChatMessagePartTypeVideoURL:
+			case schema.MessagePartTypeVideoURL:
 				content.ContentType = "video_url"
 				if part.Video != nil && part.Video.URL != nil {
 					content.MediaURL = *part.Video.URL
-				}
-			}
-
-			contents = append(contents, content)
-		}
-	} else if len(message.MultiContent) > 0 {
-		// 处理 MultiContent（旧版多模态字段）
-		for i, part := range message.MultiContent {
-			content := &gormModel.MessageContent{
-				SortOrder:  i,
-				CreateTime: &now,
-			}
-
-			switch part.Type {
-			case schema.ChatMessagePartTypeText:
-				content.ContentType = "text"
-				content.TextContent = part.Text
-
-			case schema.ChatMessagePartTypeImageURL:
-				content.ContentType = "image_url"
-				if part.ImageURL != nil {
-					content.MediaURL = part.ImageURL.URL
 				}
 			}
 
@@ -274,13 +252,13 @@ func (h *Manager) GetHistory(convID string, limit int) ([]*schema.Message, error
 
 		// 如果有多个内容块或包含非文本内容，构建MultiContent
 		if len(msgContents) > 1 || (len(msgContents) == 1 && msgContents[0].ContentType != "text") {
-			var multiContent []schema.ChatMessagePart
+			var multiContent []schema.MessageInputPart
 
 			for _, content := range msgContents {
 				switch content.ContentType {
 				case "text":
-					multiContent = append(multiContent, schema.ChatMessagePart{
-						Type: schema.ChatMessagePartTypeText,
+					multiContent = append(multiContent, schema.MessageInputPart{
+						Type: schema.MessagePartTypeText,
 						Text: content.TextContent,
 					})
 
@@ -316,7 +294,7 @@ func (h *Manager) GetHistory(convID string, limit int) ([]*schema.Message, error
 				}
 			}
 
-			schemaMsg.MultiContent = multiContent
+			schemaMsg.UserInputMultiContent = multiContent
 		} else if len(msgContents) == 1 {
 			// 单个文本内容，使用Content字段
 			schemaMsg.Content = msgContents[0].TextContent
@@ -329,19 +307,21 @@ func (h *Manager) GetHistory(convID string, limit int) ([]*schema.Message, error
 }
 
 // processImageContent 处理图片内容，将文件路径转换为base64 data URI
-func (h *Manager) processImageContent(mediaURL string) (schema.ChatMessagePart, error) {
+func (h *Manager) processImageContent(mediaURL string) (schema.MessageInputPart, error) {
 	// 检查是否是文件路径
 	if len(mediaURL) == 0 {
-		return schema.ChatMessagePart{}, errors.New(errors.ErrInvalidParameter, "empty media URL")
+		return schema.MessageInputPart{}, errors.New(errors.ErrInvalidParameter, "empty media URL")
 	}
 
 	// 如果已经是data URI或HTTP URL，直接返回
 	if strings.HasPrefix(mediaURL, "data:") || strings.HasPrefix(mediaURL, "http://") || strings.HasPrefix(mediaURL, "https://") {
-		return schema.ChatMessagePart{
-			Type: schema.ChatMessagePartTypeImageURL,
-			ImageURL: &schema.ChatMessageImageURL{
-				URL:    mediaURL,
-				Detail: schema.ImageURLDetailAuto,
+		return schema.MessageInputPart{
+			Type: schema.MessagePartTypeImageURL,
+			Image: &schema.MessageInputImage{
+				MessagePartCommon: schema.MessagePartCommon{
+					URL: &mediaURL,
+				},
+				Detail: schema.ImageDetailAuto,
 			},
 		}, nil
 	}
@@ -357,8 +337,8 @@ func (h *Manager) processImageContent(mediaURL string) (schema.ChatMessagePart, 
 	fileInfo, err := os.Stat(filePath)
 	if os.IsNotExist(err) {
 		// 返回一个占位符表示图片不可用,而不是返回错误,避免影响整个对话加载
-		return schema.ChatMessagePart{
-			Type: schema.ChatMessagePartTypeText,
+		return schema.MessageInputPart{
+			Type: schema.MessagePartTypeText,
 			Text: fmt.Sprintf("[图片不可用: %s]", filepath.Base(mediaURL)),
 		}, nil
 	}
@@ -368,7 +348,7 @@ func (h *Manager) processImageContent(mediaURL string) (schema.ChatMessagePart, 
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		g.Log().Errorf(context.Background(), "[processImageContent] Failed to read file: %v", err)
-		return schema.ChatMessagePart{}, errors.Newf(errors.ErrFileReadFailed, "failed to read image file: %v", err)
+		return schema.MessageInputPart{}, errors.Newf(errors.ErrFileReadFailed, "failed to read image file: %v", err)
 	}
 
 	// 获取MIME类型
@@ -381,11 +361,13 @@ func (h *Manager) processImageContent(mediaURL string) (schema.ChatMessagePart, 
 	// 构造data URI
 	dataURI := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
 
-	return schema.ChatMessagePart{
-		Type: schema.ChatMessagePartTypeImageURL,
-		ImageURL: &schema.ChatMessageImageURL{
-			URL:    dataURI,
-			Detail: schema.ImageURLDetailAuto,
+	return schema.MessageInputPart{
+		Type: schema.MessagePartTypeImageURL,
+		Image: &schema.MessageInputImage{
+			MessagePartCommon: schema.MessagePartCommon{
+				URL: &dataURI,
+			},
+			Detail: schema.ImageDetailAuto,
 		},
 	}, nil
 }
@@ -398,31 +380,33 @@ func min(a, b int) int {
 }
 
 // processAudioContent 处理音频内容，将文件路径转换为base64 data URI
-func (h *Manager) processAudioContent(mediaURL string) (schema.ChatMessagePart, error) {
+func (h *Manager) processAudioContent(mediaURL string) (schema.MessageInputPart, error) {
 	// 检查是否是文件路径
 	if len(mediaURL) == 0 {
-		return schema.ChatMessagePart{}, errors.New(errors.ErrInvalidParameter, "empty media URL")
+		return schema.MessageInputPart{}, errors.New(errors.ErrInvalidParameter, "empty media URL")
 	}
 
 	// 如果已经是data URI或HTTP URL，直接返回
 	if strings.HasPrefix(mediaURL, "data:") || strings.HasPrefix(mediaURL, "http://") || strings.HasPrefix(mediaURL, "https://") {
-		return schema.ChatMessagePart{
-			Type: schema.ChatMessagePartTypeAudioURL,
-			AudioURL: &schema.ChatMessageAudioURL{
-				URL: mediaURL,
+		return schema.MessageInputPart{
+			Type: schema.MessagePartTypeAudioURL,
+			Audio: &schema.MessageInputAudio{
+				MessagePartCommon: schema.MessagePartCommon{
+					URL: &mediaURL,
+				},
 			},
 		}, nil
 	}
 
 	// 检查文件是否存在
 	if _, err := os.Stat(mediaURL); os.IsNotExist(err) {
-		return schema.ChatMessagePart{}, errors.Newf(errors.ErrFileReadFailed, "audio file not found: %s", mediaURL)
+		return schema.MessageInputPart{}, errors.Newf(errors.ErrFileReadFailed, "audio file not found: %s", mediaURL)
 	}
 
 	// 读取文件
 	data, err := os.ReadFile(mediaURL)
 	if err != nil {
-		return schema.ChatMessagePart{}, errors.Newf(errors.ErrFileReadFailed, "failed to read audio file: %v", err)
+		return schema.MessageInputPart{}, errors.Newf(errors.ErrFileReadFailed, "failed to read audio file: %v", err)
 	}
 
 	// 获取MIME类型
@@ -435,40 +419,44 @@ func (h *Manager) processAudioContent(mediaURL string) (schema.ChatMessagePart, 
 	// 构造data URI
 	dataURI := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
 
-	return schema.ChatMessagePart{
-		Type: schema.ChatMessagePartTypeAudioURL,
-		AudioURL: &schema.ChatMessageAudioURL{
-			URL: dataURI,
+	return schema.MessageInputPart{
+		Type: schema.MessagePartTypeAudioURL,
+		Audio: &schema.MessageInputAudio{
+			MessagePartCommon: schema.MessagePartCommon{
+				URL: &dataURI,
+			},
 		},
 	}, nil
 }
 
 // processVideoContent 处理视频内容，将文件路径转换为base64 data URI
-func (h *Manager) processVideoContent(mediaURL string) (schema.ChatMessagePart, error) {
+func (h *Manager) processVideoContent(mediaURL string) (schema.MessageInputPart, error) {
 	// 检查是否是文件路径
 	if len(mediaURL) == 0 {
-		return schema.ChatMessagePart{}, errors.New(errors.ErrInvalidParameter, "empty media URL")
+		return schema.MessageInputPart{}, errors.New(errors.ErrInvalidParameter, "empty media URL")
 	}
 
 	// 如果已经是data URI或HTTP URL，直接返回
 	if strings.HasPrefix(mediaURL, "data:") || strings.HasPrefix(mediaURL, "http://") || strings.HasPrefix(mediaURL, "https://") {
-		return schema.ChatMessagePart{
-			Type: schema.ChatMessagePartTypeVideoURL,
-			VideoURL: &schema.ChatMessageVideoURL{
-				URL: mediaURL,
+		return schema.MessageInputPart{
+			Type: schema.MessagePartTypeVideoURL,
+			Video: &schema.MessageInputVideo{
+				MessagePartCommon: schema.MessagePartCommon{
+					URL: &mediaURL,
+				},
 			},
 		}, nil
 	}
 
 	// 检查文件是否存在
 	if _, err := os.Stat(mediaURL); os.IsNotExist(err) {
-		return schema.ChatMessagePart{}, errors.Newf(errors.ErrFileReadFailed, "video file not found: %s", mediaURL)
+		return schema.MessageInputPart{}, errors.Newf(errors.ErrFileReadFailed, "video file not found: %s", mediaURL)
 	}
 
 	// 读取文件
 	data, err := os.ReadFile(mediaURL)
 	if err != nil {
-		return schema.ChatMessagePart{}, errors.Newf(errors.ErrFileReadFailed, "failed to read video file: %v", err)
+		return schema.MessageInputPart{}, errors.Newf(errors.ErrFileReadFailed, "failed to read video file: %v", err)
 	}
 
 	// 获取MIME类型
@@ -481,10 +469,12 @@ func (h *Manager) processVideoContent(mediaURL string) (schema.ChatMessagePart, 
 	// 构造data URI
 	dataURI := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
 
-	return schema.ChatMessagePart{
-		Type: schema.ChatMessagePartTypeVideoURL,
-		VideoURL: &schema.ChatMessageVideoURL{
-			URL: dataURI,
+	return schema.MessageInputPart{
+		Type: schema.MessagePartTypeVideoURL,
+		Video: &schema.MessageInputVideo{
+			MessagePartCommon: schema.MessagePartCommon{
+				URL: &dataURI,
+			},
 		},
 	}, nil
 }

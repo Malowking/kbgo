@@ -97,7 +97,7 @@ func NewEmbedding(ctx context.Context, conf EmbeddingConfig) (*CustomEmbedder, e
 	}, nil
 }
 
-// EmbedStrings 实现字符串数组的向量化 - 返回float32向量
+// EmbedStrings 实现字符串数组的向量化
 func (e *CustomEmbedder) EmbedStrings(ctx context.Context, texts []string, dimensions int) ([][]float32, error) {
 	if len(texts) == 0 {
 		return [][]float32{}, nil

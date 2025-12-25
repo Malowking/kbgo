@@ -37,7 +37,7 @@ type MultimodalFile struct {
 	FileName     string   // 原始文件名
 	FileType     FileType // 文件类型（image/audio/video）
 	FilePath     string   // 保存后的完整路径
-	RelativePath string   // 相对路径（用于返回给客户端）
+	RelativePath string   // 相对路径
 	Size         int64    // 文件大小
 }
 
@@ -149,7 +149,7 @@ func (fu *FileUploader) GetFileType(filename string) FileType {
 	return FileTypeOther
 }
 
-// saveFile 保存单个文件（内部方法）
+// saveFile 保存单个文件
 func (fu *FileUploader) saveFile(file *multipart.FileHeader) (*MultimodalFile, error) {
 	if file == nil {
 		return nil, errors.New(errors.ErrInvalidParameter, "file is nil")
@@ -181,7 +181,7 @@ func (fu *FileUploader) saveFile(file *multipart.FileHeader) (*MultimodalFile, e
 	// 获取文件扩展名
 	ext := filepath.Ext(file.Filename)
 
-	// 为所有文件生成UUID文件名（保留原始扩展名）
+	// 为所有文件生成UUID文件名
 	uuidFileName := strings.ReplaceAll(uuid.New().String(), "-", "") + ext
 
 	// 构建目标文件路径

@@ -13,7 +13,7 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// ReloadModels 重新加载模型配置（热更新）
+// ReloadModels 重新加载模型配置
 func (c *ControllerV1) ReloadModels(ctx context.Context, req *v1.ReloadModelsReq) (res *v1.ReloadModelsRes, err error) {
 	g.Log().Info(ctx, "ReloadModels request received")
 
@@ -37,7 +37,7 @@ func (c *ControllerV1) ReloadModels(ctx context.Context, req *v1.ReloadModelsReq
 func (c *ControllerV1) ListModels(ctx context.Context, req *v1.ListModelsReq) (res *v1.ListModelsRes, err error) {
 	g.Log().Info(ctx, "ListModels request received")
 
-	// 根据类型过滤（可选）
+	// 根据类型过滤
 	var models []*model.ModelConfig
 	if req.ModelType != "" {
 		models = model.Registry.GetByType(model.ModelType(req.ModelType))
@@ -85,7 +85,6 @@ func (c *ControllerV1) RegisterModel(ctx context.Context, req *v1.RegisterModelR
 	}
 
 	// 序列化 Extra 为 JSON 字符串
-	// 注意：PostgreSQL JSON字段不接受空字符串，至少要是空对象 {}
 	extraJSON := "{}"
 	if len(extra) > 0 {
 		extraBytes, err := gjson.Marshal(extra)
@@ -96,7 +95,7 @@ func (c *ControllerV1) RegisterModel(ctx context.Context, req *v1.RegisterModelR
 		extraJSON = string(extraBytes)
 	}
 
-	// 创建模型记录（ModelID将由BeforeCreate钩子自动生成）
+	// 创建模型记录
 	aiModel := &gormModel.AIModel{
 		ModelType: req.ModelType,
 		Provider:  req.Provider,
@@ -148,7 +147,7 @@ func (c *ControllerV1) UpdateModel(ctx context.Context, req *v1.UpdateModelReq) 
 		return nil, errors.Newf(errors.ErrModelNotFound, "Model not found: %s", req.ModelID)
 	}
 
-	// 只更新传入的字段（使用指针判断是否传值）
+	// 只更新传入的字段
 	if req.ModelName != nil {
 		existingModel.ModelName = *req.ModelName
 	}
@@ -473,7 +472,7 @@ func (c *ControllerV1) SetRewriteModel(ctx context.Context, req *v1.SetRewriteMo
 		return nil, err
 	}
 
-	// 4. 重新加载模型注册表（确保数据库和内存一致）
+	// 4. 重新加载模型注册表
 	if err := model.Registry.Reload(ctx, db); err != nil {
 		g.Log().Errorf(ctx, "Failed to reload model registry: %v", err)
 		return &v1.SetRewriteModelRes{

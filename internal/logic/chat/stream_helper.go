@@ -11,7 +11,6 @@ import (
 
 // CreateStreamPipe 根据配置创建流式传输管道
 // 优先使用 Redis Stream (如果配置启用)，否则使用内存 channel
-// 返回接口类型，支持两种实现的无缝切换
 func CreateStreamPipe(ctx context.Context, convID string) (schema.StreamReaderInterface[*schema.Message], schema.StreamWriterInterface[*schema.Message]) {
 	// 从配置读取流式响应配置
 	useRedis := g.Cfg().MustGet(ctx, "streaming.useRedis", false).Bool()
@@ -35,7 +34,7 @@ func CreateStreamPipe(ctx context.Context, convID string) (schema.StreamReaderIn
 			g.Log().Infof(ctx, "Using Redis Stream for streaming response: %s (maxLen=%d, TTL=%ds)",
 				streamID, redisBufferSize, redisStreamTTL)
 
-			// 直接返回 Redis Stream 的 reader 和 writer（它们实现了接口）
+			// 直接返回 Redis Stream 的 reader 和 writer
 			return redisReader, redisWriter
 		}
 

@@ -47,7 +47,7 @@ func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *
 	}
 	g.Log().Infof(ctx, "Using embedding model: %s with dimension: %d", modelConfig.Name, dimension)
 
-	// 生成 UUID 作为知识库 ID (使用与项目其他地方相同的格式)
+	// 生成 UUID 作为知识库 ID
 	knowledgeId := "kb_" + strings.ReplaceAll(uuid.New().String(), "-", "")
 
 	// 使用 GORM 模型确保自动填充 CreateTime 和 UpdateTime
@@ -114,7 +114,7 @@ func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *
 		}
 	}()
 
-	// 1. 获取该知识库下的所有文档信息（用于删除存储中的文件）
+	// 1. 获取该知识库下的所有文档信息
 	var documents []gormModel.KnowledgeDocuments
 	result := tx.WithContext(ctx).Where("knowledge_id = ?", req.Id).Find(&documents)
 	if result.Error != nil {
@@ -122,7 +122,7 @@ func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *
 		return nil, result.Error
 	}
 
-	// 2. 收集需要删除的文件信息（去重）
+	// 2. 收集需要删除的文件信息
 	type RustFSFile struct {
 		Bucket   string
 		Location string
@@ -198,7 +198,7 @@ func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *
 		return nil, errors.Newf(errors.ErrInternalError, "failed to commit transaction: %v", err)
 	}
 
-	// 7. 事务成功提交后，删除存储中的文件（这个操作失败不影响数据一致性）
+	// 7. 事务成功提交后，删除存储中的文件
 	if storageType == file_store.StorageTypeRustFS {
 		// 删除 RustFS 文件
 		if len(rustfsFiles) > 0 {
@@ -224,7 +224,7 @@ func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *
 			}
 
 			if anyFilePath != "" {
-				// 获取知识库文件夹路径 (knowledge_file/{knowledge_id})
+				// 获取知识库文件夹路径
 				knowledgeDir := filepath.Dir(anyFilePath)
 				g.Log().Infof(ctx, "KBDelete: deleting knowledge directory, path=%s", knowledgeDir)
 

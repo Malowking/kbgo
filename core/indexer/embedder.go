@@ -18,11 +18,10 @@ type VectorStoreEmbedder struct {
 	embedding   *common.CustomEmbedder
 	vectorStore vector_store.VectorStore
 	modelConfig interface{} // 保存模型配置，用于提取维度信息
-	configDim   int         // 配置文件中的向量维度（fallback）
 }
 
 // NewVectorStoreEmbedder 创建向量存储嵌入器
-func NewVectorStoreEmbedder(ctx context.Context, conf common.EmbeddingConfig, vectorStore vector_store.VectorStore, modelConfig interface{}, configDim int) (*VectorStoreEmbedder, error) {
+func NewVectorStoreEmbedder(ctx context.Context, conf common.EmbeddingConfig, vectorStore vector_store.VectorStore, modelConfig interface{}) (*VectorStoreEmbedder, error) {
 	// Create embedding instance
 	embeddingIns, err := common.NewEmbedding(ctx, conf)
 	if err != nil {
@@ -33,11 +32,10 @@ func NewVectorStoreEmbedder(ctx context.Context, conf common.EmbeddingConfig, ve
 		embedding:   embeddingIns,
 		vectorStore: vectorStore,
 		modelConfig: modelConfig,
-		configDim:   configDim,
 	}, nil
 }
 
-// EmbedAndStore 嵌入向量并存储（单条并发版，支持重试）
+// EmbedAndStore 嵌入向量并存储
 func (v *VectorStoreEmbedder) EmbedAndStore(ctx context.Context, collectionName string, chunks []*schema.Document) ([]string, error) {
 	if len(chunks) == 0 {
 		return []string{}, nil
@@ -77,7 +75,7 @@ func (v *VectorStoreEmbedder) EmbedAndStore(ctx context.Context, collectionName 
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
-			// 单条embedding调用（带重试）
+			// 单条embedding调用
 			vector, err := v.embedSingleChunkWithRetry(ctx, ch.Content, maxRetries, initialDelay, maxDelay, multiplier)
 			if err != nil {
 				resultChan <- ChunkResult{
@@ -124,7 +122,7 @@ func (v *VectorStoreEmbedder) EmbedAndStore(ctx context.Context, collectionName 
 		close(resultChan)
 	}()
 
-	// 收集结果（按索引顺序）
+	// 收集结果
 	results := make([]ChunkResult, len(chunks))
 	for result := range resultChan {
 		if result.Error != nil {
@@ -133,7 +131,7 @@ func (v *VectorStoreEmbedder) EmbedAndStore(ctx context.Context, collectionName 
 		results[result.Index] = result
 	}
 
-	// 提取chunkIds（保持顺序）
+	// 提取chunkIds
 	allChunkIds := make([]string, len(chunks))
 	for i, result := range results {
 		allChunkIds[i] = result.ChunkID
@@ -189,8 +187,6 @@ func (v *VectorStoreEmbedder) embedSingleChunkWithRetry(ctx context.Context, tex
 }
 
 // getDimension 获取embedding维度
-// 1. 首先尝试从模型配置的extra字段中解析dimension
-// 2. 如果没有，使用配置文件中的dim作为fallback
 func (v *VectorStoreEmbedder) getDimension(ctx context.Context) int {
 	// 尝试从模型配置的extra字段中提取dimension
 	if v.modelConfig != nil {
@@ -220,12 +216,6 @@ func (v *VectorStoreEmbedder) getDimension(ctx context.Context) int {
 			}
 		}
 	}
-
-	// Fallback：使用配置文件中的dim
-	if v.configDim > 0 {
-		return v.configDim
-	}
-
 	// 默认值
 	g.Log().Warningf(ctx, "No dimension found in model config or config file, using default: 1024")
 	return 1024

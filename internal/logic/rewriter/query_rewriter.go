@@ -16,7 +16,7 @@ import (
 	"github.com/gogf/gf/v2/os/gcache"
 )
 
-// QueryRewriter 查询重写器（用于指代消解）
+// QueryRewriter 查询重写器
 type QueryRewriter struct {
 	cache           *gcache.Cache
 	cacheExpire     time.Duration
@@ -52,7 +52,7 @@ func DefaultConfig() *Config {
 	}
 }
 
-// RewriteQuery 重写查询（指代消解）
+// RewriteQuery 重写查询
 func (r *QueryRewriter) RewriteQuery(ctx context.Context, currentQuery string, chatHistory []*schema.Message, config *Config) (string, error) {
 	// 如果未启用，直接返回原查询
 	if !config.Enable {
@@ -233,7 +233,7 @@ AI: 学习深度学习需要掌握数学基础、Python编程...
 		{Role: schema.User, Content: userPrompt},
 	}
 
-	// 获取重写模型配置（从内存中获取）
+	// 获取重写模型配置
 	mc := coreModel.Registry.GetRewriteModel()
 	if mc == nil {
 		return "", errors.New(errors.ErrModelNotConfigured, "重写模型未配置")
@@ -255,7 +255,7 @@ AI: 学习深度学习需要掌握数学基础、Python编程...
 		ModelName:           mc.Name,
 		Messages:            messages,
 		Temperature:         config.Temperature,
-		MaxCompletionTokens: 200, // 改写后的问题通常不长
+		MaxCompletionTokens: 200,
 	})
 
 	if err != nil {
@@ -334,7 +334,7 @@ func (r *QueryRewriter) RewriteQueryWithResult(ctx context.Context, currentQuery
 
 	result.Duration = time.Since(startTime)
 	result.Rewritten = rewritten
-	result.IsRewritten = (rewritten != currentQuery)
+	result.IsRewritten = rewritten != currentQuery
 
 	return result, err
 }

@@ -69,7 +69,7 @@ type IndexResult struct {
 	Error      error
 }
 
-// BatchDocumentIndex Batch document indexing processing (asynchronous operation)
+// BatchDocumentIndex Batch document indexing processing
 func (s *DocumentIndexer) BatchDocumentIndex(ctx context.Context, req *BatchIndexReq) error {
 	// 使用 WaitGroup 管理 goroutines
 	var wg sync.WaitGroup
@@ -133,7 +133,7 @@ func (s *DocumentIndexer) BatchDocumentIndex(ctx context.Context, req *BatchInde
 	return nil
 }
 
-// DocumentIndex Unified document indexing processing (using Pipeline pattern)
+// DocumentIndex Unified document indexing processing
 func (s *DocumentIndexer) DocumentIndex(ctx context.Context, req *IndexReq) error {
 	// Create indexing context
 	idxCtx := &indexContext{
@@ -145,7 +145,7 @@ func (s *DocumentIndexer) DocumentIndex(ctx context.Context, req *IndexReq) erro
 		separator:   req.Separator,
 	}
 
-	// 立即将文档状态设置为"索引中"，以便前端可以实时看到状态变化
+	// 将文档状态设置为"索引中"
 	err := knowledge.UpdateDocumentsStatus(ctx, req.DocumentId, int(v1.StatusIndexing))
 	if err != nil {
 		g.Log().Errorf(ctx, "Failed to update document status to indexing, documentId=%s, err=%v", req.DocumentId, err)
@@ -200,7 +200,7 @@ func (s *DocumentIndexer) stepCleanOldData(idxCtx *indexContext) error {
 	return nil
 }
 
-// stepPrepareFile Step 3: Prepare file (handle storage type and file path)
+// stepPrepareFile Step 3: Prepare file
 func (s *DocumentIndexer) stepPrepareFile(idxCtx *indexContext) error {
 	storageType := file_store.GetStorageType()
 	idxCtx.storageType = storageType
@@ -226,7 +226,7 @@ func (s *DocumentIndexer) stepPrepareFile(idxCtx *indexContext) error {
 		g.Log().Infof(idxCtx.ctx, "File downloaded and overwritten from RustFS to %s, documentId=%s", localFilePath, idxCtx.documentId)
 		idxCtx.localFilePath = localFilePath
 	} else {
-		// Local storage: Directly use the local_file_path stored in database (relative path)
+		// Local storage: Directly use the local_file_path stored in database
 		if idxCtx.doc.LocalFilePath == "" {
 			g.Log().Errorf(idxCtx.ctx, "Local file path is empty, documentId=%s", idxCtx.documentId)
 			knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))
@@ -358,14 +358,13 @@ func (s *DocumentIndexer) stepVectorizeAndStore(idxCtx *indexContext) error {
 		BaseURL:        modelConfig.BaseURL, // 使用动态模型的 BaseURL
 		EmbeddingModel: modelConfig.Name,    // 使用动态模型的名称
 		MetricType:     s.Config.MetricType,
-		Dim:            s.Config.Dim, // 使用配置文件的 dim 作为fallback
 	}
 
 	g.Log().Infof(idxCtx.ctx, "Using dynamic embedding model, documentId=%s, modelID=%s, modelName=%s",
 		idxCtx.documentId, idxCtx.modelID, modelConfig.Name)
 
 	// 使用动态配置创建 vector embedder，传入模型配置和config dim
-	embedder, err := NewVectorStoreEmbedder(idxCtx.ctx, dynamicConfig, s.VectorStore, modelConfig, s.Config.Dim)
+	embedder, err := NewVectorStoreEmbedder(idxCtx.ctx, dynamicConfig, s.VectorStore, modelConfig)
 	if err != nil {
 		g.Log().Errorf(idxCtx.ctx, "Failed to create vector embedder, documentId=%s, err=%v", idxCtx.documentId, err)
 		knowledge.UpdateDocumentsStatus(idxCtx.ctx, idxCtx.documentId, int(v1.StatusFailed))

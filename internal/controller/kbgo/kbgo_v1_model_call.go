@@ -87,7 +87,7 @@ func (c *ControllerV1) ChatCompletion(ctx context.Context, req *v1.ChatCompletio
 		}
 	}
 
-	// 使用请求参数覆盖默认值（如果提供）
+	// 使用请求参数覆盖默认值
 	maxCompletionTokens := defaultMaxCompletionTokens
 	if req.MaxTokens > 0 {
 		maxCompletionTokens = req.MaxTokens

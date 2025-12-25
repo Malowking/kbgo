@@ -20,7 +20,6 @@ func NewMultimodalMessageBuilder() *MultimodalMessageBuilder {
 }
 
 // BuildMultimodalMessage 构建多模态消息
-// 根据不同的文件类型，构建符合eino框架的多模态消息格式
 func (b *MultimodalMessageBuilder) BuildMultimodalMessage(
 	text string,
 	files []*MultimodalFile,
@@ -35,18 +34,13 @@ func (b *MultimodalMessageBuilder) BuildMultimodalMessage(
 		}, nil
 	}
 
-	// 构建多模态内容 - 同时使用两种字段以兼容不同的模型
+	// 构建多模态内容
 	var multiContent []schema.MessageInputPart
-	var chatMessageParts []schema.ChatMessagePart
 
 	// 添加文本部分
 	if text != "" {
 		multiContent = append(multiContent, schema.MessageInputPart{
-			Type: schema.ChatMessagePartTypeText,
-			Text: text,
-		})
-		chatMessageParts = append(chatMessageParts, schema.ChatMessagePart{
-			Type: schema.ChatMessagePartTypeText,
+			Type: schema.MessagePartTypeText,
 			Text: text,
 		})
 	}
@@ -59,19 +53,12 @@ func (b *MultimodalMessageBuilder) BuildMultimodalMessage(
 			continue
 		}
 		multiContent = append(multiContent, part)
-
-		// 同时构建ChatMessagePart（用于MultiContent字段）
-		chatPart, err := b.buildChatMessagePart(file, useBase64)
-		if err == nil {
-			chatMessageParts = append(chatMessageParts, chatPart)
-		}
 	}
 
-	// 构建消息 - 同时使用UserInputMultiContent和MultiContent以提高兼容性
+	// 构建消息
 	message := &schema.Message{
 		Role:                  schema.User,
 		UserInputMultiContent: multiContent,
-		MultiContent:          chatMessageParts, // 废弃字段，但某些模型可能需要
 	}
 
 	return message, nil
@@ -89,43 +76,7 @@ func (b *MultimodalMessageBuilder) buildInputPart(file *MultimodalFile, useBase6
 	default:
 		// 其他类型文件作为文本描述
 		return schema.MessageInputPart{
-			Type: schema.ChatMessagePartTypeText,
-			Text: fmt.Sprintf("[File: %s]", file.FileName),
-		}, nil
-	}
-}
-
-// buildChatMessagePart 构建ChatMessagePart（用于MultiContent字段）
-func (b *MultimodalMessageBuilder) buildChatMessagePart(file *MultimodalFile, useBase64 bool) (schema.ChatMessagePart, error) {
-	ext := filepath.Ext(file.FileName)
-	mimeType := getMimeType(ext)
-
-	switch file.FileType {
-	case FileTypeImage:
-		if useBase64 {
-			data, err := os.ReadFile(file.FilePath)
-			if err != nil {
-				return schema.ChatMessagePart{}, errors.Newf(errors.ErrFileReadFailed, "failed to read image file %s: %v", file.FilePath, err)
-			}
-			base64Data := base64.StdEncoding.EncodeToString(data)
-			return schema.ChatMessagePart{
-				Type: schema.ChatMessagePartTypeImageURL,
-				ImageURL: &schema.ChatMessageImageURL{
-					URL:    fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data),
-					Detail: schema.ImageURLDetailAuto,
-				},
-			}, nil
-		}
-		return schema.ChatMessagePart{
-			Type: schema.ChatMessagePartTypeImageURL,
-			ImageURL: &schema.ChatMessageImageURL{
-				URL:    file.RelativePath,
-				Detail: schema.ImageURLDetailAuto,
-			},
-		}, nil
-	default:
-		return schema.ChatMessagePart{
-			Type: schema.ChatMessagePartTypeText,
+			Type: schema.MessagePartTypeText,
 			Text: fmt.Sprintf("[File: %s]", file.FileName),
 		}, nil
 	}
@@ -149,7 +100,7 @@ func (b *MultimodalMessageBuilder) buildImageInputPart(file *MultimodalFile, use
 		// URL字段存储文件路径（用于保存到数据库）
 		// Base64Data字段存储base64（用于API调用）
 		return schema.MessageInputPart{
-			Type: schema.ChatMessagePartTypeImageURL,
+			Type: schema.MessagePartTypeImageURL,
 			Image: &schema.MessageInputImage{
 				MessagePartCommon: schema.MessagePartCommon{
 					URL:        &file.FilePath, // 保存文件路径
@@ -162,7 +113,7 @@ func (b *MultimodalMessageBuilder) buildImageInputPart(file *MultimodalFile, use
 
 	// 使用URL方式
 	return schema.MessageInputPart{
-		Type: schema.ChatMessagePartTypeImageURL,
+		Type: schema.MessagePartTypeImageURL,
 		Image: &schema.MessageInputImage{
 			MessagePartCommon: schema.MessagePartCommon{
 				URL:      &file.RelativePath,
@@ -187,7 +138,7 @@ func (b *MultimodalMessageBuilder) buildAudioInputPart(file *MultimodalFile, use
 
 		// 同时保存文件路径和base64数据
 		return schema.MessageInputPart{
-			Type: schema.ChatMessagePartTypeAudioURL,
+			Type: schema.MessagePartTypeAudioURL,
 			Audio: &schema.MessageInputAudio{
 				MessagePartCommon: schema.MessagePartCommon{
 					URL:        &file.FilePath, // 保存文件路径
@@ -199,7 +150,7 @@ func (b *MultimodalMessageBuilder) buildAudioInputPart(file *MultimodalFile, use
 	}
 
 	return schema.MessageInputPart{
-		Type: schema.ChatMessagePartTypeAudioURL,
+		Type: schema.MessagePartTypeAudioURL,
 		Audio: &schema.MessageInputAudio{
 			MessagePartCommon: schema.MessagePartCommon{
 				URL:      &file.RelativePath,
@@ -216,7 +167,7 @@ func (b *MultimodalMessageBuilder) buildVideoInputPart(file *MultimodalFile, use
 
 	// 视频文件通常较大，只支持URL方式
 	return schema.MessageInputPart{
-		Type: schema.ChatMessagePartTypeVideoURL,
+		Type: schema.MessagePartTypeVideoURL,
 		Video: &schema.MessageInputVideo{
 			MessagePartCommon: schema.MessagePartCommon{
 				URL:      &file.RelativePath,

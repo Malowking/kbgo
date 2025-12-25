@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// TODO暂时还未实现多租户逻辑
 // UserDAO 用户数据访问对象
 type UserDAO struct{}
 

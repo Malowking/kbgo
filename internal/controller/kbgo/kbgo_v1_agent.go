@@ -150,7 +150,7 @@ func (c *ControllerV1) handleAgentStreamChat(ctx context.Context, req *v1.AgentC
 	return c.handleStreamChat(ctx, chatReq, uploadedFiles)
 }
 
-// generateUUID 生成UUID（简化版）
+// generateUUID 生成UUID
 func generateUUID() string {
 	// 这里可以使用uuid库生成
 	// 为了简化，暂时返回时间戳

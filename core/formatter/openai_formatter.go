@@ -68,11 +68,7 @@ func (f *OpenAIFormatter) formatSingleMessage(msg *schema.Message) (openai.ChatC
 	}
 
 	// 检查是否有多模态内容
-	if len(msg.MultiContent) > 0 {
-		contentParts := f.convertMultiContent(msg.MultiContent)
-		openaiMsg.MultiContent = contentParts
-	} else if len(msg.UserInputMultiContent) > 0 {
-		// 也支持UserInputMultiContent
+	if len(msg.UserInputMultiContent) > 0 {
 		contentParts := f.convertUserInputMultiContent(msg.UserInputMultiContent)
 		openaiMsg.MultiContent = contentParts
 	} else {
@@ -83,47 +79,19 @@ func (f *OpenAIFormatter) formatSingleMessage(msg *schema.Message) (openai.ChatC
 	return openaiMsg, nil
 }
 
-// convertMultiContent 转换MultiContent
-func (f *OpenAIFormatter) convertMultiContent(parts []schema.ChatMessagePart) []openai.ChatMessagePart {
-	var contentParts []openai.ChatMessagePart
-
-	for _, part := range parts {
-		switch part.Type {
-		case schema.ChatMessagePartTypeText:
-			contentParts = append(contentParts, openai.ChatMessagePart{
-				Type: openai.ChatMessagePartTypeText,
-				Text: part.Text,
-			})
-
-		case schema.ChatMessagePartTypeImageURL:
-			if part.ImageURL != nil {
-				contentParts = append(contentParts, openai.ChatMessagePart{
-					Type: openai.ChatMessagePartTypeImageURL,
-					ImageURL: &openai.ChatMessageImageURL{
-						URL:    part.ImageURL.URL,
-						Detail: openai.ImageURLDetail(part.ImageURL.Detail),
-					},
-				})
-			}
-		}
-	}
-
-	return contentParts
-}
-
 // convertUserInputMultiContent 转换UserInputMultiContent
 func (f *OpenAIFormatter) convertUserInputMultiContent(parts []schema.MessageInputPart) []openai.ChatMessagePart {
 	var contentParts []openai.ChatMessagePart
 
 	for _, part := range parts {
 		switch part.Type {
-		case schema.ChatMessagePartTypeText:
+		case schema.MessagePartTypeText:
 			contentParts = append(contentParts, openai.ChatMessagePart{
 				Type: openai.ChatMessagePartTypeText,
 				Text: part.Text,
 			})
 
-		case schema.ChatMessagePartTypeImageURL:
+		case schema.MessagePartTypeImageURL:
 			if part.Image != nil {
 				imageURL := f.buildImageURL(part.Image)
 				if imageURL != "" {
