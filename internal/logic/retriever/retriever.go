@@ -12,7 +12,7 @@ import (
 	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/core/retriever"
 	"github.com/Malowking/kbgo/internal/dao"
-	"github.com/Malowking/kbgo/internal/model/entity"
+	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/Malowking/kbgo/internal/service"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
@@ -88,12 +88,12 @@ func ProcessRetrieval(ctx context.Context, req *v1.RetrieverReq) (*v1.RetrieverR
 	embeddingModelID := req.EmbeddingModelID
 	if embeddingModelID == "" {
 		// 从数据库获取知识库信息
-		var kb entity.KnowledgeBase
-		err := dao.KnowledgeBase.Ctx(ctx).WherePri(req.KnowledgeId).Scan(&kb)
+		var kb gormModel.KnowledgeBase
+		err := dao.GetDB().WithContext(ctx).Where("id = ?", req.KnowledgeId).First(&kb)
 		if err != nil {
 			return nil, errors.Newf(errors.ErrKBNotFound, "failed to get knowledge base: %v", err)
 		}
-		if kb.Id == "" {
+		if kb.ID == "" {
 			return nil, errors.Newf(errors.ErrKBNotFound, "knowledge base not found: %s", req.KnowledgeId)
 		}
 		if kb.EmbeddingModelId == "" {

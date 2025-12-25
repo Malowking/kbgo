@@ -1,7 +1,7 @@
 package v1
 
 import (
-	"github.com/Malowking/kbgo/internal/model/entity"
+	"github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -46,7 +46,7 @@ type KBGetOneReq struct {
 	Id     string `v:"required" dc:"kb id"`
 }
 type KBGetOneRes struct {
-	*entity.KnowledgeBase `dc:"kb"`
+	*gorm.KnowledgeBase `dc:"kb"`
 }
 
 type KBGetListReq struct {
@@ -57,7 +57,7 @@ type KBGetListReq struct {
 }
 
 type KBGetListRes struct {
-	List []*entity.KnowledgeBase `json:"list" dc:"kb list"`
+	List []*gorm.KnowledgeBase `json:"list" dc:"kb list"`
 }
 
 type KBUpdateStatusReq struct {

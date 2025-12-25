@@ -48,14 +48,14 @@ func (c *ControllerV1) ChunkDelete(ctx context.Context, req *v1.ChunkDeleteReq) 
 	} else {
 		// 从 Milvus 删除 chunk（根据 chunk 的唯一 ID）
 		// 注意：chunk.Id 就是 Milvus 中的主键 id，直接删除即可
-		err = docIndexSvr.DeleteChunk(ctx, chunk.CollectionName, chunk.Id)
+		err = docIndexSvr.DeleteChunk(ctx, chunk.CollectionName, chunk.ID)
 		if err != nil {
-			g.Log().Errorf(ctx, "ChunkDelete: Milvus DeleteDocument failed for chunk id %v in collection %s, err: %v", chunk.Id, chunk.CollectionName, err)
+			g.Log().Errorf(ctx, "ChunkDelete: Milvus DeleteDocument failed for chunk id %v in collection %s, err: %v", chunk.ID, chunk.CollectionName, err)
 			tx.Rollback()
 			err = errors.Newf(errors.ErrVectorDelete, "failed to delete chunk from vector store: %v", err)
 			return
 		}
-		g.Log().Infof(ctx, "ChunkDelete: Successfully deleted chunk %v from Milvus collection %s", chunk.Id, chunk.CollectionName)
+		g.Log().Infof(ctx, "ChunkDelete: Successfully deleted chunk %v from Milvus collection %s", chunk.ID, chunk.CollectionName)
 	}
 
 	// 从数据库删除 chunk 记录（使用事务）

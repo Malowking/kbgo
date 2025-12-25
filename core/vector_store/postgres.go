@@ -604,7 +604,7 @@ func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query
 			chunkIDs = append(chunkIDs, doc.ID)
 		}
 
-		activeIDs, err := dao.KnowledgeChunks.GetActiveChunkIDs(ctx, chunkIDs)
+		activeIDs, err := dao.GetActiveChunkIDs(ctx, chunkIDs)
 		if err != nil {
 			return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to query chunk status: %v", err)
 		}
@@ -646,7 +646,7 @@ func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query
 		// 过滤结果并添加文档名称
 		filtered := make([]*schema.Document, 0, len(results))
 		for _, doc := range results {
-			if activeIDs.Contains(doc.ID) {
+			if activeIDs[doc.ID] {
 				// 添加文档名称到metadata
 				if docID, ok := doc.MetaData[DocumentId].(string); ok {
 					if docName, exists := docNameMap[docID]; exists {

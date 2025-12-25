@@ -7,7 +7,7 @@ import (
 	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/knowledge"
-	"github.com/Malowking/kbgo/internal/model/entity"
+	"github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -25,8 +25,8 @@ func (c *ControllerV1) UpdateChunk(ctx context.Context, req *v1.UpdateChunkReq) 
 	}()
 
 	// 使用事务更新数据库
-	err = knowledge.UpdateChunkByIdsWithTx(ctx, tx, req.Ids, entity.KnowledgeChunks{
-		Status: req.Status,
+	err = knowledge.UpdateChunkByIdsWithTx(ctx, tx, req.Ids, gorm.KnowledgeChunks{
+		Status: int8(req.Status),
 	})
 	if err != nil {
 		tx.Rollback()

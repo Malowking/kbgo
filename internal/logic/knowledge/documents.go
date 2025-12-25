@@ -6,7 +6,7 @@ import (
 
 	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/internal/dao"
-	"github.com/Malowking/kbgo/internal/model/entity"
+
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/google/uuid"
@@ -19,10 +19,10 @@ const (
 )
 
 // SaveDocumentsInfo 保存文档信息
-func SaveDocumentsInfo(ctx context.Context, documents entity.KnowledgeDocuments) (documentsSave entity.KnowledgeDocuments, err error) {
+func SaveDocumentsInfo(ctx context.Context, documents gormModel.KnowledgeDocuments) (documentsSave gormModel.KnowledgeDocuments, err error) {
 	// 转换为 GORM 模型（GORM 会自动设置 CreateTime 和 UpdateTime）
 	gormDoc := gormModel.KnowledgeDocuments{
-		ID:             documents.Id,
+		ID:             documents.ID,
 		KnowledgeId:    documents.KnowledgeId,
 		FileName:       documents.FileName,
 		FileExtension:  documents.FileExtension, // 添加文件扩展名
@@ -40,18 +40,18 @@ func SaveDocumentsInfo(ctx context.Context, documents entity.KnowledgeDocuments)
 		g.Log().Errorf(ctx, "保存文档信息失败: %+v, 错误: %v", documents, result.Error)
 		return documents, errors.Newf(errors.ErrDatabaseInsert, "保存文档信息失败: %v", result.Error)
 	}
-	g.Log().Infof(ctx, "文档保存成功, ID: %s", documents.Id)
+	g.Log().Infof(ctx, "文档保存成功, ID: %s", documents.ID)
 	return documents, nil
 }
 
 // SaveDocumentsInfoWithTx 保存文档信息（事务版本）
-func SaveDocumentsInfoWithTx(ctx context.Context, tx *gorm.DB, documents entity.KnowledgeDocuments) (documentsSave entity.KnowledgeDocuments, err error) {
+func SaveDocumentsInfoWithTx(ctx context.Context, tx *gorm.DB, documents gormModel.KnowledgeDocuments) (documentsSave gormModel.KnowledgeDocuments, err error) {
 	id := strings.ReplaceAll(uuid.New().String(), "-", "")
-	documents.Id = id
+	documents.ID = id
 
 	// 转换为 GORM 模型（GORM 会自动设置 CreateTime 和 UpdateTime）
 	gormDoc := gormModel.KnowledgeDocuments{
-		ID:             documents.Id,
+		ID:             documents.ID,
 		KnowledgeId:    documents.KnowledgeId,
 		FileName:       documents.FileName,
 		FileExtension:  documents.FileExtension, // 添加文件扩展名
@@ -82,11 +82,11 @@ func SaveDocumentsInfoWithTx(ctx context.Context, tx *gorm.DB, documents entity.
 
 // UpdateDocumentsStatus 更新文档状态
 func UpdateDocumentsStatus(ctx context.Context, documentsId string, status int) error {
-	data := g.Map{
+	data := map[string]interface{}{
 		"status": status,
 	}
 
-	_, err := dao.KnowledgeDocuments.Ctx(ctx).Where("id", documentsId).Data(data).Update()
+	err := dao.GetDB().WithContext(ctx).Model(&gormModel.KnowledgeDocuments{}).Where("id = ?", documentsId).Updates(data).Error
 	if err != nil {
 		g.Log().Errorf(ctx, "更新文档状态失败: ID=%s, 错误: %v", documentsId, err)
 	}
@@ -96,11 +96,11 @@ func UpdateDocumentsStatus(ctx context.Context, documentsId string, status int) 
 
 // UpdateDocumentsLocalPath 更新文档的本地文件路径
 func UpdateDocumentsLocalPath(ctx context.Context, documentsId string, localPath string) error {
-	data := g.Map{
+	data := map[string]interface{}{
 		"local_file_path": localPath,
 	}
 
-	_, err := dao.KnowledgeDocuments.Ctx(ctx).Where("id", documentsId).Data(data).Update()
+	err := dao.GetDB().WithContext(ctx).Model(&gormModel.KnowledgeDocuments{}).Where("id = ?", documentsId).Updates(data).Error
 	if err != nil {
 		g.Log().Errorf(ctx, "更新文档本地文件路径失败: ID=%s, 路径=%s, 错误: %v", documentsId, localPath, err)
 	}
@@ -109,8 +109,8 @@ func UpdateDocumentsLocalPath(ctx context.Context, documentsId string, localPath
 }
 
 // GetDocumentById 根据ID获取文档信息
-func GetDocumentById(ctx context.Context, id string) (document entity.KnowledgeDocuments, err error) {
-	err = dao.KnowledgeDocuments.Ctx(ctx).Where("id", id).Scan(&document)
+func GetDocumentById(ctx context.Context, id string) (document gormModel.KnowledgeDocuments, err error) {
+	err = dao.GetDB().WithContext(ctx).Where("id = ?", id).First(&document).Error
 	if err != nil {
 		g.Log().Errorf(ctx, "获取文档信息失败: ID=%s, 错误: %v", id, err)
 		return document, errors.Newf(errors.ErrDatabaseQuery, "获取文档信息失败: %v", err)
@@ -120,12 +120,11 @@ func GetDocumentById(ctx context.Context, id string) (document entity.KnowledgeD
 }
 
 // GetDocumentBySHA256 根据知识库ID和SHA256获取文档信息
-func GetDocumentBySHA256(ctx context.Context, knowledgeId, sha256 string) (document entity.KnowledgeDocuments, err error) {
-	// 使用One方法来处理可能没有结果的查询
-	found, err := dao.KnowledgeDocuments.Ctx(ctx).Where("knowledge_id", knowledgeId).Where("sha256", sha256).One()
+func GetDocumentBySHA256(ctx context.Context, knowledgeId, sha256 string) (document gormModel.KnowledgeDocuments, err error) {
+	err = dao.GetDB().WithContext(ctx).Where("knowledge_id = ? AND sha256 = ?", knowledgeId, sha256).First(&document).Error
 	if err != nil {
-		// 当没有找到匹配的记录时，这不是错误情况
-		if err.Error() == "sql: no rows in result set" {
+		// 当没有找到匹配的记录时，返回空文档，无错误
+		if err == gorm.ErrRecordNotFound {
 			return document, nil // 返回空文档，无错误
 		}
 
@@ -133,20 +132,11 @@ func GetDocumentBySHA256(ctx context.Context, knowledgeId, sha256 string) (docum
 		return document, errors.Newf(errors.ErrDatabaseQuery, "根据SHA256获取文档信息失败: %v", err)
 	}
 
-	// 如果找到了记录，则将其转换为实体对象
-	if found != nil {
-		err = found.Struct(&document)
-		if err != nil {
-			g.Log().Errorf(ctx, "转换文档信息失败: KnowledgeId=%s, SHA256=%s, 错误: %v", knowledgeId, sha256, err)
-			return document, errors.Newf(errors.ErrInternalError, "转换文档信息失败: %v", err)
-		}
-	}
-
 	return document, nil
 }
 
 // GetDocumentsList 获取文档列表
-func GetDocumentsList(ctx context.Context, where entity.KnowledgeDocuments, page int, pageSize int) (documents []entity.KnowledgeDocuments, total int, err error) {
+func GetDocumentsList(ctx context.Context, where gormModel.KnowledgeDocuments, page int, pageSize int) (documents []gormModel.KnowledgeDocuments, total int, err error) {
 	// 参数验证和默认值设置
 	if page < 1 {
 		page = 1
@@ -158,12 +148,14 @@ func GetDocumentsList(ctx context.Context, where entity.KnowledgeDocuments, page
 		pageSize = maxPageSize
 	}
 
-	model := dao.KnowledgeDocuments.Ctx(ctx)
+	query := dao.GetDB().WithContext(ctx).Model(&gormModel.KnowledgeDocuments{})
 	if where.KnowledgeId != "" {
-		model = model.Where("knowledge_id", where.KnowledgeId)
+		query = query.Where("knowledge_id = ?", where.KnowledgeId)
 	}
 
-	total, err = model.Count()
+	var count int64
+	err = query.Count(&count).Error
+	total = int(count)
 	if err != nil {
 		g.Log().Errorf(ctx, "获取文档总数失败: %v", err)
 		return nil, 0, errors.Newf(errors.ErrDatabaseQuery, "获取文档总数失败: %v", err)
@@ -173,9 +165,8 @@ func GetDocumentsList(ctx context.Context, where entity.KnowledgeDocuments, page
 		return nil, 0, nil
 	}
 
-	err = model.Page(page, pageSize).
-		Order("create_time desc").
-		Scan(&documents)
+	offset := (page - 1) * pageSize
+	err = query.Offset(offset).Limit(pageSize).Order("create_time desc").Find(&documents).Error
 	if err != nil {
 		g.Log().Errorf(ctx, "获取文档列表失败: %v", err)
 		return nil, 0, errors.Newf(errors.ErrDatabaseQuery, "获取文档列表失败: %v", err)

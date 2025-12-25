@@ -685,7 +685,7 @@ func (m *MilvusStore) ConvertSearchResultsToDocuments(ctx context.Context, colum
 
 	// Query active chunk IDs from database
 	if len(chunkIDs) > 0 {
-		activeIDs, err := dao.KnowledgeChunks.GetActiveChunkIDs(ctx, chunkIDs)
+		activeIDs, err := dao.GetActiveChunkIDs(ctx, chunkIDs)
 		if err != nil {
 			return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to query chunk status: %v", err)
 		}
@@ -723,7 +723,7 @@ func (m *MilvusStore) ConvertSearchResultsToDocuments(ctx context.Context, colum
 		// Filter documents to only include active chunks and add document names
 		filtered := make([]*schema.Document, 0, len(result))
 		for _, doc := range result {
-			if activeIDs.Contains(doc.ID) {
+			if activeIDs[doc.ID] {
 				// Add document name to metadata if available
 				if docID, ok := doc.MetaData[DocumentId].(string); ok {
 					if docName, exists := docNameMap[docID]; exists {
