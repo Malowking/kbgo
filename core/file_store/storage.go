@@ -49,7 +49,6 @@ func InitUploadDirectories() {
 		filepath.Join(projectRoot, "upload/audio"),
 		filepath.Join(projectRoot, "upload/file"),
 		filepath.Join(projectRoot, "upload/knowledge_file"),
-		filepath.Join(projectRoot, "file"),
 		filepath.Join(projectRoot, "upload/nl2sql"),
 	}
 
