@@ -11,8 +11,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// loadAgentPresetConfig 加载Agent预设配置
-func (h *ChatHandler) loadAgentPresetConfig(ctx context.Context, req *v1.ChatReq) *v1.ChatReq {
+// LoadAgentPresetConfig 加载Agent预设配置
+func LoadAgentPresetConfig(ctx context.Context, req *v1.ChatReq) *v1.ChatReq {
 	// 查询会话信息
 	conv, err := dao.Conversation.GetByConvID(ctx, req.ConvID)
 	if err != nil {
@@ -80,14 +80,27 @@ func (h *ChatHandler) loadAgentPresetConfig(ctx context.Context, req *v1.ChatReq
 	if req.RerankWeight == nil {
 		req.RerankWeight = config.RerankWeight
 	}
+	if !req.JsonFormat {
+		req.JsonFormat = config.JsonFormat
+	}
+
+	// 新的统一工具配置
+	if req.Tools == nil || len(req.Tools) == 0 {
+		req.Tools = config.Tools
+	}
+
+	// 旧的工具配置字段 (保留以便向后兼容)
+	if !req.EnableNL2SQL {
+		req.EnableNL2SQL = config.EnableNL2SQL
+	}
+	if req.NL2SQLDatasource == "" {
+		req.NL2SQLDatasource = config.NL2SQLDatasource
+	}
 	if !req.UseMCP {
 		req.UseMCP = config.UseMCP
 	}
 	if req.MCPServiceTools == nil || len(req.MCPServiceTools) == 0 {
 		req.MCPServiceTools = config.MCPServiceTools
-	}
-	if !req.JsonFormat {
-		req.JsonFormat = config.JsonFormat
 	}
 
 	return req

@@ -7,6 +7,13 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
+// ToolConfig 工具配置
+type ToolConfig struct {
+	Type    string                 `json:"type"`    // "local_tools" or "mcp"
+	Enabled bool                   `json:"enabled"` // 是否启用该类型的工具
+	Config  map[string]interface{} `json:"config"`  // 工具配置参数
+}
+
 type ChatReq struct {
 	g.Meta           `path:"/v1/chat" method:"post" tags:"retriever" mime:"multipart/form-data"`
 	ConvID           string                  `json:"conv_id" v:"required"` // 会话id
@@ -21,11 +28,18 @@ type ChatReq struct {
 	Score            float64                 `json:"score"`             // 默认为0.2 （默认是rrf检索模式，相似度分数不重要）
 	RetrieveMode     string                  `json:"retrieve_mode"`     // 检索模式: simple（普通检索）/rerank/rrf (默认rerank)
 	RerankWeight     *float64                `json:"rerank_weight"`     // Rerank权重 (0-1范围，默认1.0)，1.0为纯rerank，0.0为纯BM25，中间值为混合
-	UseMCP           bool                    `json:"use_mcp"`           // 是否使用MCP
-	MCPServiceTools  map[string][]string     `json:"mcp_service_tools"` // 按服务指定允许调用的MCP工具列表
 	Stream           bool                    `json:"stream"`            // 是否流式返回
 	JsonFormat       bool                    `json:"jsonformat"`        // 是否需要JSON格式化输出
 	Files            []*multipart.FileHeader `json:"files" type:"file"` // 上传的多模态文件（图片、音频、视频）
+
+	// 新的统一工具配置
+	Tools []*ToolConfig `json:"tools"` // 统一的工具配置
+
+	// 旧的工具配置字段 (保留以便向后兼容,逐步迁移后删除)
+	EnableNL2SQL     bool                `json:"enable_nl2sql"`     // 是否启用NL2SQL功能 (已废弃，请使用Tools)
+	NL2SQLDatasource string              `json:"nl2sql_datasource"` // NL2SQL数据源ID (已废弃，请使用Tools)
+	UseMCP           bool                `json:"use_mcp"`           // 是否使用MCP (已废弃，请使用Tools)
+	MCPServiceTools  map[string][]string `json:"mcp_service_tools"` // MCP服务工具配置 (已废弃，请使用Tools)
 }
 
 type ChatRes struct {
@@ -34,6 +48,24 @@ type ChatRes struct {
 	ReasoningContent string             `json:"reasoning_content,omitempty"` // 思考内容（用于思考模型）
 	References       []*schema.Document `json:"references"`
 	MCPResults       []*MCPResult       `json:"mcp_results,omitempty"`
+	NL2SQLResult     *NL2SQLChatResult  `json:"nl2sql_result,omitempty"` // NL2SQL查询结果（如果启用）
+}
+
+// NL2SQLChatResult NL2SQL在Chat中的查询结果
+type NL2SQLChatResult struct {
+	QueryLogID      string                   `json:"query_log_id"`       // 查询日志ID
+	SQL             string                   `json:"sql"`                // 生成的SQL
+	Columns         []string                 `json:"columns"`            // 结果列名
+	Data            []map[string]interface{} `json:"data"`               // 结果数据
+	RowCount        int                      `json:"row_count"`          // 返回的行数
+	TotalRowCount   int                      `json:"total_row_count"`    // 完整行数（如果被截断）
+	Explanation     string                   `json:"explanation"`        // SQL解释
+	Error           string                   `json:"error,omitempty"`    // 错误信息（如果有）
+	IntentType      string                   `json:"intent_type"`        // 意图类型
+	NeedLLMAnalysis bool                     `json:"need_llm_analysis"`  // 是否需要LLM分析
+	AnalysisFocus   []string                 `json:"analysis_focus"`     // 分析重点
+	DataTruncated   bool                     `json:"data_truncated"`     // 数据是否被截断
+	FileURL         string                   `json:"file_url,omitempty"` // TODO: 大结果集文件下载URL
 }
 
 type MCPResult struct {

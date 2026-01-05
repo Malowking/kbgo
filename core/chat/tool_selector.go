@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"strings"
-	"time"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/errors"
@@ -65,22 +63,6 @@ func (h *ChatHandler) buildToolSelectionQuestion(ctx context.Context, question s
 	}
 
 	return builder.String()
-}
-
-// selectRandomLLMModel 随机选择一个LLM模型
-func (h *ChatHandler) selectRandomLLMModel(ctx context.Context) (string, error) {
-	// 获取所有LLM类型的模型
-	llmModels := model.Registry.GetByType(model.ModelTypeLLM)
-	if len(llmModels) == 0 {
-		return "", errors.New(errors.ErrModelNotFound, "没有可用的LLM模型")
-	}
-
-	// 随机选择一个模型
-	rand.Seed(time.Now().UnixNano())
-	selectedModel := llmModels[rand.Intn(len(llmModels))]
-
-	g.Log().Infof(ctx, "随机选择LLM模型: %s (%s)", selectedModel.Name, selectedModel.ModelID)
-	return selectedModel.ModelID, nil
 }
 
 // getAllMCPTools 获取数据库中所有MCP工具

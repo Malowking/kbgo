@@ -3,17 +3,13 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/cache"
-	"github.com/Malowking/kbgo/core/chat"
-	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/internal/dao"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
-	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -245,98 +241,4 @@ func (s *AgentService) DeletePreset(ctx context.Context, req *v1.DeleteAgentPres
 	return &v1.DeleteAgentPresetRes{
 		Success: true,
 	}, nil
-}
-
-// AgentChat 使用Agent预设进行对话
-func (s *AgentService) AgentChat(ctx context.Context, req *v1.AgentChatReq, uploadedFiles []*common.MultimodalFile) (*v1.AgentChatRes, error) {
-	// 获取Agent预设配置
-	preset, err := s.GetPreset(ctx, req.PresetID)
-	if err != nil {
-		return nil, err
-	}
-
-	// 反序列化配置
-	var config v1.AgentConfig
-	if err := json.Unmarshal([]byte(fmt.Sprintf("%v", preset.Config)), &config); err != nil {
-		// 如果上面的方式失败，直接使用preset.Config
-		config = preset.Config
-	}
-
-	// 如果没有conv_id，创建新会话
-	convID := req.ConvID
-	if convID == "" {
-		convID = "conv_" + uuid.New().String()
-
-		// 创建会话记录
-		conversation := &gormModel.Conversation{
-			ConvID:        convID,
-			UserID:        req.UserID,
-			Title:         "Agent: " + preset.PresetName,
-			ModelName:     config.ModelID,
-			Status:        "active",
-			AgentPresetID: req.PresetID, // 关联Agent预设
-		}
-
-		if err := dao.Conversation.Create(ctx, conversation); err != nil {
-			g.Log().Warningf(ctx, "创建会话记录失败: %v", err)
-			// 不阻断流程，继续执行
-		}
-	}
-
-	// 构造ChatReq
-	chatReq := &v1.ChatReq{
-		ConvID:           convID,
-		Question:         req.Question,
-		ModelID:          config.ModelID,
-		SystemPrompt:     config.SystemPrompt,
-		EmbeddingModelID: config.EmbeddingModelID,
-		RerankModelID:    config.RerankModelID,
-		KnowledgeId:      config.KnowledgeId,
-		EnableRetriever:  config.EnableRetriever,
-		TopK:             config.TopK,
-		Score:            config.Score,
-		RetrieveMode:     config.RetrieveMode,
-		UseMCP:           config.UseMCP,
-		MCPServiceTools:  config.MCPServiceTools,
-		Stream:           req.Stream,
-		JsonFormat:       config.JsonFormat,
-	}
-
-	// 调用Chat处理器
-	chatHandler := chat.NewChatHandler()
-	chatRes, err := chatHandler.Chat(ctx, chatReq, uploadedFiles)
-	if err != nil {
-		return nil, errors.Newf(errors.ErrChatFailed, "agent chat failed: %v", err)
-	}
-
-	// 构造响应
-	res := &v1.AgentChatRes{
-		ConvID:           convID,
-		Answer:           chatRes.Answer,
-		ReasoningContent: chatRes.ReasoningContent,
-		MCPResults:       chatRes.MCPResults,
-	}
-
-	// 转换References
-	if len(chatRes.References) > 0 {
-		res.References = make([]*v1.AgentDoc, 0, len(chatRes.References))
-		for _, ref := range chatRes.References {
-			doc := &v1.AgentDoc{
-				Content: ref.Content,
-				Score:   float64(ref.Score),
-			}
-			// 从metadata中提取document_id和chunk_id
-			if ref.MetaData != nil {
-				if docID, ok := ref.MetaData["document_id"].(string); ok {
-					doc.DocumentID = docID
-				}
-				if chunkID, ok := ref.MetaData["chunk_id"].(string); ok {
-					doc.ChunkID = chunkID
-				}
-			}
-			res.References = append(res.References, doc)
-		}
-	}
-
-	return res, nil
 }

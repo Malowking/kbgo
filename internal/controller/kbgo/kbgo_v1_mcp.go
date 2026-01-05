@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/agent_tools/mcp/client"
 	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/internal/dao"
-	"github.com/Malowking/kbgo/internal/mcp/client"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/google/uuid"

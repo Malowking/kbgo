@@ -20,19 +20,26 @@ type CreateAgentPresetReq struct {
 
 // AgentConfig Agent配置结构（对应ChatReq的核心参数）
 type AgentConfig struct {
-	ModelID          string              `json:"model_id" v:"required#模型ID不能为空"` // LLM模型UUID
-	SystemPrompt     string              `json:"system_prompt"`                  // 系统提示词
-	EmbeddingModelID string              `json:"embedding_model_id"`             // Embedding模型UUID（可选，如果不提供且启用检索器，则使用知识库绑定的模型）
-	RerankModelID    string              `json:"rerank_model_id"`                // Rerank模型UUID
-	KnowledgeId      string              `json:"knowledge_id"`                   // 知识库ID
-	EnableRetriever  bool                `json:"enable_retriever"`               // 是否启用检索器
-	TopK             int                 `json:"top_k"`                          // 检索Top K（默认5）
-	Score            float64             `json:"score"`                          // 相似度分数阈值（默认0.2）
-	RetrieveMode     string              `json:"retrieve_mode"`                  // 检索模式: simple（普通检索）/rerank/rrf
-	RerankWeight     *float64            `json:"rerank_weight"`                  // Rerank权重 (0-1范围，默认1.0)
-	UseMCP           bool                `json:"use_mcp"`                        // 是否使用MCP
-	MCPServiceTools  map[string][]string `json:"mcp_service_tools"`              // MCP服务工具配置
-	JsonFormat       bool                `json:"jsonformat"`                     // 是否需要JSON格式化输出
+	ModelID          string   `json:"model_id" v:"required#模型ID不能为空"` // LLM模型UUID
+	SystemPrompt     string   `json:"system_prompt"`                  // 系统提示词
+	EmbeddingModelID string   `json:"embedding_model_id"`             // Embedding模型UUID（可选，如果不提供且启用检索器，则使用知识库绑定的模型）
+	RerankModelID    string   `json:"rerank_model_id"`                // Rerank模型UUID
+	KnowledgeId      string   `json:"knowledge_id"`                   // 知识库ID
+	EnableRetriever  bool     `json:"enable_retriever"`               // 是否启用检索器
+	TopK             int      `json:"top_k"`                          // 检索Top K（默认5）
+	Score            float64  `json:"score"`                          // 相似度分数阈值（默认0.2）
+	RetrieveMode     string   `json:"retrieve_mode"`                  // 检索模式: simple（普通检索）/rerank/rrf
+	RerankWeight     *float64 `json:"rerank_weight"`                  // Rerank权重 (0-1范围，默认1.0)
+	JsonFormat       bool     `json:"jsonformat"`                     // 是否需要JSON格式化输出
+
+	// 新的统一工具配置
+	Tools []*ToolConfig `json:"tools"` // 统一的工具配置
+
+	// 旧的工具配置字段 (保留以便向后兼容,逐步迁移后删除)
+	EnableNL2SQL     bool                `json:"enable_nl2sql"`     // 是否启用NL2SQL功能 (已废弃，请使用Tools)
+	NL2SQLDatasource string              `json:"nl2sql_datasource"` // NL2SQL数据源ID (已废弃，请使用Tools)
+	UseMCP           bool                `json:"use_mcp"`           // 是否使用MCP (已废弃，请使用Tools)
+	MCPServiceTools  map[string][]string `json:"mcp_service_tools"` // MCP服务工具配置 (已废弃，请使用Tools)
 }
 
 // CreateAgentPresetRes 创建Agent预设响应

@@ -373,3 +373,97 @@ export const agentApi = {
     }
   },
 };
+
+// NL2SQL API
+export const nl2sqlApi = {
+  // 获取数据源列表
+  listDatasources: () =>
+    apiClient.get<{ list: any[]; total: number }>('/api/v1/nl2sql/datasources'),
+
+  // 创建数据源
+  createDatasource: (data: {
+    name: string;
+    type: string;
+    db_type?: string;
+    config: Record<string, any>;
+    created_by?: string;
+    embedding_model_id: string;
+  }) =>
+    apiClient.post<{ id: string }>('/api/v1/nl2sql/datasources', data),
+
+  // 上传CSV/Excel文件
+  uploadFile: (file: File, name: string, createdBy: string, displayName?: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('name', name);
+    formData.append('created_by', createdBy);
+    if (displayName) {
+      formData.append('display_name', displayName);
+    }
+    return apiClient.post<{
+      datasource_id: string;
+      file_path: string;
+      status: string;
+      message: string;
+    }>('/api/v1/nl2sql/upload-file', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+  },
+
+  // 添加表到现有数据源
+  addTable: (datasourceId: string, file: File, displayName?: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('datasource_id', datasourceId);
+    if (displayName) {
+      formData.append('display_name', displayName);
+    }
+    return apiClient.post<{
+      datasource_id: string;
+      table_name: string;
+      row_count: number;
+      status: string;
+      message: string;
+    }>(`/api/v1/nl2sql/datasources/${datasourceId}/tables`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+  },
+
+  // 删除数据源
+  deleteDatasource: (id: string) =>
+    apiClient.delete<{ success: boolean }>(`/api/v1/nl2sql/datasources/${id}`),
+
+  // 删除表
+  deleteTable: (datasourceId: string, tableId: string) =>
+    apiClient.delete<{ success: boolean; message: string }>(`/api/v1/nl2sql/datasources/${datasourceId}/tables/${tableId}`),
+
+  // 解析数据源Schema
+  parseSchema: (datasourceId: string, data: { llm_model_id: string }) =>
+    apiClient.post<{ task_id: string }>(`/api/v1/nl2sql/datasources/${datasourceId}/parse`, data),
+
+  // 获取数据源Schema信息
+  getSchema: (datasourceId: string) =>
+    apiClient.get<any>(`/api/v1/nl2sql/datasources/${datasourceId}/schema`),
+
+  // 执行NL2SQL查询
+  query: (data: {
+    datasource_id: string;
+    question: string;
+    session_id?: string;
+  }) =>
+    apiClient.post<{
+      query_log_id: string;
+      sql: string;
+      result?: {
+        columns: string[];
+        data: any[];
+        row_count: number;
+      };
+      explanation?: string;
+      error?: string;
+    }>('/api/v1/nl2sql/query', data),
+};

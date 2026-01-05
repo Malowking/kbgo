@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/agent_tools"
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/internal/logic/chat"
 	"github.com/Malowking/kbgo/internal/logic/retriever"
@@ -19,10 +20,10 @@ func NewChatHandler() *ChatHandler {
 	return &ChatHandler{}
 }
 
-// Handle basic chat request (non-streaming)
+// Chat Handle basic chat request (non-streaming)
 func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles []*common.MultimodalFile) (*v1.ChatRes, error) {
 	// 加载Agent预设配置（如果会话关联了Agent预设）
-	req = h.loadAgentPresetConfig(ctx, req)
+	req = LoadAgentPresetConfig(ctx, req)
 
 	// Get retriever configuration
 	cfg := retriever.GetRetrieverConfig()
@@ -155,50 +156,34 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 		res.References = retrievalRes.documents
 	}
 
-	// 4. 如果启用MCP，先进行MCP工具调用
-	var mcpDocs []*schema.Document
-	if req.UseMCP {
-		g.Log().Infof(ctx, "Checking if MCP tools are needed...")
-		mcpHandler := NewMCPHandler()
-
-		// 4.1 检查是否需要进行工具选择
-		// 如果没有传入工具列表，或者工具数量超过12个，则使用LLM进行工具选择
-		if req.MCPServiceTools == nil || len(req.MCPServiceTools) == 0 || h.countTotalTools(req.MCPServiceTools) > 12 {
-			g.Log().Infof(ctx, "工具列表为空或超过20个，使用LLM进行工具选择")
-
-			// 构建用于工具选择的完整问题
-			toolSelectionQuestion := h.buildToolSelectionQuestion(ctx, req.Question, documents, fileParseRes.fileContent)
-
-			// 使用LLM选择工具
-			selectedTools, selectErr := h.selectToolsWithLLM(ctx, toolSelectionQuestion)
-			if selectErr != nil {
-				g.Log().Errorf(ctx, "工具选择失败: %v", selectErr)
-				// 工具选择失败，使用原有的工具列表（如果为空则调用所有工具）
-			} else {
-				g.Log().Infof(ctx, "LLM选择了 %d 个服务的工具", len(selectedTools))
-				// 更新请求中的工具列表
-				req.MCPServiceTools = selectedTools
-			}
-		}
-
-		// 4.2 执行MCP工具调用，传入知识检索和文件解析的结果
-		var mcpResults []*v1.MCPResult
-		var mcpFinalAnswer string
-		var mcpErr error
-		mcpDocs, mcpResults, mcpFinalAnswer, mcpErr = mcpHandler.CallMCPToolsWithLLM(ctx, req, documents, fileParseRes.fileContent)
-		if mcpErr != nil {
-			g.Log().Errorf(ctx, "MCP tool call failed: %v", mcpErr)
+	// 4. 执行工具调用 (使用统一的工具执行器)
+	if req.Tools != nil && len(req.Tools) > 0 {
+		g.Log().Infof(ctx, "Executing tools using unified executor")
+		executor := agent_tools.NewToolExecutor()
+		toolResult, err := executor.Execute(ctx, req.Tools, req.Question, req.ModelID, req.EmbeddingModelID, documents)
+		if err != nil {
+			g.Log().Errorf(ctx, "Tool execution failed: %v", err)
 		} else {
-			// 如果 MCP 返回了最终答案，直接使用它
-			if mcpFinalAnswer != "" {
-				g.Log().Infof(ctx, "MCP returned final answer, skipping additional LLM call")
-				res.Answer = mcpFinalAnswer
-				res.MCPResults = mcpResults
+			// 添加工具返回的文档
+			if len(toolResult.Documents) > 0 {
+				documents = append(documents, toolResult.Documents...)
+				res.References = append(res.References, toolResult.Documents...)
+			}
 
-				// 将MCP返回的文档添加到references中
-				if len(mcpDocs) > 0 {
-					res.References = append(res.References, mcpDocs...)
-				}
+			// 设置NL2SQL结果
+			if toolResult.NL2SQLResult != nil {
+				res.NL2SQLResult = toolResult.NL2SQLResult
+			}
+
+			// 设置MCP结果
+			if toolResult.MCPResults != nil {
+				res.MCPResults = toolResult.MCPResults
+			}
+
+			// 如果工具返回了最终答案,直接返回
+			if toolResult.FinalAnswer != "" {
+				g.Log().Infof(ctx, "Tool returned final answer, skipping LLM call")
+				res.Answer = toolResult.FinalAnswer
 
 				// 转换返回的文档中的图片URL为可访问的代理URL
 				r := g.RequestFromCtx(ctx)
@@ -211,18 +196,6 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 				}
 
 				return res, nil
-			}
-
-			// 如果没有最终答案但有工具调用结果，添加到documents中供后续LLM使用
-			if len(mcpResults) > 0 {
-				g.Log().Infof(ctx, "MCP tools returned %d results", len(mcpResults))
-				res.MCPResults = mcpResults
-
-				// 将MCP返回的文档添加到documents中，供后续LLM调用使用
-				if len(mcpDocs) > 0 {
-					documents = append(documents, mcpDocs...)
-					res.References = append(res.References, mcpDocs...)
-				}
 			}
 		}
 	}

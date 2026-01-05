@@ -5,7 +5,7 @@ import (
 
 	"github.com/Malowking/kbgo/core/client"
 	"github.com/Malowking/kbgo/core/errors"
-	"github.com/Malowking/kbgo/core/formatter"
+	formatterPkg "github.com/Malowking/kbgo/core/formatter"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/sashabaranov/go-openai"
 )
@@ -13,11 +13,15 @@ import (
 // ModelService 统一的模型服务
 type ModelService struct {
 	client    *client.OpenAIClient
-	formatter formatter.MessageFormatter
+	formatter formatterPkg.MessageFormatter
 }
 
 // NewModelService 创建模型服务
-func NewModelService(apiKey, baseURL string, formatter formatter.MessageFormatter) *ModelService {
+func NewModelService(apiKey, baseURL string, formatter formatterPkg.MessageFormatter) *ModelService {
+	// 如果formatter为nil，使用默认的OpenAI formatter
+	if formatter == nil {
+		formatter = formatterPkg.NewOpenAIFormatter()
+	}
 	return &ModelService{
 		client:    client.NewOpenAIClient(apiKey, baseURL),
 		formatter: formatter,

@@ -50,6 +50,7 @@ func InitUploadDirectories() {
 		filepath.Join(projectRoot, "upload/file"),
 		filepath.Join(projectRoot, "upload/knowledge_file"),
 		filepath.Join(projectRoot, "upload/nl2sql"),
+		filepath.Join(projectRoot, "upload/export"),
 	}
 
 	// 创建所有目录

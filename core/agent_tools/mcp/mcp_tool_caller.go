@@ -8,11 +8,11 @@ import (
 	"time"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/agent_tools/mcp/client"
 	"github.com/Malowking/kbgo/core/errors"
 	internalCache "github.com/Malowking/kbgo/internal/cache"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/chat"
-	"github.com/Malowking/kbgo/internal/mcp/client"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"

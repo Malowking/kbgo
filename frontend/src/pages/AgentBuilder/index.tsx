@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Edit2, Trash2, Save, X, Bot, Settings, Database, MessageSquare, ChevronDown } from 'lucide-react';
-import { agentApi, knowledgeBaseApi, modelApi, mcpApi, conversationApi } from '@/services';
+import { Plus, Edit2, Trash2, Save, X, Bot, Settings, Database, MessageSquare, ChevronDown, Table, Minus } from 'lucide-react';
+import { agentApi, knowledgeBaseApi, modelApi, mcpApi, conversationApi, nl2sqlApi } from '@/services';
 import type { AgentPresetItem, AgentConfig, KnowledgeBase, Model, MCPRegistry } from '@/types';
 import ModelSelectorModal from '@/components/ModelSelectorModal';
 import { logger } from '@/lib/logger';
@@ -36,14 +36,17 @@ export default function AgentBuilder() {
   const [kbList, setKbList] = useState<KnowledgeBase[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [rerankModels, setRerankModels] = useState<Model[]>([]);
+  const [_, setEmbeddingModels] = useState<Model[]>([]);
   const [mcpServices, setMcpServices] = useState<MCPRegistry[]>([]);
   const [selectedMcpTools, setSelectedMcpTools] = useState<Record<string, string[]>>({});
+  const [nl2sqlDatasources, setNl2sqlDatasources] = useState<any[]>([]);
 
   useEffect(() => {
     fetchPresets();
     fetchKBList();
     fetchModels();
     fetchMcpServices();
+    fetchNL2SQLDatasources();
   }, []);
 
   // 当选择知识库时，自动启用知识检索
@@ -86,12 +89,18 @@ export default function AgentBuilder() {
     try {
       const response = await modelApi.list();
 
-      // 使用工具函数获取 LLM 和多模态模型（仅显用的模型）
+      // 使用工具函数获取 LLM 和多模态模型
       const llmAndMultimodalModels = getLLMModels(response.models || [], true);
       const rerankModelsList = getRerankModels(response.models || [], true);
 
+      // 获取 embedding 模型
+      const embeddingModelsList = (response.models || []).filter(
+        m => m.type === 'embedding' && m.enabled
+      );
+
       setModels(llmAndMultimodalModels);
       setRerankModels(rerankModelsList);
+      setEmbeddingModels(embeddingModelsList);
 
       // Set default model if available
       if (llmAndMultimodalModels.length > 0 && !config.model_id) {
@@ -108,6 +117,15 @@ export default function AgentBuilder() {
       setMcpServices(response.list || []);
     } catch (error) {
       logger.error('Failed to fetch MCP services:', error);
+    }
+  }, []);
+
+  const fetchNL2SQLDatasources = useCallback(async () => {
+    try {
+      const response = await nl2sqlApi.listDatasources();
+      setNl2sqlDatasources(response.list || []);
+    } catch (error) {
+      logger.error('Failed to fetch NL2SQL datasources:', error);
     }
   }, []);
 
@@ -129,6 +147,14 @@ export default function AgentBuilder() {
       // Set selected MCP tools if any
       if (preset.config.mcp_service_tools) {
         setSelectedMcpTools(preset.config.mcp_service_tools);
+
+        // 从 mcp_service_tools 恢复 mcpConfigs
+        const configs: McpServiceConfig[] = Object.entries(preset.config.mcp_service_tools).map(([serviceName, tools], index) => ({
+          id: `${Date.now()}-${index}`,
+          serviceName,
+          selectedTools: tools as string[]
+        }));
+        setMcpConfigs(configs);
       }
 
       setShowForm(true);
@@ -239,23 +265,56 @@ export default function AgentBuilder() {
       use_mcp: false,
     });
     setSelectedMcpTools({});
+    setMcpConfigs([]);
   };
 
-  const toggleMcpTool = (serviceName: string, toolName: string) => {
-    setSelectedMcpTools(prev => {
-      const serviceTools = prev[serviceName] || [];
-      const newServiceTools = serviceTools.includes(toolName)
-        ? serviceTools.filter(t => t !== toolName)
-        : [...serviceTools, toolName];
+  // MCP服务配置项类型
+  interface McpServiceConfig {
+    id: string; // 唯一ID，用于动态列表
+    serviceName: string;
+    selectedTools: string[];
+  }
 
-      if (newServiceTools.length === 0) {
-        const { [serviceName]: _, ...rest} = prev;
-        return rest;
+  const [mcpConfigs, setMcpConfigs] = useState<McpServiceConfig[]>([]);
+
+  // 添加MCP服务配置
+  const addMcpConfig = () => {
+    setMcpConfigs(prev => [...prev, {
+      id: Date.now().toString(),
+      serviceName: '',
+      selectedTools: []
+    }]);
+  };
+
+  // 删除MCP服务配置
+  const removeMcpConfig = (id: string) => {
+    setMcpConfigs(prev => prev.filter(c => c.id !== id));
+  };
+
+  // 更新服务名称
+  const updateMcpServiceName = (id: string, serviceName: string) => {
+    setMcpConfigs(prev => prev.map(c =>
+      c.id === id ? { ...c, serviceName, selectedTools: [] } : c
+    ));
+  };
+
+  // 更新选中的工具
+  const updateMcpTools = (id: string, tools: string[]) => {
+    setMcpConfigs(prev => prev.map(c =>
+      c.id === id ? { ...c, selectedTools: tools } : c
+    ));
+  };
+
+  // 同步 mcpConfigs 到 selectedMcpTools
+  useEffect(() => {
+    const newSelectedTools: Record<string, string[]> = {};
+    mcpConfigs.forEach(config => {
+      if (config.serviceName && config.selectedTools.length > 0) {
+        newSelectedTools[config.serviceName] = config.selectedTools;
       }
-
-      return { ...prev, [serviceName]: newServiceTools };
     });
-  };
+    setSelectedMcpTools(newSelectedTools);
+  }, [mcpConfigs]);
 
   const handleModelSelect = (model: Model) => {
     setConfig(prev => ({ ...prev, model_id: model.model_id }));
@@ -467,7 +526,7 @@ export default function AgentBuilder() {
                             onChange={(e) => setConfig(prev => ({ ...prev, retrieve_mode: e.target.value as any }))}
                             className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                           >
-                            <option value="milvus">Milvus</option>
+                            <option value="simple">普通检索</option>
                             <option value="rerank">Rerank</option>
                             <option value="rrf">RRF</option>
                           </select>
@@ -561,102 +620,152 @@ export default function AgentBuilder() {
 
               {/* MCP Configuration */}
               <div className="border-t pt-6">
-                <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
-                  <MessageSquare className="w-5 h-5" />
-                  MCP 工具配置
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium flex items-center gap-2">
+                    <MessageSquare className="w-5 h-5" />
+                    MCP 工具配置
+                  </h3>
+                  {mcpServices.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={addMcpConfig}
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      添加服务
+                    </button>
+                  )}
+                </div>
 
                 <div className="space-y-4">
                   {mcpServices.length > 0 ? (
                     <>
-                      <p className="text-sm text-gray-600">选择要使用的 MCP 工具，选择后将自动启用</p>
-                      <div className="space-y-4">
-                        {mcpServices.map((service) => (
-                          <div key={service.id} className="border rounded-lg p-4">
-                            <h4 className="font-medium mb-2">{service.name}</h4>
-                            <p className="text-sm text-gray-600 mb-3">{service.description}</p>
-                            {service.tools && service.tools.length > 0 && (
-                              <div className="space-y-2">
-                                <p className="text-sm font-medium text-gray-700">可用工具：</p>
-                                <div className="space-y-3">
-                                  {service.tools.map((tool) => {
-                                    const isSelected = selectedMcpTools[service.name]?.includes(tool.name) || false;
-                                    const requiredParams = tool.inputSchema?.required || [];
-                                    const allParams = tool.inputSchema?.properties || {};
-                                    const paramNames = Object.keys(allParams);
+                      {mcpConfigs.length === 0 ? (
+                        <p className="text-sm text-gray-500">暂未配置 MCP 服务，点击"添加服务"按钮开始配置</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {mcpConfigs.map((mcpConfig) => {
+                            const selectedService = mcpServices.find(s => s.name === mcpConfig.serviceName);
+                            const availableTools = selectedService?.tools || [];
 
-                                    return (
-                                      <label
-                                        key={tool.name}
-                                        className={`block p-3 border rounded-lg cursor-pointer transition-all ${
-                                          isSelected
-                                            ? 'bg-blue-50 border-blue-300 shadow-sm'
-                                            : 'bg-white border-gray-200 hover:bg-gray-50'
-                                        }`}
-                                      >
-                                        <div className="flex items-start gap-3">
-                                          <input
-                                            type="checkbox"
-                                            checked={isSelected}
-                                            onChange={() => toggleMcpTool(service.name, tool.name)}
-                                            className="mt-1 w-4 h-4 text-blue-500 rounded focus:ring-2 focus:ring-blue-500"
-                                          />
-                                          <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2 mb-1">
-                                              <span className="font-medium text-gray-900">{tool.name}</span>
-                                              {paramNames.length > 0 && (
-                                                <span className="text-xs text-gray-500">
-                                                  ({paramNames.length} 参数)
-                                                </span>
-                                              )}
-                                            </div>
-                                            {tool.description && (
-                                              <p className="text-sm text-gray-600 mb-2">{tool.description}</p>
-                                            )}
-                                            {paramNames.length > 0 && (
-                                              <div className="mt-2 space-y-1">
-                                                <p className="text-xs font-medium text-gray-700">参数：</p>
-                                                <div className="flex flex-wrap gap-1">
-                                                  {paramNames.map((paramName) => {
-                                                    const paramInfo = allParams[paramName];
-                                                    const isRequired = requiredParams.includes(paramName);
-                                                    return (
-                                                      <span
-                                                        key={paramName}
-                                                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
-                                                          isRequired
-                                                            ? 'bg-red-100 text-red-700'
-                                                            : 'bg-gray-100 text-gray-700'
-                                                        }`}
-                                                        title={paramInfo?.description || paramInfo?.type}
-                                                      >
-                                                        {paramName}
-                                                        {isRequired && <span className="ml-1">*</span>}
-                                                        {paramInfo?.type && (
-                                                          <span className="ml-1 text-gray-500">
-                                                            :{paramInfo.type}
-                                                          </span>
-                                                        )}
-                                                      </span>
-                                                    );
-                                                  })}
-                                                </div>
-                                              </div>
-                                            )}
-                                          </div>
-                                        </div>
+                            return (
+                              <div key={mcpConfig.id} className="border rounded-lg p-4 bg-gray-50">
+                                <div className="space-y-3">
+                                  {/* 服务选择 */}
+                                  <div className="flex items-start gap-3">
+                                    <div className="flex-1">
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        MCP 服务
                                       </label>
-                                    );
-                                  })}
+                                      <select
+                                        value={mcpConfig.serviceName}
+                                        onChange={(e) => updateMcpServiceName(mcpConfig.id, e.target.value)}
+                                        className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                      >
+                                        <option value="">选择服务</option>
+                                        {mcpServices.map((service) => (
+                                          <option key={service.id} value={service.name}>
+                                            {service.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeMcpConfig(mcpConfig.id)}
+                                      className="mt-7 p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                      title="删除"
+                                    >
+                                      <Minus className="w-4 h-4" />
+                                    </button>
+                                  </div>
+
+                                  {/* 工具选择 */}
+                                  {mcpConfig.serviceName && availableTools.length > 0 && (
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        选择工具
+                                      </label>
+                                      <select
+                                        multiple
+                                        value={mcpConfig.selectedTools}
+                                        onChange={(e) => {
+                                          const selected = Array.from(e.target.selectedOptions, option => option.value);
+                                          updateMcpTools(mcpConfig.id, selected);
+                                        }}
+                                        className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[120px]"
+                                      >
+                                        {availableTools.map((tool) => (
+                                          <option key={tool.name} value={tool.name}>
+                                            {tool.name} {tool.description ? `- ${tool.description}` : ''}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <p className="mt-1 text-xs text-gray-500">
+                                        按住 Ctrl/Cmd 可以选择多个工具
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  {/* 服务描述 */}
+                                  {selectedService && (
+                                    <div className="bg-blue-50 border border-blue-200 rounded p-2">
+                                      <p className="text-xs text-blue-700">{selectedService.description}</p>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </>
                   ) : (
                     <p className="text-sm text-gray-500">暂无可用的 MCP 服务，请先在 MCP 服务页面添加服务</p>
+                  )}
+                </div>
+              </div>
+
+              {/* NL2SQL Configuration */}
+              <div className="border-t pt-6">
+                <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
+                  <Table className="w-5 h-5" />
+                  NL2SQL 数据库查询配置
+                </h3>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      数据源
+                    </label>
+                    <select
+                      value={config.nl2sql_datasource_id || ''}
+                      onChange={(e) => setConfig(prev => ({
+                        ...prev,
+                        nl2sql_datasource_id: e.target.value,
+                        enable_nl2sql: !!e.target.value
+                      }))}
+                      className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">不使用NL2SQL</option>
+                      {nl2sqlDatasources.map((ds: any) => (
+                        <option key={ds.id} value={ds.id}>
+                          {ds.name} ({ds.type} - {ds.db_type || 'CSV/Excel'})
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      选择数据源后，Agent可以通过自然语言查询数据库
+                    </p>
+                  </div>
+
+                  {config.enable_nl2sql && config.nl2sql_datasource_id && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <p className="text-sm text-blue-700">
+                        <span className="font-medium">Embedding 模型：</span>
+                        将自动使用数据源绑定的 Embedding 模型进行 Schema 向量化
+                      </p>
+                    </div>
                   )}
                 </div>
               </div>

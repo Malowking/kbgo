@@ -6,6 +6,7 @@ import (
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/agent"
+	"github.com/Malowking/kbgo/core/chat"
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/internal/dao"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
@@ -89,8 +90,94 @@ func (c *ControllerV1) AgentChat(ctx context.Context, req *v1.AgentChatReq) (res
 		return nil, c.handleAgentStreamChat(ctx, req, uploadedFiles)
 	}
 
+	// 获取Agent预设配置
 	agentService := agent.NewAgentService()
-	return agentService.AgentChat(ctx, req, uploadedFiles)
+	preset, err := agentService.GetPreset(ctx, req.PresetID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 如果没有conv_id，创建新会话
+	convID := req.ConvID
+	if convID == "" {
+		convID = "conv_" + generateUUID()
+
+		// 创建会话记录
+		conversation := &gormModel.Conversation{
+			ConvID:        convID,
+			UserID:        req.UserID,
+			Title:         "Agent: " + preset.PresetName,
+			ModelName:     preset.Config.ModelID,
+			Status:        "active",
+			AgentPresetID: req.PresetID, // 关联Agent预设
+		}
+
+		if err := dao.Conversation.Create(ctx, conversation); err != nil {
+			g.Log().Warningf(ctx, "创建会话记录失败: %v", err)
+			// 不阻断流程，继续执行
+		}
+	}
+
+	// 构造ChatReq
+	chatReq := &v1.ChatReq{
+		ConvID:           convID,
+		Question:         req.Question,
+		ModelID:          preset.Config.ModelID,
+		SystemPrompt:     preset.Config.SystemPrompt,
+		EmbeddingModelID: preset.Config.EmbeddingModelID,
+		RerankModelID:    preset.Config.RerankModelID,
+		KnowledgeId:      preset.Config.KnowledgeId,
+		EnableRetriever:  preset.Config.EnableRetriever,
+		TopK:             preset.Config.TopK,
+		Score:            preset.Config.Score,
+		RetrieveMode:     preset.Config.RetrieveMode,
+		Stream:           req.Stream,
+		JsonFormat:       preset.Config.JsonFormat,
+		Tools:            preset.Config.Tools,
+		// 旧字段 (保留向后兼容)
+		EnableNL2SQL:     preset.Config.EnableNL2SQL,
+		NL2SQLDatasource: preset.Config.NL2SQLDatasource,
+		UseMCP:           preset.Config.UseMCP,
+		MCPServiceTools:  preset.Config.MCPServiceTools,
+	}
+
+	// 调用Chat处理器
+	chatHandler := chat.NewChatHandler()
+	chatRes, err := chatHandler.Chat(ctx, chatReq, uploadedFiles)
+	if err != nil {
+		return nil, err
+	}
+
+	// 构造响应
+	res = &v1.AgentChatRes{
+		ConvID:           convID,
+		Answer:           chatRes.Answer,
+		ReasoningContent: chatRes.ReasoningContent,
+		MCPResults:       chatRes.MCPResults,
+	}
+
+	// 转换References
+	if len(chatRes.References) > 0 {
+		res.References = make([]*v1.AgentDoc, 0, len(chatRes.References))
+		for _, ref := range chatRes.References {
+			doc := &v1.AgentDoc{
+				Content: ref.Content,
+				Score:   float64(ref.Score),
+			}
+			// 从metadata中提取document_id和chunk_id
+			if ref.MetaData != nil {
+				if docID, ok := ref.MetaData["document_id"].(string); ok {
+					doc.DocumentID = docID
+				}
+				if chunkID, ok := ref.MetaData["chunk_id"].(string); ok {
+					doc.ChunkID = chunkID
+				}
+			}
+			res.References = append(res.References, doc)
+		}
+	}
+
+	return res, nil
 }
 
 // handleAgentStreamChat 处理Agent流式聊天请求
@@ -140,10 +227,14 @@ func (c *ControllerV1) handleAgentStreamChat(ctx context.Context, req *v1.AgentC
 		TopK:             preset.Config.TopK,
 		Score:            preset.Config.Score,
 		RetrieveMode:     preset.Config.RetrieveMode,
-		UseMCP:           preset.Config.UseMCP,
-		MCPServiceTools:  preset.Config.MCPServiceTools,
 		Stream:           true,
 		JsonFormat:       preset.Config.JsonFormat,
+		Tools:            preset.Config.Tools,
+		// 旧字段 (保留向后兼容)
+		EnableNL2SQL:     preset.Config.EnableNL2SQL,
+		NL2SQLDatasource: preset.Config.NL2SQLDatasource,
+		UseMCP:           preset.Config.UseMCP,
+		MCPServiceTools:  preset.Config.MCPServiceTools,
 	}
 
 	// 调用原有的流式Chat处理器，传递上传的文件

@@ -1,4 +1,4 @@
-package chat
+package mcp
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/errors"
-	"github.com/Malowking/kbgo/internal/mcp"
 	"github.com/Malowking/kbgo/pkg/schema"
 )
 
@@ -22,7 +21,7 @@ func NewMCPHandler() *MCPHandler {
 // CallMCPToolsWithLLM 使用 LLM 智能选择并调用 MCP 工具
 func (h *MCPHandler) CallMCPToolsWithLLM(ctx context.Context, req *v1.ChatReq, documents []*schema.Document, fileContent string) ([]*schema.Document, []*v1.MCPResult, string, error) {
 	// 创建 MCP 工具调用器
-	toolCaller, err := mcp.NewMCPToolCaller(ctx)
+	toolCaller, err := NewMCPToolCaller(ctx)
 	if err != nil {
 		return nil, nil, "", errors.Newf(errors.ErrMCPInitFailed, "创建MCP工具调用器失败: %v", err)
 	}

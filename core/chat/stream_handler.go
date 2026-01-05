@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/agent_tools"
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/internal/logic/chat"
 	"github.com/Malowking/kbgo/internal/logic/retriever"
@@ -160,30 +161,41 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 		g.Log().Infof(ctx, "Added parsed document content to documents (%d chars)", len(fileParseRes.fileContent))
 	}
 
-	// 2. 执行MCP工具调用
+	// 2. 执行工具调用 (使用统一的工具执行器)
 	var mcpRes mcpResult
-	if req.UseMCP {
-		g.Log().Infof(ctx, "开始执行MCP工具调用...")
-		mcpHandler := NewMCPHandler()
-		// 传入检索到的文档和文件解析内容
-		_, mcpResults, mcpFinalAnswer, err := mcpHandler.CallMCPToolsWithLLM(ctx, req, documents, fileParseRes.fileContent)
+	if req.Tools != nil && len(req.Tools) > 0 {
+		g.Log().Infof(ctx, "Executing tools using unified executor")
+		executor := agent_tools.NewToolExecutor()
+		toolResult, err := executor.Execute(ctx, req.Tools, req.Question, req.ModelID, req.EmbeddingModelID, documents)
 		if err != nil {
-			g.Log().Errorf(ctx, "MCP智能工具调用失败: %v", err)
-			mcpRes.err = err
+			g.Log().Errorf(ctx, "Tool execution failed: %v", err)
 		} else {
-			g.Log().Infof(ctx, "MCP工具调用完成，返回 %d 个结果", len(mcpResults))
-			mcpRes.mcpResults = mcpResults
-			mcpRes.mcpMetadata = make([]map[string]interface{}, len(mcpResults))
-			for i, res := range mcpResults {
-				mcpRes.mcpMetadata[i] = map[string]interface{}{
-					"type":         "mcp",
-					"service_name": res.ServiceName,
-					"tool_name":    res.ToolName,
-					"content":      res.Content,
+			// 添加工具返回的文档
+			if len(toolResult.Documents) > 0 {
+				documents = append(documents, toolResult.Documents...)
+			}
+
+			// 设置MCP结果
+			if toolResult.MCPResults != nil {
+				mcpRes.mcpResults = toolResult.MCPResults
+				mcpRes.mcpMetadata = make([]map[string]interface{}, len(toolResult.MCPResults))
+				for i, res := range toolResult.MCPResults {
+					mcpRes.mcpMetadata[i] = map[string]interface{}{
+						"type":         "mcp",
+						"service_name": res.ServiceName,
+						"tool_name":    res.ToolName,
+						"content":      res.Content,
+					}
 				}
 			}
-			if mcpFinalAnswer != "" {
-				g.Log().Infof(ctx, "MCP returned final answer (length: %d)", len(mcpFinalAnswer))
+
+			// 注意：NL2SQL结果在流式响应中不需要单独处理，会作为documents传递给LLM
+
+			// 如果工具返回了最终答案(仅MCP可能返回),处理流式返回
+			if toolResult.FinalAnswer != "" {
+				g.Log().Infof(ctx, "Tool returned final answer, using it for stream response")
+				// 注意：对于流式响应，我们不能直接返回最终答案
+				// 需要将其注入到流式响应中，这里先忽略，由LLM处理工具结果
 			}
 		}
 	}

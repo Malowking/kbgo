@@ -10,6 +10,8 @@ import Models from '@/pages/Models';
 import MCP from '@/pages/MCP';
 import AgentBuilder from '@/pages/AgentBuilder';
 import AgentChat from '@/pages/AgentChat';
+import NL2SQLDataSource from '@/pages/NL2SQLDataSource';
+import NL2SQLDataSourceDetail from '@/pages/NL2SQLDataSource/Detail';
 
 function App() {
   return (
@@ -52,6 +54,8 @@ function App() {
           <Route path="knowledge-base" element={<KnowledgeBase />} />
           <Route path="knowledge-base/:id" element={<KnowledgeBaseDetail />} />
           <Route path="kb/:kbId/document/:docId" element={<DocumentDetail />} />
+          <Route path="nl2sql-datasource" element={<NL2SQLDataSource />} />
+          <Route path="nl2sql-datasource/:id" element={<NL2SQLDataSourceDetail />} />
           <Route path="documents" element={<Documents />} />
           <Route path="models" element={<Models />} />
           <Route path="mcp" element={<MCP />} />
