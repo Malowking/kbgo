@@ -15,6 +15,16 @@ const (
 	DocumentId         = "document_id"
 )
 
+// NL2SQL向量存储字段名常量
+const (
+	NL2SQLFieldEntityType   = "entity_type"
+	NL2SQLFieldEntityId     = "entity_id"
+	NL2SQLFieldDatasourceId = "datasource_id"
+	NL2SQLFieldText         = "text"
+	NL2SQLFieldVector       = "vector"
+	NL2SQLFieldMetadata     = "metadata"
+)
+
 // Retriever interface for vector search and retrieval operations
 type Retriever interface {
 	// Retrieve performs vector search and returns matching documents
@@ -138,4 +148,26 @@ type VectorStore interface {
 
 	// VectorSearchOnly 仅使用向量检索的通用方法
 	VectorSearchOnly(ctx context.Context, conf GeneralRetrieverConfig, query string, knowledgeId string, topK int, score float64) ([]*schema.Document, error)
+
+	// VectorSearchOnlyNL2SQL NL2SQL专用的向量检索方法
+	VectorSearchOnlyNL2SQL(ctx context.Context, conf GeneralRetrieverConfig, query string, collectionName string, datasourceID string, topK int, score float64) ([]*schema.Document, error)
+
+	// CreateNL2SQLCollection 创建NL2SQL专用的集合
+	CreateNL2SQLCollection(ctx context.Context, collectionName string, dimension int) error
+
+	// InsertNL2SQLVectors 插入NL2SQL向量数据
+	InsertNL2SQLVectors(ctx context.Context, collectionName string, entities []*NL2SQLEntity, vectors [][]float32) ([]string, error)
+
+	// DeleteNL2SQLByDatasourceID 根据数据源ID删除所有相关实体
+	DeleteNL2SQLByDatasourceID(ctx context.Context, collectionName string, datasourceID string) error
+}
+
+// NL2SQLEntity represents a NL2SQL entity for vector storage
+type NL2SQLEntity struct {
+	ID           string                 `json:"id"`
+	EntityType   string                 `json:"entity_type"`   // table, column, metric, relation
+	EntityID     string                 `json:"entity_id"`     // UUID of the entity
+	DatasourceID string                 `json:"datasource_id"` // Datasource ID
+	Text         string                 `json:"text"`          // Text for embedding
+	MetaData     map[string]interface{} `json:"metadata"`      // Additional metadata
 }

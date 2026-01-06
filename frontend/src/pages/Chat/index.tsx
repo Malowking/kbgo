@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Paperclip, Plus, List, Settings, ChevronDown } from 'lucide-react';
 import { chatApi, conversationApi, knowledgeBaseApi, modelApi, mcpApi } from '@/services';
 import { generateId } from '@/lib/utils';
-import type { Message, KnowledgeBase, Model, MCPRegistry } from '@/types';
+import type { Message, KnowledgeBase, Model, MCPRegistry, ToolConfig } from '@/types';
 import ChatMessage from './ChatMessage';
 import ConversationSidebar from './ConversationSidebar';
 import ModelSelectorModal from '@/components/ModelSelectorModal';
@@ -37,21 +37,27 @@ export default function Chat() {
   const [mcpServices, setMcpServices] = useState<MCPRegistry[]>([]);
   const [selectedMCPService, setSelectedMCPService] = useState<string>('');
 
-  // 当选择知识库时，自动启用检索并展开高级设置
+  // 当选择知识库时，自动启用检索、展开高级设置，并禁用MCP
   useEffect(() => {
     if (selectedKB) {
       setEnableRetriever(true);
       setShowAdvancedSettings(true);
+      // 禁用MCP（互斥）
+      setSelectedMCPService('');
+      setUseMCP(false);
     } else {
       setEnableRetriever(false);
     }
   }, [selectedKB]);
 
-  // 当选择MCP服务时，自动启用MCP并展开高级设置
+  // 当选择MCP服务时，自动启用MCP、展开高级设置，并禁用知识库检索
   useEffect(() => {
     if (selectedMCPService) {
       setUseMCP(true);
       setShowAdvancedSettings(true);
+      // 禁用知识库检索（互斥）
+      setSelectedKB('');
+      setEnableRetriever(false);
     } else {
       setUseMCP(false);
     }
@@ -165,6 +171,24 @@ export default function Chat() {
         },
       ]);
 
+      // 构建tools参数
+      const tools: ToolConfig[] = [];
+
+      // 如果启用了MCP
+      if (useMCP && selectedMCPService) {
+        tools.push({
+          type: 'mcp',
+          enabled: true,
+          config: {
+            service_id: selectedMCPService,
+          }
+        });
+      }
+
+      // 如果启用了知识库检索（当没有tools时）
+      // 注意：当tools存在时，知识库检索会作为工具的一部分，由后端处理
+      const shouldEnableRetriever = enableRetriever && !!selectedKB && tools.length === 0;
+
       await chatApi.sendStream(
         {
           conv_id: convId,
@@ -172,12 +196,12 @@ export default function Chat() {
           model_id: selectedModel,
           rerank_model_id: selectedRerankModel,
           knowledge_id: selectedKB,
-          enable_retriever: enableRetriever && !!selectedKB,
+          enable_retriever: shouldEnableRetriever,
           top_k: topK,
           score: score,
           retrieve_mode: retrieveMode,
           rerank_weight: rerankWeight,
-          use_mcp: useMCP && !!selectedMCPService,
+          tools: tools.length > 0 ? tools : undefined, // 新的统一工具配置
           stream: true,
           files: currentFiles, // 传递文件
         },

@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Database, Table, Settings } from 'lucide-react';
+import { ArrowLeft, Database, Table, Settings, MessageSquare } from 'lucide-react';
 import { nl2sqlApi } from '@/services';
 import { showError } from '@/lib/toast';
 import TablesTab from './tabs/TablesTab';
 import SettingsTab from './tabs/SettingsTab';
+import ChatTab from './tabs/ChatTab';
 
-type TabType = 'tables' | 'settings';
+type TabType = 'tables' | 'chat' | 'settings';
 
 interface DataSource {
   id: string;
@@ -77,6 +78,7 @@ export default function NL2SQLDataSourceDetail() {
 
   const tabs = [
     { key: 'tables' as TabType, label: '表管理', icon: Table },
+    { key: 'chat' as TabType, label: '测试对话', icon: MessageSquare },
     { key: 'settings' as TabType, label: '设置', icon: Settings },
   ];
 
@@ -169,6 +171,7 @@ export default function NL2SQLDataSourceDetail() {
       {/* Tab Content */}
       <div className="flex-1 overflow-auto bg-gray-50">
         {activeTab === 'tables' && <TablesTab datasource={datasource} onUpdate={fetchDatasource} />}
+        {activeTab === 'chat' && <ChatTab datasource={datasource} />}
         {activeTab === 'settings' && <SettingsTab datasource={datasource} onUpdate={fetchDatasource} />}
       </div>
     </div>

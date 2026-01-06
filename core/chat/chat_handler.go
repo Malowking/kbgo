@@ -22,6 +22,13 @@ func NewChatHandler() *ChatHandler {
 
 // Chat Handle basic chat request (non-streaming)
 func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles []*common.MultimodalFile) (*v1.ChatRes, error) {
+	// 验证：Tools和知识库检索不能同时启用
+	if req.Tools != nil && len(req.Tools) > 0 && req.EnableRetriever && req.KnowledgeId != "" {
+		g.Log().Warningf(ctx, "Chat handler - Both Tools and knowledge retrieval are enabled, knowledge retrieval will be treated as a tool")
+		// 当Tools参数存在时，知识库检索会作为工具的一部分处理，所以这里禁用直接的知识库检索
+		req.EnableRetriever = false
+	}
+
 	// 加载Agent预设配置（如果会话关联了Agent预设）
 	req = LoadAgentPresetConfig(ctx, req)
 

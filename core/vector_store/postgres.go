@@ -136,6 +136,15 @@ func (p *PostgresStore) CreateCollection(ctx context.Context, collectionName str
 	// 清理表名，防止SQL注入
 	tableName := p.sanitizeTableName(collectionName)
 
+	// 判断是否为NL2SQL集合（以 "nl2sql_" 开头）
+	isNL2SQL := strings.HasPrefix(collectionName, "nl2sql_")
+
+	if isNL2SQL {
+		// 使用NL2SQL专用表结构
+		g.Log().Infof(ctx, "Detected NL2SQL collection, using NL2SQLTableSchema for '%s'", collectionName)
+		return p.CreateNL2SQLCollection(ctx, collectionName, dimension)
+	}
+
 	// 使用标准表结构模型
 	schema := pgvectorModel.TableSchema{}
 
@@ -706,4 +715,360 @@ func (r *postgresRetriever) GetType() string {
 // IsCallbacksEnabled 返回是否启用回调
 func (r *postgresRetriever) IsCallbacksEnabled() bool {
 	return false
+}
+
+// ==================== NL2SQL专用方法 ====================
+
+// CreateNL2SQLCollection 创建NL2SQL专用的集合
+func (p *PostgresStore) CreateNL2SQLCollection(ctx context.Context, collectionName string, dimension int) error {
+	// 清理表名，防止SQL注入
+	tableName := p.sanitizeTableName(collectionName)
+
+	// 使用NL2SQL专用表结构模型
+	schema := pgvectorModel.NL2SQLTableSchema{}
+
+	// 1. 创建表，使用传入的维度参数
+	createTableSQL := schema.GenerateCreateTableSQL(p.schema, tableName, dimension)
+	_, err := p.pool.Exec(ctx, createTableSQL)
+	if err != nil {
+		return errors.Newf(errors.ErrVectorStoreInit, "failed to create NL2SQL table %s.%s: %v", p.schema, tableName, err)
+	}
+
+	// 2. 创建索引
+	createIndexSQLs := schema.GenerateCreateIndexSQL(p.schema, tableName)
+	for _, indexSQL := range createIndexSQLs {
+		_, err := p.pool.Exec(ctx, indexSQL)
+		if err != nil {
+			g.Log().Warningf(ctx, "failed to create index for NL2SQL table %s.%s: %v", p.schema, tableName, err)
+			// 继续执行，索引创建失败不应该阻止表的使用
+		}
+	}
+
+	g.Log().Infof(ctx, "NL2SQL table '%s.%s' created with dimension %d and indexes", p.schema, tableName, dimension)
+	return nil
+}
+
+// InsertNL2SQLVectors 插入NL2SQL向量数据
+func (p *PostgresStore) InsertNL2SQLVectors(ctx context.Context, collectionName string, entities []*NL2SQLEntity, vectors [][]float32) ([]string, error) {
+	if len(entities) == 0 {
+		return []string{}, nil
+	}
+
+	if len(entities) != len(vectors) {
+		return nil, errors.Newf(errors.ErrInvalidParameter, "entities count (%d) must match vectors count (%d)", len(entities), len(vectors))
+	}
+
+	tableName := p.sanitizeTableName(collectionName)
+	fullTableName := fmt.Sprintf("%s.%s", p.schema, tableName)
+
+	// 构建批量插入SQL
+	insertSQL := fmt.Sprintf(`
+		INSERT INTO %s (id, entity_type, entity_id, datasource_id, text, vector, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, fullTableName)
+
+	// 使用事务批量插入
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return nil, errors.Newf(errors.ErrVectorInsert, "failed to begin transaction: %v", err)
+	}
+	defer tx.Rollback(ctx)
+
+	ids := make([]string, len(entities))
+	for i, entity := range entities {
+		// 生成ID（如果没有）
+		if entity.ID == "" {
+			entity.ID = uuid.New().String()
+		}
+		ids[i] = entity.ID
+
+		// 序列化metadata
+		metadataJSON, err := json.Marshal(entity.MetaData)
+		if err != nil {
+			return nil, errors.Newf(errors.ErrInvalidParameter, "failed to marshal metadata for entity %s: %v", entity.ID, err)
+		}
+
+		// 转换向量为pgvector格式
+		vec := pgvector.NewVector(vectors[i])
+
+		// 执行插入
+		_, err = tx.Exec(ctx, insertSQL,
+			entity.ID,
+			entity.EntityType,
+			entity.EntityID,
+			entity.DatasourceID,
+			entity.Text,
+			vec,
+			metadataJSON,
+		)
+		if err != nil {
+			return nil, errors.Newf(errors.ErrVectorInsert, "failed to insert NL2SQL entity %s: %v", entity.ID, err)
+		}
+	}
+
+	// 提交事务
+	if err := tx.Commit(ctx); err != nil {
+		return nil, errors.Newf(errors.ErrVectorInsert, "failed to commit transaction: %v", err)
+	}
+
+	g.Log().Infof(ctx, "Inserted %d NL2SQL entities into table '%s'", len(entities), fullTableName)
+	return ids, nil
+}
+
+// DeleteNL2SQLByDatasourceID 根据数据源ID删除所有相关实体
+func (p *PostgresStore) DeleteNL2SQLByDatasourceID(ctx context.Context, collectionName string, datasourceID string) error {
+	tableName := p.sanitizeTableName(collectionName)
+	fullTableName := fmt.Sprintf("%s.%s", p.schema, tableName)
+
+	// 构建删除SQL
+	deleteSQL := fmt.Sprintf(`DELETE FROM %s WHERE datasource_id = $1`, fullTableName)
+
+	// 执行删除
+	result, err := p.pool.Exec(ctx, deleteSQL, datasourceID)
+	if err != nil {
+		return errors.Newf(errors.ErrVectorDelete, "failed to delete NL2SQL entities by datasource_id: %v", err)
+	}
+
+	rowsAffected := result.RowsAffected()
+	g.Log().Infof(ctx, "Deleted %d NL2SQL entities with datasource_id '%s' from table '%s'", rowsAffected, datasourceID, fullTableName)
+	return nil
+}
+
+// NewNL2SQLRetriever 创建NL2SQL专用的PostgreSQL检索器实例
+func (p *PostgresStore) NewNL2SQLRetriever(ctx context.Context, conf interface{}, collectionName string, datasourceID string) (Retriever, error) {
+	if p.pool == nil {
+		return nil, errors.New(errors.ErrInvalidParameter, "postgres pool not provided")
+	}
+
+	if collectionName == "" {
+		return nil, errors.New(errors.ErrInvalidParameter, "collection name cannot be empty")
+	}
+
+	tableName := p.sanitizeTableName(collectionName)
+	fullTableName := fmt.Sprintf("%s.%s", p.schema, tableName)
+
+	// 检查表是否存在
+	exists, err := p.CollectionExists(ctx, collectionName)
+	if err != nil {
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to check collection: %v", err)
+	}
+	if !exists {
+		return nil, errors.Newf(errors.ErrVectorStoreNotFound, "table '%s' not found", fullTableName)
+	}
+
+	// 创建并返回NL2SQL检索器
+	return &nl2sqlRetriever{
+		pool:         p.pool,
+		tableName:    fullTableName,
+		datasourceID: datasourceID,
+		config:       conf,
+	}, nil
+}
+
+// nl2sqlRetriever NL2SQL专用检索器
+type nl2sqlRetriever struct {
+	pool         *pgxpool.Pool
+	tableName    string
+	datasourceID string
+	config       interface{}
+}
+
+// Retrieve 实现NL2SQL检索功能
+func (r *nl2sqlRetriever) Retrieve(ctx context.Context, query string, opts ...Option) ([]*schema.Document, error) {
+	// 默认参数
+	topK := 5
+	var scoreThreshold *float64
+
+	// 解析选项
+	options := GetCommonOptions(&Options{
+		TopK:           &topK,
+		ScoreThreshold: scoreThreshold,
+	}, opts...)
+
+	if options.TopK != nil {
+		topK = *options.TopK
+	}
+	if options.ScoreThreshold != nil {
+		scoreThreshold = options.ScoreThreshold
+	}
+
+	// 如果没有设置阈值，使用默认值0.0
+	threshold := 0.0
+	if scoreThreshold != nil {
+		threshold = *scoreThreshold
+	}
+
+	return r.nl2sqlVectorSearchWithThreshold(ctx, query, topK, threshold)
+}
+
+// nl2sqlVectorSearchWithThreshold NL2SQL专用的向量搜索
+func (r *nl2sqlRetriever) nl2sqlVectorSearchWithThreshold(ctx context.Context, query string, topK int, threshold float64) ([]*schema.Document, error) {
+	// 获取embedding配置
+	var apiKey, baseURL, embeddingModel string
+	if r.config != nil {
+		type embeddingConfigGetter interface {
+			GetAPIKey() string
+			GetBaseURL() string
+			GetEmbeddingModel() string
+		}
+
+		if configGetter, ok := r.config.(embeddingConfigGetter); ok {
+			apiKey = configGetter.GetAPIKey()
+			baseURL = configGetter.GetBaseURL()
+			embeddingModel = configGetter.GetEmbeddingModel()
+		} else if configMap, ok := r.config.(map[string]interface{}); ok {
+			if key, exists := configMap["apiKey"]; exists {
+				apiKey = fmt.Sprintf("%v", key)
+			}
+			if url, exists := configMap["baseURL"]; exists {
+				baseURL = fmt.Sprintf("%v", url)
+			}
+			if model, exists := configMap["embeddingModel"]; exists {
+				embeddingModel = fmt.Sprintf("%v", model)
+			}
+		}
+	}
+
+	// 创建embedding配置
+	embeddingConfig := &embeddingConfigWrapper{
+		apiKey:         apiKey,
+		baseURL:        baseURL,
+		embeddingModel: embeddingModel,
+	}
+
+	// 创建embedder
+	embedder, err := common.NewEmbedding(ctx, embeddingConfig)
+	if err != nil {
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "failed to create embedder: %v", err)
+	}
+
+	// 生成查询向量
+	dim := g.Cfg().MustGet(ctx, "postgres.dim", 1024).Int()
+	vectors, err := embedder.EmbedStrings(ctx, []string{query}, dim)
+	if err != nil {
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "embedding has error: %v", err)
+	}
+
+	if len(vectors) != 1 {
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "invalid return length of vector, got=%d, expected=1", len(vectors))
+	}
+
+	queryVector := pgvector.NewVector(vectors[0])
+
+	// 获取距离度量类型
+	metricType := g.Cfg().MustGet(ctx, "vectorStore.metricType", "COSINE").String()
+
+	// 根据metricType选择pgvector操作符和分数计算方式
+	var scoreCalc, orderBy string
+	switch strings.ToUpper(metricType) {
+	case "COSINE":
+		scoreCalc = "1 - (vector <=> $1)"
+		orderBy = "vector <=> $1"
+	case "L2":
+		scoreCalc = "1 / (1 + (vector <-> $1))"
+		orderBy = "vector <-> $1"
+	case "IP", "INNER_PRODUCT":
+		scoreCalc = "(vector <#> $1)"
+		orderBy = "vector <#> $1 DESC"
+	default:
+		g.Log().Warningf(ctx, "Unknown metricType '%s', using COSINE as default", metricType)
+		scoreCalc = "1 - (vector <=> $1)"
+		orderBy = "vector <=> $1"
+	}
+
+	// 执行NL2SQL向量相似度搜索（包含datasource_id过滤）
+	searchSQL := fmt.Sprintf(`
+		SELECT id, entity_type, entity_id, datasource_id, text, metadata,
+		       %s as similarity_score
+		FROM %s
+		WHERE datasource_id = $2 AND %s >= $3
+		ORDER BY %s
+		LIMIT $4
+	`, scoreCalc, r.tableName, scoreCalc, orderBy)
+
+	rows, err := r.pool.Query(ctx, searchSQL, queryVector, r.datasourceID, threshold, topK)
+	if err != nil {
+		return nil, errors.Newf(errors.ErrVectorSearch, "failed to execute NL2SQL vector search: %v", err)
+	}
+	defer rows.Close()
+
+	var results []*schema.Document
+	for rows.Next() {
+		var id, entityType, entityID, datasourceID, text string
+		var metadataBytes []byte
+		var score float64
+
+		err := rows.Scan(&id, &entityType, &entityID, &datasourceID, &text, &metadataBytes, &score)
+		if err != nil {
+			return nil, errors.Newf(errors.ErrVectorSearch, "failed to scan row: %v", err)
+		}
+
+		doc := &schema.Document{
+			ID:       id,
+			Content:  text,
+			MetaData: make(map[string]any),
+		}
+		doc.Score = float32(score)
+
+		// 解析metadata
+		if len(metadataBytes) > 0 {
+			var metadata map[string]any
+			if err := json.Unmarshal(metadataBytes, &metadata); err == nil {
+				for k, v := range metadata {
+					doc.MetaData[k] = v
+				}
+			}
+		}
+
+		// 添加NL2SQL特定字段到metadata
+		doc.MetaData[NL2SQLFieldEntityType] = entityType
+		doc.MetaData[NL2SQLFieldEntityId] = entityID
+		doc.MetaData[NL2SQLFieldDatasourceId] = datasourceID
+
+		results = append(results, doc)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, errors.Newf(errors.ErrVectorSearch, "error iterating over rows: %v", err)
+	}
+
+	// 去重
+	results = common.RemoveDuplicates(results, func(doc *schema.Document) string {
+		return doc.ID
+	})
+
+	// 按相似度排序
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Score > results[j].Score
+	})
+
+	g.Log().Infof(ctx, "NL2SQL vector search completed: found %d results for datasource %s", len(results), r.datasourceID)
+	return results, nil
+}
+
+// GetType 返回检索器类型
+func (r *nl2sqlRetriever) GetType() string {
+	return "NL2SQLRetriever"
+}
+
+// IsCallbacksEnabled 返回是否启用回调
+func (r *nl2sqlRetriever) IsCallbacksEnabled() bool {
+	return false
+}
+
+// VectorSearchOnlyNL2SQL NL2SQL专用的向量检索方法
+func (p *PostgresStore) VectorSearchOnlyNL2SQL(ctx context.Context, conf GeneralRetrieverConfig, query string, collectionName string, datasourceID string, topK int, score float64) ([]*schema.Document, error) {
+	// 创建NL2SQL检索器
+	r, err := p.NewNL2SQLRetriever(ctx, conf, collectionName, datasourceID)
+	if err != nil {
+		g.Log().Errorf(ctx, "failed to create NL2SQL retriever for collection %s, err=%v", collectionName, err)
+		return nil, err
+	}
+
+	// 执行检索
+	if nl2sqlRetriever, ok := r.(*nl2sqlRetriever); ok {
+		return nl2sqlRetriever.nl2sqlVectorSearchWithThreshold(ctx, query, topK, score)
+	}
+
+	return nil, errors.New(errors.ErrVectorSearch, "failed to cast retriever to nl2sqlRetriever")
 }

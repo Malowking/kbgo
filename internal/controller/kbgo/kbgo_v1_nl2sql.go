@@ -191,25 +191,20 @@ func (c *ControllerV1) NL2SQLDeleteDataSource(ctx context.Context, req *v1.NL2SQ
 
 // NL2SQLQuery 执行NL2SQL查询
 func (c *ControllerV1) NL2SQLQuery(ctx context.Context, req *v1.NL2SQLQueryReq) (res *v1.NL2SQLQueryRes, err error) {
-	g.Log().Infof(ctx, "NL2SQLQuery request - DatasourceID: %s, Question: %s, SessionID: %s",
-		req.DatasourceID, req.Question, req.SessionID)
+	g.Log().Infof(ctx, "NL2SQLQuery request - DatasourceID: %s, Question: %s, SessionID: %s, LLMModelID: %s",
+		req.DatasourceID, req.Question, req.SessionID, req.LLMModelID)
 
 	// 获取数据库连接和Redis客户端
 	db := dao.GetDB()
 	redisClient := cache.GetRedisClient()
 	nl2sqlService := service.NewNL2SQLService(db, redisClient)
 
-	// TODO: 集成LLM和向量搜索适配器
-	// 目前先调用基础的Query方法，后续需要：
-	// 1. 获取数据源关联的AgentPreset
-	// 2. 根据AgentPreset配置创建LLMAdapter和VectorSearchAdapter
-	// 3. 调用QueryWithAdapters方法
-
 	// 调用服务层执行查询
 	serviceReq := &service.QueryRequest{
 		DatasourceID: req.DatasourceID,
 		Question:     req.Question,
 		SessionID:    req.SessionID,
+		LLMModelID:   req.LLMModelID,
 	}
 
 	queryResp, err := nl2sqlService.Query(ctx, serviceReq)

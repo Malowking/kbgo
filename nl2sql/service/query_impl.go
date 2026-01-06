@@ -163,12 +163,10 @@ func (s *NL2SQLService) QueryWithAdapters(
 	}
 
 	// 9. 更新查询日志
-	resultJSON, _ := json.Marshal(queryResult)
 	s.db.Model(queryLog).Updates(map[string]interface{}{
-		"status":      nl2sqlCommon.ExecutionStatusSuccess,
-		"sql":         generatedSQL,
-		"result":      resultJSON,
-		"explanation": generateResp.Reasoning,
+		"execution_status": nl2sqlCommon.ExecutionStatusSuccess,
+		"generated_sql":    generatedSQL,
+		"final_sql":        generatedSQL,
 	})
 
 	g.Log().Infof(ctx, "Query completed successfully - RowCount: %d", queryResult.RowCount)
@@ -195,7 +193,7 @@ func buildSchemaContextFromRetrieval(retrieveResult *vector.RetrieveResult) *gen
 	// 转换表信息
 	for _, table := range retrieveResult.Tables {
 		tableCtx := generator.TableContext{
-			Name:        table.TableName,
+			Name:        fmt.Sprintf("nl2sql.%s", table.TableName),
 			DisplayName: table.DisplayName,
 			Description: table.Description,
 			Columns:     make([]generator.ColumnContext, 0),
@@ -238,25 +236,40 @@ func buildSchemaContextFromRetrieval(retrieveResult *vector.RetrieveResult) *gen
 
 // executeSQL 执行SQL查询
 func (s *NL2SQLService) executeSQL(ctx context.Context, ds *dbgorm.NL2SQLDataSource, sql string) (*QueryResult, error) {
-	// 解析数据源配置
-	var config map[string]interface{}
-	if err := json.Unmarshal(ds.Config, &config); err != nil {
+	// 直接使用当前数据库连接执行查询
+	if ds.Type == nl2sqlCommon.DataSourceTypeCSV || ds.Type == nl2sqlCommon.DataSourceTypeExcel {
+		return s.executeLocalQuery(ctx, sql)
+	}
+
+	// 对于JDBC数据源，连接到远程数据库执行查询
+	var configMap map[string]interface{}
+	if err := json.Unmarshal(ds.Config, &configMap); err != nil {
 		return nil, fmt.Errorf("解析配置失败: %w", err)
 	}
 
-	// 创建数据源连接
-	dbConfig := mapToDBConfig(config, ds.DBType)
-	connector := datasource.NewJDBCConnector(dbConfig)
+	// 使用工厂创建数据源
+	factory := datasource.NewDataSourceFactory()
+	dataSourceConfig := &datasource.Config{
+		Type:     ds.Type,
+		DBType:   ds.DBType,
+		Settings: configMap,
+	}
 
+	connector, err := factory.Create(dataSourceConfig)
+	if err != nil {
+		return nil, fmt.Errorf("创建数据源失败: %w", err)
+	}
+
+	// 连接数据源
 	if err := connector.Connect(ctx); err != nil {
-		return nil, fmt.Errorf("连接数据库失败: %w", err)
+		return nil, fmt.Errorf("连接数据源失败: %w", err)
 	}
 	defer connector.Close()
 
 	// 执行查询
 	result, err := connector.ExecuteQuery(ctx, sql)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("执行查询失败: %w", err)
 	}
 
 	// 转换结果格式 (*datasource.QueryResult -> *QueryResult)
@@ -286,13 +299,68 @@ func (s *NL2SQLService) executeSQL(ctx context.Context, ds *dbgorm.NL2SQLDataSou
 	}, nil
 }
 
+// executeLocalQuery 执行本地数据库查询（用于CSV/Excel数据源）
+func (s *NL2SQLService) executeLocalQuery(ctx context.Context, sql string) (*QueryResult, error) {
+	// 使用GORM的Raw查询执行SQL
+	rows, err := s.db.Raw(sql).Rows()
+	if err != nil {
+		return nil, fmt.Errorf("执行查询失败: %w", err)
+	}
+	defer rows.Close()
+
+	// 获取列名
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, fmt.Errorf("获取列名失败: %w", err)
+	}
+
+	// 读取数据
+	var data []map[string]interface{}
+	for rows.Next() {
+		// 创建扫描目标
+		values := make([]interface{}, len(columns))
+		valuePtrs := make([]interface{}, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return nil, fmt.Errorf("扫描行数据失败: %w", err)
+		}
+
+		// 转换为map
+		rowMap := make(map[string]interface{})
+		for i, colName := range columns {
+			val := values[i]
+			// 处理字节数组
+			if b, ok := val.([]byte); ok {
+				rowMap[colName] = string(b)
+			} else {
+				rowMap[colName] = val
+			}
+		}
+		data = append(data, rowMap)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("读取数据失败: %w", err)
+	}
+
+	return &QueryResult{
+		Columns:  columns,
+		Data:     data,
+		RowCount: len(data),
+	}, nil
+}
+
 // updateQueryLogStatus 更新查询日志状态
 func (s *NL2SQLService) updateQueryLogStatus(queryLogID, status, sql, errorMsg string) {
 	updates := map[string]interface{}{
-		"status": status,
+		"execution_status": status,
 	}
 	if sql != "" {
-		updates["sql"] = sql
+		updates["generated_sql"] = sql
+		updates["final_sql"] = sql
 	}
 	if errorMsg != "" {
 		updates["error_message"] = errorMsg
@@ -383,12 +451,10 @@ func (s *NL2SQLService) SimplifiedQuery(
 	}
 
 	// 9. 更新日志
-	resultJSON, _ := json.Marshal(queryResult)
 	s.db.Model(queryLog).Updates(map[string]interface{}{
-		"status":      nl2sqlCommon.ExecutionStatusSuccess,
-		"sql":         generatedSQL,
-		"result":      resultJSON,
-		"explanation": generateResp.Reasoning,
+		"execution_status": nl2sqlCommon.ExecutionStatusSuccess,
+		"generated_sql":    generatedSQL,
+		"final_sql":        generatedSQL,
 	})
 
 	return &QueryResponse{

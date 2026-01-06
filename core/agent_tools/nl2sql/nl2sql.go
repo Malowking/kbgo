@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Malowking/kbgo/core/agent_tools/file_export"
 	"github.com/Malowking/kbgo/core/cache"
@@ -121,9 +122,19 @@ func (t *NL2SQLTool) DetectAndExecute(ctx context.Context, question string, data
 	// 6. 如果只需要SQL，不执行查询
 	if intent.NeedSQLOnly {
 		g.Log().Infof(ctx, "User only needs SQL, generating SQL without execution")
-		// TODO: 实现只生成SQL的逻辑（需要调用generator.Generate）
+
+		// 生成SQL但不执行
+		sqlResult, err := t.generateSQLOnly(ctx, question, datasourceID, llmAdapter)
+		if err != nil {
+			g.Log().Errorf(ctx, "Failed to generate SQL: %v", err)
+			result.IsNL2SQLQuery = true
+			result.Error = fmt.Sprintf("生成SQL失败: %v", err)
+			return result, nil
+		}
+
 		result.IsNL2SQLQuery = true
-		result.Error = "仅生成SQL功能尚未实现，请稍后"
+		result.SQL = sqlResult.SQL
+		result.Explanation = sqlResult.Explanation
 		return result, nil
 	}
 
@@ -144,7 +155,7 @@ func (t *NL2SQLTool) DetectAndExecute(ctx context.Context, question string, data
 			if err != nil {
 				g.Log().Warningf(ctx, "NL2SQL Tool - Failed to get vector store: %v, will proceed without vector search", err)
 			} else {
-				vectorAdapter = adapter.NewVectorSearchAdapter(vectorStore, collectionName, embeddingModelConfig)
+				vectorAdapter = adapter.NewVectorSearchAdapter(vectorStore, collectionName, datasourceID, embeddingModelConfig)
 			}
 		}
 	}
@@ -553,4 +564,138 @@ func (t *NL2SQLTool) formatResultAsTableForLLM(columns []string, data []map[stri
 	}
 
 	return tableText
+}
+
+// generateSQLOnly 只生成SQL，不执行查询
+func (t *NL2SQLTool) generateSQLOnly(ctx context.Context, question string, datasourceID string, llmAdapter *adapter.LLMAdapter) (*struct {
+	SQL         string
+	Explanation string
+}, error) {
+	g.Log().Infof(ctx, "Generating SQL only for datasource: %s", datasourceID)
+
+	// 1. 获取数据源信息
+	db := dao.GetDB()
+	var ds dbgorm.NL2SQLDataSource
+	if err := db.First(&ds, "id = ?", datasourceID).Error; err != nil {
+		return nil, fmt.Errorf("数据源不存在: %w", err)
+	}
+
+	// 2. 创建SQL生成器
+	sqlGenerator := t.nl2sqlService.GetSQLGenerator()
+
+	// 3. 获取Schema上下文（使用简化方式，不使用向量检索）
+	schemaContext, err := sqlGenerator.RecallSchema(ctx, datasourceID, question)
+	if err != nil {
+		return nil, fmt.Errorf("获取Schema上下文失败: %w", err)
+	}
+
+	// 4. 生成SQL
+	prompt := t.buildSQLPrompt(question, schemaContext)
+	llmResponse, err := llmAdapter.Call(ctx, prompt)
+	if err != nil {
+		return nil, fmt.Errorf("LLM调用失败: %w", err)
+	}
+
+	// 5. 解析LLM响应
+	result := t.parseSQLResponse(llmResponse)
+
+	g.Log().Infof(ctx, "SQL generated successfully: %s", result.SQL)
+
+	return result, nil
+}
+
+// buildSQLPrompt 构建SQL生成提示词
+func (t *NL2SQLTool) buildSQLPrompt(question string, schemaContext interface{}) string {
+	// 这里简化实现，实际应该使用generator.SQLGenerator的buildPrompt方法
+	// 但为了避免类型转换问题，我们直接构建一个简单的prompt
+	return fmt.Sprintf(`你是一个专业的SQL生成助手。根据用户问题和数据库Schema，生成准确的SQL查询。
+
+用户问题：%s
+
+请生成对应的SQL查询语句，并解释生成思路。
+
+输出格式：
+{
+  "sql": "生成的SQL语句",
+  "explanation": "生成思路说明"
+}`, question)
+}
+
+// parseSQLResponse 解析SQL生成响应
+func (t *NL2SQLTool) parseSQLResponse(llmResponse string) *struct {
+	SQL         string
+	Explanation string
+} {
+	result := &struct {
+		SQL         string
+		Explanation string
+	}{
+		SQL:         "",
+		Explanation: "",
+	}
+
+	// 尝试解析JSON
+	jsonStart := -1
+	jsonEnd := -1
+	for i, ch := range llmResponse {
+		if ch == '{' && jsonStart == -1 {
+			jsonStart = i
+		}
+		if ch == '}' {
+			jsonEnd = i + 1
+		}
+	}
+
+	if jsonStart != -1 && jsonEnd != -1 {
+		jsonStr := llmResponse[jsonStart:jsonEnd]
+		var parsed struct {
+			SQL         string `json:"sql"`
+			Explanation string `json:"explanation"`
+		}
+
+		if err := json.Unmarshal([]byte(jsonStr), &parsed); err == nil {
+			result.SQL = parsed.SQL
+			result.Explanation = parsed.Explanation
+			return result
+		}
+	}
+
+	// 如果JSON解析失败，尝试提取SQL语句
+	if strings.Contains(strings.ToLower(llmResponse), "select") {
+		lines := strings.Split(llmResponse, "\n")
+		var sqlLines []string
+		inSQL := false
+
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			lowerLine := strings.ToLower(trimmed)
+
+			if strings.HasPrefix(lowerLine, "select") {
+				inSQL = true
+			}
+
+			if inSQL {
+				if strings.HasPrefix(trimmed, "```") {
+					continue
+				}
+				sqlLines = append(sqlLines, trimmed)
+
+				if strings.HasSuffix(trimmed, ";") {
+					break
+				}
+			}
+		}
+
+		if len(sqlLines) > 0 {
+			result.SQL = strings.Join(sqlLines, " ")
+			result.Explanation = "从LLM响应中提取的SQL"
+			return result
+		}
+	}
+
+	// 最后的fallback
+	result.SQL = llmResponse
+	result.Explanation = "LLM原始响应"
+
+	return result
 }

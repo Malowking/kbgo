@@ -177,7 +177,8 @@ export const chatApi = {
       if (data.top_k !== undefined) formData.append('top_k', data.top_k.toString());
       if (data.score !== undefined) formData.append('score', data.score.toString());
       if (data.retrieve_mode) formData.append('retrieve_mode', data.retrieve_mode);
-      if (data.use_mcp !== undefined) formData.append('use_mcp', data.use_mcp.toString());
+      if (data.rerank_weight !== undefined) formData.append('rerank_weight', data.rerank_weight.toString());
+      if (data.tools) formData.append('tools', JSON.stringify(data.tools));
 
       // 添加文件
       data.files!.forEach(file => {
@@ -454,6 +455,7 @@ export const nl2sqlApi = {
     datasource_id: string;
     question: string;
     session_id?: string;
+    llm_model_id: string;
   }) =>
     apiClient.post<{
       query_log_id: string;

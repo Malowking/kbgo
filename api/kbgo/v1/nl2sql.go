@@ -117,9 +117,10 @@ type NL2SQLDeleteDataSourceRes struct {
 // NL2SQLQueryReq NL2SQL查询请求
 type NL2SQLQueryReq struct {
 	g.Meta       `path:"/v1/nl2sql/query" method:"post" tags:"nl2sql" summary:"执行NL2SQL查询"`
-	DatasourceID string `json:"datasource_id" v:"required#数据源ID不能为空"` // 数据源ID
-	Question     string `json:"question" v:"required#问题不能为空"`         // 自然语言问题
-	SessionID    string `json:"session_id"`                           // 会话ID（可选，用于上下文）
+	DatasourceID string `json:"datasource_id" v:"required#数据源ID不能为空"`  // 数据源ID
+	Question     string `json:"question" v:"required#问题不能为空"`          // 自然语言问题
+	SessionID    string `json:"session_id"`                            // 会话ID（可选，用于上下文）
+	LLMModelID   string `json:"llm_model_id" v:"required#LLM模型ID不能为空"` // LLM模型ID（用于生成SQL）
 }
 
 // NL2SQLQueryRes NL2SQL查询响应

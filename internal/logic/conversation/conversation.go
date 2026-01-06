@@ -92,11 +92,20 @@ func (m *Manager) GetConversationDetail(ctx context.Context, convID string) (*Co
 	// 转换消息格式
 	messageItems := make([]*MessageItem, 0, len(messages))
 	for _, msg := range messages {
+		createTime := time.Now().Format(time.RFC3339) // 默认使用当前时间
+
+		// 从Extra字段中获取实际的创建时间
+		if msg.Extra != nil {
+			if timeStr, ok := msg.Extra["create_time"].(string); ok {
+				createTime = timeStr
+			}
+		}
+
 		messageItems = append(messageItems, &MessageItem{
 			Role:             string(msg.Role),
 			Content:          msg.Content,
 			ReasoningContent: msg.ReasoningContent,
-			CreateTime:       time.Now().Format(time.RFC3339), // TODO: 从实际消息获取时间
+			CreateTime:       createTime,
 		})
 	}
 

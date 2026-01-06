@@ -134,11 +134,6 @@ func (c *ControllerV1) AgentChat(ctx context.Context, req *v1.AgentChatReq) (res
 		Stream:           req.Stream,
 		JsonFormat:       preset.Config.JsonFormat,
 		Tools:            preset.Config.Tools,
-		// 旧字段 (保留向后兼容)
-		EnableNL2SQL:     preset.Config.EnableNL2SQL,
-		NL2SQLDatasource: preset.Config.NL2SQLDatasource,
-		UseMCP:           preset.Config.UseMCP,
-		MCPServiceTools:  preset.Config.MCPServiceTools,
 	}
 
 	// 调用Chat处理器
@@ -230,11 +225,6 @@ func (c *ControllerV1) handleAgentStreamChat(ctx context.Context, req *v1.AgentC
 		Stream:           true,
 		JsonFormat:       preset.Config.JsonFormat,
 		Tools:            preset.Config.Tools,
-		// 旧字段 (保留向后兼容)
-		EnableNL2SQL:     preset.Config.EnableNL2SQL,
-		NL2SQLDatasource: preset.Config.NL2SQLDatasource,
-		UseMCP:           preset.Config.UseMCP,
-		MCPServiceTools:  preset.Config.MCPServiceTools,
 	}
 
 	// 调用原有的流式Chat处理器，传递上传的文件

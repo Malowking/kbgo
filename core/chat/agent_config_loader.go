@@ -89,19 +89,5 @@ func LoadAgentPresetConfig(ctx context.Context, req *v1.ChatReq) *v1.ChatReq {
 		req.Tools = config.Tools
 	}
 
-	// 旧的工具配置字段 (保留以便向后兼容)
-	if !req.EnableNL2SQL {
-		req.EnableNL2SQL = config.EnableNL2SQL
-	}
-	if req.NL2SQLDatasource == "" {
-		req.NL2SQLDatasource = config.NL2SQLDatasource
-	}
-	if !req.UseMCP {
-		req.UseMCP = config.UseMCP
-	}
-	if req.MCPServiceTools == nil || len(req.MCPServiceTools) == 0 {
-		req.MCPServiceTools = config.MCPServiceTools
-	}
-
 	return req
 }

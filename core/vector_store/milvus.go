@@ -805,3 +805,113 @@ func (m *MilvusStore) VectorSearchOnly(ctx context.Context, conf GeneralRetrieve
 
 	return relatedDocs, nil
 }
+
+// ==================== NL2SQL专用方法 ====================
+
+// CreateNL2SQLCollection 创建NL2SQL专用的集合
+func (m *MilvusStore) CreateNL2SQLCollection(ctx context.Context, collectionName string, dimension int) error {
+	dimStr := fmt.Sprintf("%d", dimension)
+
+	// 使用NL2SQL专用schema
+	schema := &entity.Schema{
+		CollectionName: collectionName,
+		Description:    "存储NL2SQL元数据（表、列、指标、关系）及其向量",
+		AutoID:         false,
+		Fields:         milvusModel.GetNL2SQLCollectionFields(dimStr),
+	}
+
+	// 创建集合，并设置vector为索引
+	err := m.client.CreateCollection(ctx, milvusclient.NewCreateCollectionOption(collectionName, schema).WithIndexOptions(
+		milvusclient.NewCreateIndexOption(collectionName, "vector", index.NewHNSWIndex(entity.COSINE, 64, 128))))
+	if err != nil {
+		return errors.Newf(errors.ErrVectorStoreInit, "failed to create NL2SQL Milvus collection: %v", err)
+	}
+
+	// Load collection into memory
+	_, err = m.client.LoadCollection(ctx, milvusclient.NewLoadCollectionOption(collectionName))
+	if err != nil {
+		return errors.Newf(errors.ErrVectorStoreInit, "failed to load NL2SQL Milvus collection: %v", err)
+	}
+
+	g.Log().Infof(ctx, "NL2SQL Collection '%s' created with dimension %d, index built and loaded", collectionName, dimension)
+	return nil
+}
+
+// InsertNL2SQLVectors 插入NL2SQL向量数据
+func (m *MilvusStore) InsertNL2SQLVectors(ctx context.Context, collectionName string, entities []*NL2SQLEntity, vectors [][]float32) ([]string, error) {
+	if len(entities) == 0 {
+		return []string{}, nil
+	}
+
+	if len(entities) != len(vectors) {
+		return nil, errors.Newf(errors.ErrInvalidParameter, "entities count (%d) must match vectors count (%d)", len(entities), len(vectors))
+	}
+
+	// 准备数据列
+	ids := make([]string, len(entities))
+	entityTypes := make([]string, len(entities))
+	entityIDs := make([]string, len(entities))
+	datasourceIDs := make([]string, len(entities))
+	texts := make([]string, len(entities))
+	metadatas := make([][]byte, len(entities))
+
+	for i, entity := range entities {
+		ids[i] = entity.ID
+		entityTypes[i] = entity.EntityType
+		entityIDs[i] = entity.EntityID
+		datasourceIDs[i] = entity.DatasourceID
+		texts[i] = entity.Text
+
+		// 序列化metadata
+		metadataBytes, err := json.Marshal(entity.MetaData)
+		if err != nil {
+			return nil, errors.Newf(errors.ErrInvalidParameter, "failed to marshal metadata for entity %s: %v", entity.ID, err)
+		}
+		metadatas[i] = metadataBytes
+	}
+
+	// 构建列数据
+	columns := []column.Column{
+		column.NewColumnVarChar("id", ids),
+		column.NewColumnVarChar("entity_type", entityTypes),
+		column.NewColumnVarChar("entity_id", entityIDs),
+		column.NewColumnVarChar("datasource_id", datasourceIDs),
+		column.NewColumnVarChar("text", texts),
+		column.NewColumnFloatVector("vector", len(vectors[0]), vectors),
+		column.NewColumnJSONBytes("metadata", metadatas),
+	}
+
+	// 插入数据
+	_, err := m.client.Insert(ctx, milvusclient.NewColumnBasedInsertOption(collectionName, columns...))
+	if err != nil {
+		return nil, errors.Newf(errors.ErrVectorInsert, "failed to insert NL2SQL vectors: %v", err)
+	}
+
+	g.Log().Infof(ctx, "Inserted %d NL2SQL entities into collection '%s'", len(entities), collectionName)
+
+	// 返回插入的IDs
+	return ids, nil
+}
+
+// DeleteNL2SQLByDatasourceID 根据数据源ID删除所有相关实体
+func (m *MilvusStore) DeleteNL2SQLByDatasourceID(ctx context.Context, collectionName string, datasourceID string) error {
+	// 构建删除表达式
+	expr := fmt.Sprintf("datasource_id == '%s'", datasourceID)
+
+	// 执行删除
+	deleteOpt := milvusclient.NewDeleteOption(collectionName).WithExpr(expr)
+	_, err := m.client.Delete(ctx, deleteOpt)
+	if err != nil {
+		return errors.Newf(errors.ErrVectorDelete, "failed to delete NL2SQL entities by datasource_id: %v", err)
+	}
+
+	g.Log().Infof(ctx, "Deleted NL2SQL entities with datasource_id '%s' from collection '%s'", datasourceID, collectionName)
+	return nil
+}
+
+// VectorSearchOnlyNL2SQL NL2SQL专用的向量检索方法
+func (m *MilvusStore) VectorSearchOnlyNL2SQL(ctx context.Context, conf GeneralRetrieverConfig, query string, collectionName string, datasourceID string, topK int, score float64) ([]*schema.Document, error) {
+	// 对于 Milvus，暂时返回错误，提示不支持
+	// TODO: 实现 Milvus 的 NL2SQL 专用检索
+	return nil, errors.New(errors.ErrInvalidParameter, "NL2SQL vector search is not yet implemented for Milvus, please use PostgreSQL as vector store")
+}

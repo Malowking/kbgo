@@ -73,6 +73,7 @@ func (a *LLMAdapter) Call(ctx context.Context, prompt string) (string, error) {
 type VectorSearchAdapter struct {
 	vectorStore          vector_store.VectorStore
 	knowledgeBaseID      string
+	datasourceID         string
 	embeddingModelConfig *model.ModelConfig
 }
 
@@ -80,11 +81,13 @@ type VectorSearchAdapter struct {
 func NewVectorSearchAdapter(
 	vectorStore vector_store.VectorStore,
 	knowledgeBaseID string,
+	datasourceID string,
 	embeddingModelConfig *model.ModelConfig,
 ) *VectorSearchAdapter {
 	return &VectorSearchAdapter{
 		vectorStore:          vectorStore,
 		knowledgeBaseID:      knowledgeBaseID,
+		datasourceID:         datasourceID,
 		embeddingModelConfig: embeddingModelConfig,
 	}
 }
@@ -98,10 +101,10 @@ type VectorSearchResult struct {
 
 // Search 执行向量搜索
 func (a *VectorSearchAdapter) Search(ctx context.Context, query string, topK int) ([]VectorSearchResult, error) {
-	g.Log().Debugf(ctx, "VectorSearchAdapter searching: query=%s, topK=%d, kb=%s",
-		query, topK, a.knowledgeBaseID)
+	g.Log().Debugf(ctx, "VectorSearchAdapter searching: query=%s, topK=%d, kb=%s, datasourceID=%s",
+		query, topK, a.knowledgeBaseID, a.datasourceID)
 
-	// 构建检索配置
+	// 构建检索配置，包含embedding模型配置
 	retrieverConfig := &SimpleRetrieverConfig{
 		topK:            topK,
 		score:           0.3, // 默认分数阈值
@@ -110,31 +113,46 @@ func (a *VectorSearchAdapter) Search(ctx context.Context, query string, topK int
 		retrieveMode:    "simple",
 	}
 
+	// 如果有embedding模型配置，传递给retriever
+	if a.embeddingModelConfig != nil {
+		retrieverConfig.apiKey = a.embeddingModelConfig.APIKey
+		retrieverConfig.baseURL = a.embeddingModelConfig.BaseURL
+		retrieverConfig.embeddingModel = a.embeddingModelConfig.Name
+		g.Log().Debugf(ctx, "Using embedding model: %s", a.embeddingModelConfig.Name)
+	}
+
 	// 执行向量搜索
-	documents, err := a.vectorStore.VectorSearchOnly(
+	documents, err := a.vectorStore.VectorSearchOnlyNL2SQL(
 		ctx,
 		retrieverConfig,
 		query,
 		a.knowledgeBaseID,
+		a.datasourceID,
 		topK,
 		0.3, // 分数阈值
 	)
 	if err != nil {
-		g.Log().Errorf(ctx, "Vector search failed: %v", err)
+		g.Log().Errorf(ctx, "NL2SQL vector search failed: %v", err)
 		return nil, err
 	}
 
 	// 转换为NL2SQL需要的格式
 	var results []VectorSearchResult
 	for _, doc := range documents {
+		// 从NL2SQL表结构的metadata中提取entity_id
+		entityID := ""
+		if eid, ok := doc.MetaData[vector_store.NL2SQLFieldEntityId].(string); ok {
+			entityID = eid
+		}
+
 		results = append(results, VectorSearchResult{
-			DocumentID: doc.MetaData["document_id"].(string),
-			ChunkID:    doc.MetaData["chunk_id"].(string),
+			DocumentID: entityID, // entity_id
+			ChunkID:    doc.ID,   // chunk id
 			Score:      float64(doc.Score),
 		})
 	}
 
-	g.Log().Debugf(ctx, "Vector search found %d results", len(results))
+	g.Log().Debugf(ctx, "NL2SQL vector search found %d results", len(results))
 	return results, nil
 }
 
@@ -145,10 +163,16 @@ type SimpleRetrieverConfig struct {
 	enableRewrite   bool
 	rewriteAttempts int
 	retrieveMode    string
+	apiKey          string
+	baseURL         string
+	embeddingModel  string
 }
 
-func (c *SimpleRetrieverConfig) GetTopK() int            { return c.topK }
-func (c *SimpleRetrieverConfig) GetScore() float64       { return c.score }
-func (c *SimpleRetrieverConfig) GetEnableRewrite() bool  { return c.enableRewrite }
-func (c *SimpleRetrieverConfig) GetRewriteAttempts() int { return c.rewriteAttempts }
-func (c *SimpleRetrieverConfig) GetRetrieveMode() string { return c.retrieveMode }
+func (c *SimpleRetrieverConfig) GetTopK() int              { return c.topK }
+func (c *SimpleRetrieverConfig) GetScore() float64         { return c.score }
+func (c *SimpleRetrieverConfig) GetEnableRewrite() bool    { return c.enableRewrite }
+func (c *SimpleRetrieverConfig) GetRewriteAttempts() int   { return c.rewriteAttempts }
+func (c *SimpleRetrieverConfig) GetRetrieveMode() string   { return c.retrieveMode }
+func (c *SimpleRetrieverConfig) GetAPIKey() string         { return c.apiKey }
+func (c *SimpleRetrieverConfig) GetBaseURL() string        { return c.baseURL }
+func (c *SimpleRetrieverConfig) GetEmbeddingModel() string { return c.embeddingModel }

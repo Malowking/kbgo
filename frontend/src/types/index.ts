@@ -80,10 +80,18 @@ export interface Message {
   latency_ms?: number;
 }
 
+// 工具配置类型
+export interface ToolConfig {
+  type: string; // "local_tools" or "mcp"
+  enabled: boolean; // 是否启用该类型的工具
+  config: Record<string, any>; // 工具配置参数
+}
+
 export interface ChatRequest {
   conv_id: string;
   question: string;
   model_id: string;
+  system_prompt?: string;
   embedding_model_id?: string;
   rerank_model_id?: string;
   knowledge_id?: string;
@@ -92,8 +100,10 @@ export interface ChatRequest {
   score?: number;
   retrieve_mode?: 'simple' | 'rerank' | 'rrf';
   rerank_weight?: number;
-  use_mcp?: boolean;
-  mcp_service_tools?: Record<string, string[]>;
+
+  // 新的统一工具配置
+  tools?: ToolConfig[];
+
   stream?: boolean;
   jsonformat?: boolean;
 }

@@ -43,9 +43,9 @@ func (NL2SQLDataSource) TableName() string {
 // NL2SQLMetric 指标表
 type NL2SQLMetric struct {
 	ID             string         `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	DatasourceID   string         `gorm:"type:uuid;not null;index" json:"datasource_id"` // 改为关联 DataSource
-	MetricID       string         `gorm:"size:100;not null" json:"metric_id"`            // 'metric_gmv'
-	Name           string         `gorm:"size:255;not null" json:"name"`                 // 'GMV'
+	DatasourceID   string         `gorm:"type:char(32);not null;index" json:"datasource_id"` // 无连字符UUID，关联 DataSource
+	MetricID       string         `gorm:"size:100;not null" json:"metric_id"`                // 'metric_gmv'
+	Name           string         `gorm:"size:255;not null" json:"name"`                     // 'GMV'
 	Description    string         `gorm:"type:text" json:"description"`
 	Formula        string         `gorm:"type:text;not null" json:"formula"` // 'SUM(orders.amount)'
 	DefaultFilters datatypes.JSON `gorm:"type:jsonb" json:"default_filters"` // {"orders.status": "paid"}
@@ -62,7 +62,7 @@ func (NL2SQLMetric) TableName() string {
 // NL2SQLTable 表元数据（L2）
 type NL2SQLTable struct {
 	ID               string         `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	DatasourceID     string         `gorm:"type:uuid;not null;index" json:"datasource_id"` // 改为关联 DataSource
+	DatasourceID     string         `gorm:"type:char(32);not null;index" json:"datasource_id"` // 无连字符UUID，关联 DataSource
 	Name             string         `gorm:"column:table_name;size:255;not null" json:"table_name"`
 	DisplayName      string         `gorm:"size:255" json:"display_name"`
 	Description      string         `gorm:"type:text" json:"description"`
@@ -107,7 +107,7 @@ func (NL2SQLColumn) TableName() string {
 // NL2SQLRelation 关系表（L4）
 type NL2SQLRelation struct {
 	ID           string     `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	DatasourceID string     `gorm:"type:uuid;not null;index" json:"datasource_id"` // 改为关联 DataSource
+	DatasourceID string     `gorm:"type:char(32);not null;index" json:"datasource_id"` // 无连字符UUID，关联 DataSource
 	RelationID   string     `gorm:"size:100;not null" json:"relation_id"`
 	FromTableID  string     `gorm:"type:uuid;not null" json:"from_table_id"`
 	FromColumn   string     `gorm:"size:255;not null" json:"from_column"`
@@ -128,11 +128,11 @@ func (NL2SQLRelation) TableName() string {
 // NL2SQLQueryLog 查询日志表（优化版，与对话系统关联）
 type NL2SQLQueryLog struct {
 	ID               string         `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	MsgID            *string        `gorm:"type:varchar(64);index" json:"msg_id"`  // 新增：关联messages表
-	ConvID           *string        `gorm:"type:varchar(64);index" json:"conv_id"` // 新增：关联conversations表
-	DatasourceID     string         `gorm:"type:uuid;not null;index" json:"datasource_id"`
-	UserQuestion     string         `gorm:"type:text;not null" json:"user_question"` // 冗余保留，方便查询
-	StructuredIntent datatypes.JSON `gorm:"type:jsonb" json:"structured_intent"`     // 结构化意图
+	MsgID            *string        `gorm:"type:varchar(64);index" json:"msg_id"`              // 新增：关联messages表
+	ConvID           *string        `gorm:"type:varchar(64);index" json:"conv_id"`             // 新增：关联conversations表
+	DatasourceID     string         `gorm:"type:char(32);not null;index" json:"datasource_id"` // 无连字符UUID，关联 DataSource
+	UserQuestion     string         `gorm:"type:text;not null" json:"user_question"`           // 冗余保留，方便查询
+	StructuredIntent datatypes.JSON `gorm:"type:jsonb" json:"structured_intent"`               // 结构化意图
 	GeneratedSQL     string         `gorm:"type:text" json:"generated_sql"`
 	FinalSQL         string         `gorm:"type:text" json:"final_sql"`            // 修复后的SQL
 	ExecutionStatus  string         `gorm:"size:50;index" json:"execution_status"` // 'success', 'failed', 'timeout'，添加索引
@@ -154,8 +154,8 @@ func (NL2SQLQueryLog) TableName() string {
 // NL2SQLVectorDoc 向量索引关联表
 type NL2SQLVectorDoc struct {
 	ID            string     `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	DatasourceID  string     `gorm:"type:uuid;not null;index" json:"datasource_id"` // 改为关联 DataSource
-	EntityType    string     `gorm:"size:50;not null;index" json:"entity_type"`     // 'metric', 'table', 'column', 'relation'
+	DatasourceID  string     `gorm:"type:char(32);not null;index" json:"datasource_id"` // 无连字符UUID，关联 DataSource
+	EntityType    string     `gorm:"size:50;not null;index" json:"entity_type"`         // 'metric', 'table', 'column', 'relation'
 	EntityID      string     `gorm:"type:uuid;not null;index" json:"entity_id"`
 	DocumentID    string     `gorm:"type:uuid;not null" json:"document_id"`    // 外键指向 knowledge_documents 表
 	VectorContent string     `gorm:"type:text;not null" json:"vector_content"` // 用于embedding的文本

@@ -50,24 +50,24 @@ func (v *SQLValidator) ValidateReadOnly(sql string) error {
 		return fmt.Errorf("%w: %v", ErrInvalidSQL, err)
 	}
 
-	// 3. 检查是否是SELECT语句
-	selectStmt, ok := stmt.(*sqlparser.Select)
-	if !ok {
+	// 3. 检查是否是SELECT语句或UNION查询
+	switch s := stmt.(type) {
+	case *sqlparser.Select:
+		// 单个SELECT语句
+		// 检查是否有FROM子句
+		if len(s.From) == 0 {
+			return ErrNoFromClause
+		}
+		// 检查子查询
+		return v.checkSubqueries(s)
+
+	case *sqlparser.Union:
+		// UNION查询 - 递归检查每个SELECT
+		return v.checkUnion(s)
+
+	default:
 		return fmt.Errorf("%w: 只允许SELECT查询", ErrNotReadOnly)
 	}
-
-	// 4. 检查是否有FROM子句
-	if len(selectStmt.From) == 0 {
-		return ErrNoFromClause
-	}
-
-	// 5. 检查是否包含子查询（递归检查）
-	err = v.checkSubqueries(selectStmt)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // checkSubqueries 递归检查子查询是否只读
@@ -91,6 +91,35 @@ func (v *SQLValidator) checkSubqueries(stmt *sqlparser.Select) error {
 	}
 
 	return nil
+}
+
+// checkUnion 检查UNION查询
+func (v *SQLValidator) checkUnion(union *sqlparser.Union) error {
+	// 检查左侧（可能是SELECT或另一个UNION）
+	if err := v.checkSelectStatement(union.Left); err != nil {
+		return err
+	}
+	// 检查右侧（必须是SELECT）
+	if err := v.checkSelectStatement(union.Right); err != nil {
+		return err
+	}
+	return nil
+}
+
+// checkSelectStatement 检查SelectStatement（可能是Select或Union）
+func (v *SQLValidator) checkSelectStatement(stmt sqlparser.SelectStatement) error {
+	switch s := stmt.(type) {
+	case *sqlparser.Select:
+		// 检查是否有FROM子句
+		if len(s.From) == 0 {
+			return ErrNoFromClause
+		}
+		return v.checkSubqueries(s)
+	case *sqlparser.Union:
+		return v.checkUnion(s)
+	default:
+		return fmt.Errorf("%w: 只允许SELECT查询", ErrNotReadOnly)
+	}
 }
 
 // checkSubquerySelect 检查子查询的SELECT语句

@@ -108,7 +108,7 @@ func (r *SchemaRetriever) Retrieve(ctx context.Context, req *RetrieveRequest, ve
 
 		// 通过document_id查找对应的nl2sql实体
 		var vectorDocs []dbgorm.NL2SQLVectorDoc
-		if err := r.db.Where("document_id = ? AND schema_id = ?", searchResult.DocumentID, req.SchemaID).
+		if err := r.db.Where("document_id = ? AND datasource_id = ?", searchResult.DocumentID, req.SchemaID).
 			Find(&vectorDocs).Error; err != nil {
 			continue
 		}

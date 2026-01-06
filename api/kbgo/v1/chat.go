@@ -34,12 +34,6 @@ type ChatReq struct {
 
 	// 新的统一工具配置
 	Tools []*ToolConfig `json:"tools"` // 统一的工具配置
-
-	// 旧的工具配置字段 (保留以便向后兼容,逐步迁移后删除)
-	EnableNL2SQL     bool                `json:"enable_nl2sql"`     // 是否启用NL2SQL功能 (已废弃，请使用Tools)
-	NL2SQLDatasource string              `json:"nl2sql_datasource"` // NL2SQL数据源ID (已废弃，请使用Tools)
-	UseMCP           bool                `json:"use_mcp"`           // 是否使用MCP (已废弃，请使用Tools)
-	MCPServiceTools  map[string][]string `json:"mcp_service_tools"` // MCP服务工具配置 (已废弃，请使用Tools)
 }
 
 type ChatRes struct {

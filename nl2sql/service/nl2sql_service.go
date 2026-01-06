@@ -10,13 +10,14 @@ import (
 	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/core/vector_store"
 	internalService "github.com/Malowking/kbgo/internal/service"
+	"github.com/Malowking/kbgo/nl2sql/adapter"
 	"github.com/Malowking/kbgo/nl2sql/cache"
 	nl2sqlCommon "github.com/Malowking/kbgo/nl2sql/common"
 	"github.com/Malowking/kbgo/nl2sql/datasource"
+	"github.com/Malowking/kbgo/nl2sql/generator"
 	"github.com/Malowking/kbgo/nl2sql/parser"
 	"github.com/Malowking/kbgo/nl2sql/schema"
 	"github.com/Malowking/kbgo/nl2sql/vector"
-	pkgSchema "github.com/Malowking/kbgo/pkg/schema"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
@@ -328,6 +329,7 @@ type QueryRequest struct {
 	DatasourceID string `json:"datasource_id"`
 	Question     string `json:"question"`
 	SessionID    string `json:"session_id"`
+	LLMModelID   string `json:"llm_model_id"` // LLM模型ID
 }
 
 // QueryResponse 查询响应
@@ -348,15 +350,46 @@ type QueryResult struct {
 }
 
 // Query 执行NL2SQL查询（核心方法）
-// 注意：这是一个占位方法，实际实现在query_impl.go中
-// 使用SimplifiedQuery或QueryWithAdapters来执行查询
 func (s *NL2SQLService) Query(ctx context.Context, req *QueryRequest) (*QueryResponse, error) {
-	// 当前返回提示信息，引导用户使用正确的方法
-	// 在实际Controller中应该：
-	// 1. 获取AgentPreset配置
-	// 2. 创建LLMAdapter和VectorSearchAdapter
-	// 3. 调用QueryWithAdapters或SimplifiedQuery
-	return nil, fmt.Errorf("请使用QueryWithAdapters或SimplifiedQuery方法，详见query_impl.go")
+	g.Log().Infof(ctx, "Query started - DatasourceID: %s, LLMModelID: %s", req.DatasourceID, req.LLMModelID)
+
+	// 1. 验证LLM模型ID
+	if req.LLMModelID == "" {
+		return nil, fmt.Errorf("LLM模型ID不能为空")
+	}
+
+	// 2. 获取LLM模型配置
+	llmModelConfig := model.Registry.Get(req.LLMModelID)
+	if llmModelConfig == nil {
+		return nil, fmt.Errorf("LLM模型不存在: %s", req.LLMModelID)
+	}
+
+	// 3. 获取数据源信息（用于获取embedding模型ID）
+	var ds dbgorm.NL2SQLDataSource
+	if err := s.db.First(&ds, "id = ?", req.DatasourceID).Error; err != nil {
+		return nil, fmt.Errorf("数据源不存在: %w", err)
+	}
+
+	// 4. 创建LLM适配器
+	llmAdapter := adapter.NewLLMAdapter(llmModelConfig)
+
+	// 5. 创建向量搜索适配器（使用数据源的embedding模型）
+	var vectorAdapter *adapter.VectorSearchAdapter
+	if ds.EmbeddingModelID != "" {
+		embeddingModelConfig := model.Registry.Get(ds.EmbeddingModelID)
+		if embeddingModelConfig != nil {
+			vectorStore, err := internalService.GetVectorStore()
+			if err != nil {
+				g.Log().Warningf(ctx, "获取向量存储失败: %v，将不使用向量搜索", err)
+			} else {
+				collectionName := fmt.Sprintf("nl2sql_%s", req.DatasourceID)
+				vectorAdapter = adapter.NewVectorSearchAdapter(vectorStore, collectionName, req.DatasourceID, embeddingModelConfig)
+			}
+		}
+	}
+
+	// 6. 调用QueryWithAdapters执行查询
+	return s.QueryWithAdapters(ctx, req, llmAdapter, vectorAdapter)
 }
 
 // 辅助方法
@@ -488,19 +521,29 @@ func (s *NL2SQLService) vectorizeSchema(ctx context.Context, datasourceID, embed
 
 	// 9. 定义存储函数
 	storeFunc := func(doc *vector.VectorDocument) error {
-		// 将VectorDocument转换为schema.Document格式
-		schemaDoc := &pkgSchema.Document{
-			ID:       doc.ChunkID,
-			Content:  doc.Content,
-			MetaData: doc.Metadata,
+		// 从metadata中提取NL2SQL特定字段
+		entityType := ""
+		entityID := ""
+
+		if et, ok := doc.Metadata["entity_type"].(string); ok {
+			entityType = et
+		}
+		if eid, ok := doc.Metadata["entity_id"].(string); ok {
+			entityID = eid
 		}
 
-		// 创建包含document_id和knowledge_id的context
-		ctxWithDoc := context.WithValue(ctx, vector_store.DocumentId, doc.DocumentID)
-		ctxWithKB := context.WithValue(ctxWithDoc, vector_store.KnowledgeId, collectionName)
+		// 创建NL2SQLEntity
+		entity := &vector_store.NL2SQLEntity{
+			ID:           doc.ChunkID,
+			EntityType:   entityType,
+			EntityID:     entityID,
+			DatasourceID: datasourceID,
+			Text:         doc.Content,
+			MetaData:     doc.Metadata,
+		}
 
-		// 插入向量
-		_, err := vectorStore.InsertVectors(ctxWithKB, collectionName, []*pkgSchema.Document{schemaDoc}, [][]float32{doc.Vector})
+		// 使用NL2SQL专用插入方法
+		_, err := vectorStore.InsertNL2SQLVectors(ctx, collectionName, []*vector_store.NL2SQLEntity{entity}, [][]float32{doc.Vector})
 		return err
 	}
 
@@ -642,4 +685,9 @@ func (s *NL2SQLService) DeleteVectorCollection(ctx context.Context, collectionNa
 
 	g.Log().Infof(ctx, "向量集合删除成功 - Collection: %s", collectionName)
 	return nil
+}
+
+// GetSQLGenerator 获取SQL生成器
+func (s *NL2SQLService) GetSQLGenerator() *generator.SQLGenerator {
+	return generator.NewSQLGenerator(s.db)
 }

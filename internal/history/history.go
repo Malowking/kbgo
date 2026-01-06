@@ -247,7 +247,13 @@ func (h *Manager) GetHistory(convID string, limit int) ([]*schema.Message, error
 		msgContents := contentMap[msg.MsgID]
 
 		schemaMsg := &schema.Message{
-			Role: schema.RoleType(msg.Role),
+			Role:  schema.RoleType(msg.Role),
+			Extra: make(map[string]any),
+		}
+
+		// 保存创建时间到Extra字段
+		if msg.CreateTime != nil {
+			schemaMsg.Extra["create_time"] = msg.CreateTime.Format(time.RFC3339)
 		}
 
 		// 如果有多个内容块或包含非文本内容，构建MultiContent

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
@@ -73,6 +74,12 @@ func (r *ModelRegistry) GetByType(modelType ModelType) []*ModelConfig {
 			result = append(result, mc)
 		}
 	}
+
+	// 按模型名称排序
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name
+	})
+
 	return result
 }
 
@@ -85,6 +92,12 @@ func (r *ModelRegistry) List() []*ModelConfig {
 	for _, mc := range r.models {
 		result = append(result, mc)
 	}
+
+	// 按模型名称排序
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name
+	})
+
 	return result
 }
 

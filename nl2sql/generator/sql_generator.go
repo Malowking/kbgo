@@ -2,10 +2,11 @@ package generator
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
-	dbgorm "github.com/Malowking/kbgo/internal/model/gorm"
+	"github.com/gogf/gf/v2/frame/g"
 	"gorm.io/gorm"
 )
 
@@ -164,9 +165,6 @@ func (g *SQLGenerator) buildPrompt(req *GenerateRequest) string {
 
 // parseLLMResponse 解析LLM响应
 func (g *SQLGenerator) parseLLMResponse(llmResponse string) *GenerateResponse {
-	// 简化实现：尝试提取JSON
-	// 完整实现需要更健壮的JSON解析
-
 	response := &GenerateResponse{
 		SQL:        "",
 		Reasoning:  "",
@@ -175,84 +173,108 @@ func (g *SQLGenerator) parseLLMResponse(llmResponse string) *GenerateResponse {
 	}
 
 	// 尝试从```json代码块中提取
+	jsonStr := ""
 	if strings.Contains(llmResponse, "```json") {
 		start := strings.Index(llmResponse, "```json") + 7
 		end := strings.Index(llmResponse[start:], "```")
 		if end > 0 {
-			jsonStr := llmResponse[start : start+end]
-			// TODO: 解析JSON
-			_ = jsonStr
+			jsonStr = strings.TrimSpace(llmResponse[start : start+end])
+		}
+	} else if strings.Contains(llmResponse, "```") {
+		// 尝试提取普通代码块
+		start := strings.Index(llmResponse, "```") + 3
+		end := strings.Index(llmResponse[start:], "```")
+		if end > 0 {
+			jsonStr = strings.TrimSpace(llmResponse[start : start+end])
+		}
+	} else {
+		// 尝试直接解析整个响应
+		jsonStr = strings.TrimSpace(llmResponse)
+	}
+
+	// 解析JSON
+	if jsonStr != "" {
+		var parsed struct {
+			SQL        string  `json:"sql"`
+			Reasoning  string  `json:"reasoning"`
+			Confidence float64 `json:"confidence"`
+		}
+
+		if err := json.Unmarshal([]byte(jsonStr), &parsed); err == nil {
+			// 成功解析JSON
+			response.SQL = parsed.SQL
+			response.Reasoning = parsed.Reasoning
+			if parsed.Confidence > 0 {
+				response.Confidence = parsed.Confidence
+			}
+			return response
 		}
 	}
 
-	// 简化：直接返回原始响应
+	// 如果JSON解析失败，尝试智能提取SQL
+	// 查找SQL关键字
+	lowerResponse := strings.ToLower(llmResponse)
+	if strings.Contains(lowerResponse, "select") {
+		// 尝试提取SQL语句
+		lines := strings.Split(llmResponse, "\n")
+		var sqlLines []string
+		inSQL := false
+
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			lowerLine := strings.ToLower(trimmed)
+
+			// 检测SQL开始
+			if strings.HasPrefix(lowerLine, "select") {
+				inSQL = true
+			}
+
+			if inSQL {
+				// 跳过代码块标记
+				if strings.HasPrefix(trimmed, "```") {
+					continue
+				}
+				sqlLines = append(sqlLines, trimmed)
+
+				// 检测SQL结束（分号或空行）
+				if strings.HasSuffix(trimmed, ";") {
+					break
+				}
+			}
+		}
+
+		if len(sqlLines) > 0 {
+			response.SQL = strings.Join(sqlLines, " ")
+			response.Reasoning = "从LLM响应中提取的SQL"
+			return response
+		}
+	}
+
+	// 最后的fallback：返回原始响应
 	response.SQL = llmResponse
-	response.Reasoning = "LLM生成的SQL"
+	response.Reasoning = "LLM原始响应（未能解析为标准格式）"
 
 	return response
 }
 
 // RecallSchema 召回相关Schema（向量检索）
-func (g *SQLGenerator) RecallSchema(ctx context.Context, schemaID, question string) (*SchemaContext, error) {
-	// 1. 使用向量检索召回相关表
-	// TODO: 集成向量检索
+func (gen *SQLGenerator) RecallSchema(ctx context.Context, schemaID, question string) (*SchemaContext, error) {
+	g.Log().Infof(ctx, "RecallSchema开始 - SchemaID: %s, Question: %s", schemaID, question)
 
-	// 2. 简化实现：返回所有表（MVP版本）
-	var tables []dbgorm.NL2SQLTable
-	if err := g.db.Where("schema_id = ?", schemaID).Limit(5).Find(&tables).Error; err != nil {
-		return nil, err
+	// 1. 尝试使用向量检索
+	schemaCtx, err := gen.recallSchemaWithVector(ctx, schemaID, question)
+	if err != nil {
+		g.Log().Warningf(ctx, "向量检索失败，降级到简单查询: %v", err)
+		// 降级到简单实现
+		return gen.recallSchemaFallback(ctx, schemaID)
 	}
 
-	schemaCtx := &SchemaContext{
-		Tables:    make([]TableContext, 0),
-		Metrics:   make([]MetricContext, 0),
-		Relations: make([]RelationContext, 0),
+	if len(schemaCtx.Tables) > 0 {
+		g.Log().Infof(ctx, "向量检索成功，召回 %d 个表", len(schemaCtx.Tables))
+		return schemaCtx, nil
 	}
 
-	// 构建表上下文
-	for _, table := range tables {
-		tableCtx := TableContext{
-			Name:        table.Name,
-			DisplayName: table.DisplayName,
-			Description: table.Description,
-			Columns:     make([]ColumnContext, 0),
-		}
-
-		// 获取列信息
-		var columns []dbgorm.NL2SQLColumn
-		if err := g.db.Where("table_id = ?", table.ID).Find(&columns).Error; err != nil {
-			continue
-		}
-
-		for _, col := range columns {
-			tableCtx.Columns = append(tableCtx.Columns, ColumnContext{
-				ColumnName:  col.ColumnName,
-				DisplayName: col.DisplayName,
-				DataType:    col.DataType,
-				Description: col.Description,
-			})
-		}
-
-		schemaCtx.Tables = append(schemaCtx.Tables, tableCtx)
-	}
-
-	// 获取关系
-	var relations []dbgorm.NL2SQLRelation
-	if err := g.db.Where("schema_id = ?", schemaID).Find(&relations).Error; err == nil {
-		for _, rel := range relations {
-			// 获取表名
-			var fromTable, toTable dbgorm.NL2SQLTable
-			g.db.First(&fromTable, "id = ?", rel.FromTableID)
-			g.db.First(&toTable, "id = ?", rel.ToTableID)
-
-			schemaCtx.Relations = append(schemaCtx.Relations, RelationContext{
-				FromTable: fromTable.Name,
-				FromCol:   rel.FromColumn,
-				ToTable:   toTable.Name,
-				ToCol:     rel.ToColumn,
-			})
-		}
-	}
-
-	return schemaCtx, nil
+	// 2. 如果向量检索没有结果，降级到简单实现
+	g.Log().Warning(ctx, "向量检索无结果，降级到简单查询")
+	return gen.recallSchemaFallback(ctx, schemaID)
 }

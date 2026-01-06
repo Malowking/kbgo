@@ -74,7 +74,9 @@ func (c *JDBCConnector) Connect(ctx context.Context) error {
 	dsn := c.buildDSN()
 
 	var err error
-	c.db, err = sql.Open(c.config.DBType, dsn)
+	// 获取正确的驱动名称
+	driverName := c.getDriverName()
+	c.db, err = sql.Open(driverName, dsn)
 	if err != nil {
 		return fmt.Errorf("打开数据库连接失败: %w", err)
 	}
@@ -90,6 +92,16 @@ func (c *JDBCConnector) Connect(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// getDriverName 获取正确的数据库驱动名称
+func (c *JDBCConnector) getDriverName() string {
+	switch c.config.DBType {
+	case common.DBTypePostgreSQL:
+		return "postgres" // lib/pq 驱动注册的名称
+	default:
+		return c.config.DBType
+	}
 }
 
 // buildDSN 构建DSN字符串

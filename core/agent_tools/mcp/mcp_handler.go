@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Malowking/kbgo/api/kbgo/v1"
-	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/pkg/schema"
 )
 
@@ -16,27 +14,6 @@ type MCPHandler struct{}
 // NewMCPHandler Create MCP handler
 func NewMCPHandler() *MCPHandler {
 	return &MCPHandler{}
-}
-
-// CallMCPToolsWithLLM 使用 LLM 智能选择并调用 MCP 工具
-func (h *MCPHandler) CallMCPToolsWithLLM(ctx context.Context, req *v1.ChatReq, documents []*schema.Document, fileContent string) ([]*schema.Document, []*v1.MCPResult, string, error) {
-	// 创建 MCP 工具调用器
-	toolCaller, err := NewMCPToolCaller(ctx)
-	if err != nil {
-		return nil, nil, "", errors.Newf(errors.ErrMCPInitFailed, "创建MCP工具调用器失败: %v", err)
-	}
-	defer toolCaller.Close()
-
-	// 构建完整的用户问题
-	fullQuestion := h.buildFullQuestion(ctx, req.Question, documents, fileContent)
-
-	// 使用 LLM 智能选择并调用工具
-	mcpDocuments, mcpResults, finalAnswer, err := toolCaller.CallToolsWithLLM(ctx, req.ModelID, fullQuestion, req.ConvID, req.MCPServiceTools)
-	if err != nil {
-		return nil, nil, "", errors.Newf(errors.ErrMCPCallFailed, "LLM intelligent tool call failed: %v", err)
-	}
-
-	return mcpDocuments, mcpResults, finalAnswer, nil
 }
 
 // buildFullQuestion 构建包含知识检索和文件解析结果的完整问题
