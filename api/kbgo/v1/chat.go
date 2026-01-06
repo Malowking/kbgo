@@ -9,9 +9,10 @@ import (
 
 // ToolConfig 工具配置
 type ToolConfig struct {
-	Type    string                 `json:"type"`    // "local_tools" or "mcp"
-	Enabled bool                   `json:"enabled"` // 是否启用该类型的工具
-	Config  map[string]interface{} `json:"config"`  // 工具配置参数
+	Type     string                 `json:"type"`     // "local_tools" or "mcp"
+	Enabled  bool                   `json:"enabled"`  // 是否启用该类型的工具
+	Priority *int                   `json:"priority"` // 工具优先级，数字越小优先级越高，用于生成工具使用顺序建议
+	Config   map[string]interface{} `json:"config"`   // 工具配置参数
 }
 
 type ChatReq struct {

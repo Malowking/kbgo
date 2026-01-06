@@ -369,11 +369,21 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 	// 记录开始时间
 	start := time.Now()
 
-	// 调用模型服务流式接口
-	stream, err := modelService.ChatCompletionStream(ctx, chatParams)
+	// 使用重试机制调用模型服务流式接口（仅在连接阶段重试）
+	retryConfig := coreModel.DefaultSingleModelRetryConfig()
+	streamResult, err := coreModel.RetryWithSameModel(ctx, mc.Name, retryConfig, func(ctx context.Context) (interface{}, error) {
+		stream, err := modelService.ChatCompletionStream(ctx, chatParams)
+		if err != nil {
+			return nil, err
+		}
+		return stream, nil
+	})
+
 	if err != nil {
 		return nil, coreErrors.Newf(coreErrors.ErrLLMCallFailed, "API调用失败: %v", err)
 	}
+
+	stream := streamResult.(*openai.ChatCompletionStream)
 
 	// 创建 Pipe 用于流式传输
 	// 优先使用 Redis Stream，Redis 不可用时回退到内存 channel
@@ -569,23 +579,31 @@ func (x *Chat) GenerateWithTools(ctx context.Context, modelID string, messages [
 	g.Log().Infof(ctx, "[GenerateWithTools] 调用模型: %s, 消息数: %d, 工具数: %d",
 		mc.Name, len(messages), len(openaiTools))
 
-	// 调用模型服务
-	resp, err := modelService.ChatCompletion(ctx, chatParams)
+	// 使用重试机制调用模型服务
+	retryConfig := coreModel.DefaultSingleModelRetryConfig()
+	retryResult, err := coreModel.RetryWithSameModel(ctx, mc.Name, retryConfig, func(ctx context.Context) (interface{}, error) {
+		resp, err := modelService.ChatCompletion(ctx, chatParams)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(resp.Choices) == 0 {
+			return nil, coreErrors.New(coreErrors.ErrLLMCallFailed, "received empty choices from API")
+		}
+
+		return resp, nil
+	})
+
 	if err != nil {
 		g.Log().Errorf(ctx, "[GenerateWithTools] API调用失败: %v", err)
 		return nil, coreErrors.Newf(coreErrors.ErrLLMCallFailed, "API调用失败: %v", err)
 	}
 
+	resp := retryResult.(*openai.ChatCompletionResponse)
+
 	// 记录响应信息
 	g.Log().Infof(ctx, "[GenerateWithTools] API响应 - Choices数: %d, Usage: %+v",
 		len(resp.Choices), resp.Usage)
-
-	if len(resp.Choices) == 0 {
-		// 打印完整的响应以便调试
-		g.Log().Errorf(ctx, "[GenerateWithTools] 收到空的Choices! 完整响应: ID=%s, Model=%s, Object=%s",
-			resp.ID, resp.Model, resp.Object)
-		return nil, coreErrors.New(coreErrors.ErrLLMCallFailed, "received empty choices from API")
-	}
 
 	// 计算延迟
 	latencyMs := time.Since(start).Milliseconds()

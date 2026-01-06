@@ -165,9 +165,13 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 
 	// 4. 执行工具调用 (使用统一的工具执行器)
 	if req.Tools != nil && len(req.Tools) > 0 {
-		g.Log().Infof(ctx, "Executing tools using unified executor")
+		g.Log().Infof(ctx, "Executing tools using unified executor with LLM selection")
 		executor := agent_tools.NewToolExecutor()
-		toolResult, err := executor.Execute(ctx, req.Tools, req.Question, req.ModelID, req.EmbeddingModelID, documents)
+
+		// 传入 SystemPrompt 和 ConvID，让工具选择阶段也能感知 Agent 的角色
+		toolResult, err := executor.Execute(ctx, req.Tools, req.Question,
+			req.ModelID, req.EmbeddingModelID, documents, req.SystemPrompt, req.ConvID)
+
 		if err != nil {
 			g.Log().Errorf(ctx, "Tool execution failed: %v", err)
 		} else {

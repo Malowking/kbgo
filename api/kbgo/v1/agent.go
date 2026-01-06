@@ -11,14 +11,15 @@ import (
 // CreateAgentPresetReq 创建Agent预设请求
 type CreateAgentPresetReq struct {
 	g.Meta      `path:"/v1/agent/preset" method:"post" tags:"agent" summary:"创建Agent预设"`
-	PresetName  string      `json:"preset_name" v:"required#预设名称不能为空"` // 预设名称
-	Description string      `json:"description"`                       // 预设描述
-	Config      AgentConfig `json:"config" v:"required#配置不能为空"`        // Agent配置
-	IsPublic    bool        `json:"is_public"`                         // 是否公开分享
-	UserID      string      `json:"user_id" v:"required#用户ID不能为空"`     // 用户ID
+	PresetName  string        `json:"preset_name" v:"required#预设名称不能为空"` // 预设名称
+	Description string        `json:"description"`                       // 预设描述
+	Config      AgentConfig   `json:"config" v:"required#配置不能为空"`        // Agent配置
+	Tools       []*ToolConfig `json:"tools"`                             // 工具配置（独立存储）
+	IsPublic    bool          `json:"is_public"`                         // 是否公开分享
+	UserID      string        `json:"user_id" v:"required#用户ID不能为空"`     // 用户ID
 }
 
-// AgentConfig Agent配置结构（对应ChatReq的核心参数）
+// AgentConfig Agent配置结构（对应ChatReq的核心参数，不包含Tools）
 type AgentConfig struct {
 	ModelID          string   `json:"model_id" v:"required#模型ID不能为空"` // LLM模型UUID
 	SystemPrompt     string   `json:"system_prompt"`                  // 系统提示词
@@ -31,15 +32,6 @@ type AgentConfig struct {
 	RetrieveMode     string   `json:"retrieve_mode"`                  // 检索模式: simple（普通检索）/rerank/rrf
 	RerankWeight     *float64 `json:"rerank_weight"`                  // Rerank权重 (0-1范围，默认1.0)
 	JsonFormat       bool     `json:"jsonformat"`                     // 是否需要JSON格式化输出
-
-	// 新的统一工具配置
-	Tools []*ToolConfig `json:"tools"` // 统一的工具配置
-
-	// 旧的工具配置字段 (保留以便向后兼容,逐步迁移后删除)
-	EnableNL2SQL     bool                `json:"enable_nl2sql"`     // 是否启用NL2SQL功能 (已废弃，请使用Tools)
-	NL2SQLDatasource string              `json:"nl2sql_datasource"` // NL2SQL数据源ID (已废弃，请使用Tools)
-	UseMCP           bool                `json:"use_mcp"`           // 是否使用MCP (已废弃，请使用Tools)
-	MCPServiceTools  map[string][]string `json:"mcp_service_tools"` // MCP服务工具配置 (已废弃，请使用Tools)
 }
 
 // CreateAgentPresetRes 创建Agent预设响应
@@ -50,12 +42,13 @@ type CreateAgentPresetRes struct {
 // UpdateAgentPresetReq 更新Agent预设请求
 type UpdateAgentPresetReq struct {
 	g.Meta      `path:"/v1/agent/preset/:preset_id" method:"put" tags:"agent" summary:"更新Agent预设"`
-	PresetID    string      `json:"preset_id" v:"required#预设ID不能为空"` // 预设ID
-	PresetName  string      `json:"preset_name"`                     // 预设名称
-	Description string      `json:"description"`                     // 预设描述
-	Config      AgentConfig `json:"config"`                          // Agent配置
-	IsPublic    bool        `json:"is_public"`                       // 是否公开分享
-	UserID      string      `json:"user_id" v:"required#用户ID不能为空"`   // 用户ID（用于权限验证）
+	PresetID    string        `json:"preset_id" v:"required#预设ID不能为空"` // 预设ID
+	PresetName  string        `json:"preset_name"`                     // 预设名称
+	Description string        `json:"description"`                     // 预设描述
+	Config      AgentConfig   `json:"config"`                          // Agent配置
+	Tools       []*ToolConfig `json:"tools"`                           // 工具配置（独立存储）
+	IsPublic    bool          `json:"is_public"`                       // 是否公开分享
+	UserID      string        `json:"user_id" v:"required#用户ID不能为空"`   // 用户ID（用于权限验证）
 }
 
 // UpdateAgentPresetRes 更新Agent预设响应
@@ -71,14 +64,15 @@ type GetAgentPresetReq struct {
 
 // GetAgentPresetRes 获取Agent预设响应
 type GetAgentPresetRes struct {
-	PresetID    string      `json:"preset_id"`   // 预设ID
-	UserID      string      `json:"user_id"`     // 用户ID
-	PresetName  string      `json:"preset_name"` // 预设名称
-	Description string      `json:"description"` // 预设描述
-	Config      AgentConfig `json:"config"`      // Agent配置
-	IsPublic    bool        `json:"is_public"`   // 是否公开
-	CreateTime  string      `json:"create_time"` // 创建时间
-	UpdateTime  string      `json:"update_time"` // 更新时间
+	PresetID    string        `json:"preset_id"`   // 预设ID
+	UserID      string        `json:"user_id"`     // 用户ID
+	PresetName  string        `json:"preset_name"` // 预设名称
+	Description string        `json:"description"` // 预设描述
+	Config      AgentConfig   `json:"config"`      // Agent配置
+	Tools       []*ToolConfig `json:"tools"`       // 工具配置（独立存储）
+	IsPublic    bool          `json:"is_public"`   // 是否公开
+	CreateTime  string        `json:"create_time"` // 创建时间
+	UpdateTime  string        `json:"update_time"` // 更新时间
 }
 
 // ListAgentPresetsReq 获取Agent预设列表请求

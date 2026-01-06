@@ -124,16 +124,26 @@ func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, con
 	// 记录开始时间
 	start := time.Now()
 
-	// 调用模型服务
-	resp, err := modelService.ChatCompletion(ctx, chatParams)
+	// 使用重试机制调用模型服务
+	retryConfig := coreModel.DefaultSingleModelRetryConfig()
+	result, err := coreModel.RetryWithSameModel(ctx, mc.Name, retryConfig, func(ctx context.Context) (interface{}, error) {
+		resp, err := modelService.ChatCompletion(ctx, chatParams)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(resp.Choices) == 0 {
+			return nil, coreErrors.New(coreErrors.ErrLLMCallFailed, "received empty choices from API")
+		}
+
+		return resp, nil
+	})
+
 	if err != nil {
 		return "", "", coreErrors.Newf(coreErrors.ErrLLMCallFailed, "API调用失败: %v", err)
 	}
 
-	if len(resp.Choices) == 0 {
-		return "", "", coreErrors.New(coreErrors.ErrLLMCallFailed, "received empty choices from API")
-	}
-
+	resp := result.(*openai.ChatCompletionResponse)
 	answerContent := resp.Choices[0].Message.Content
 	thinkContent := resp.Choices[0].Message.ReasoningContent
 
@@ -427,11 +437,21 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 	// 记录开始时间
 	start := time.Now()
 
-	// 调用模型服务流式接口
-	stream, err := modelService.ChatCompletionStream(ctx, chatParams)
+	// 使用重试机制调用模型服务流式接口（仅在连接阶段重试）
+	retryConfig := coreModel.DefaultSingleModelRetryConfig()
+	streamResult, err := coreModel.RetryWithSameModel(ctx, mc.Name, retryConfig, func(ctx context.Context) (interface{}, error) {
+		stream, err := modelService.ChatCompletionStream(ctx, chatParams)
+		if err != nil {
+			return nil, err
+		}
+		return stream, nil
+	})
+
 	if err != nil {
 		return nil, coreErrors.Newf(coreErrors.ErrLLMCallFailed, "API调用失败: %v", err)
 	}
+
+	stream := streamResult.(*openai.ChatCompletionStream)
 
 	// 创建 Pipe 用于流式传输
 	// 优先使用 Redis Stream，Redis 不可用时回退到内存 channel

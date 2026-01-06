@@ -128,7 +128,61 @@ export default function AgentBuilder() {
       setPresetName(preset.preset_name);
       setDescription(preset.description);
       setIsPublic(preset.is_public);
-      setConfig(preset.config);
+
+      // 从 tools 数组恢复配置到 config
+      const restoredConfig = { ...preset.config };
+
+      if (preset.tools && preset.tools.length > 0) {
+        for (const tool of preset.tools) {
+          if (!tool.enabled) continue;
+
+          switch (tool.type) {
+            case 'local_tools':
+              // 恢复优先级
+              if (tool.priority !== undefined) {
+                restoredConfig.knowledge_retrieval_priority = tool.priority;
+                restoredConfig.nl2sql_priority = tool.priority;
+              }
+
+              // 恢复知识库检索配置
+              if (tool.config.knowledge_retrieval) {
+                const kr = tool.config.knowledge_retrieval;
+                restoredConfig.enable_retriever = true;
+                restoredConfig.knowledge_id = kr.knowledge_id;
+                restoredConfig.embedding_model_id = kr.embedding_model_id;
+                restoredConfig.rerank_model_id = kr.rerank_model_id;
+                restoredConfig.top_k = kr.top_k || 5;
+                restoredConfig.score = kr.score || 0.3;
+                restoredConfig.retrieve_mode = kr.retrieve_mode || 'rerank';
+                restoredConfig.rerank_weight = kr.rerank_weight;
+              }
+
+              // 恢复 NL2SQL 配置
+              if (tool.config.nl2sql) {
+                const nl2sql = tool.config.nl2sql;
+                restoredConfig.enable_nl2sql = true;
+                restoredConfig.nl2sql_datasource_id = nl2sql.datasource;
+                restoredConfig.nl2sql_embedding_model_id = nl2sql.embedding_model_id;
+              }
+              break;
+
+            case 'mcp':
+              // 恢复 MCP 优先级
+              if (tool.priority !== undefined) {
+                restoredConfig.mcp_priority = tool.priority;
+              }
+
+              // 恢复 MCP 配置
+              if (tool.config.service_tools) {
+                restoredConfig.use_mcp = true;
+                restoredConfig.mcp_service_tools = tool.config.service_tools;
+              }
+              break;
+          }
+        }
+      }
+
+      setConfig(restoredConfig);
       setShowForm(true);
     } catch (error) {
       logger.error('Failed to fetch preset:', error);
@@ -175,12 +229,63 @@ export default function AgentBuilder() {
     try {
       setLoading(true);
 
+      // 构造 tools 数组
+      const tools = [];
+
+      // 1. 构造 local_tools 配置（包含知识库检索、NL2SQL等本地工具）
+      const localToolsConfig: Record<string, any> = {};
+
+      // 知识库检索工具
+      if (config.enable_retriever && config.knowledge_id) {
+        localToolsConfig.knowledge_retrieval = {
+          knowledge_id: config.knowledge_id,
+          embedding_model_id: config.embedding_model_id,
+          rerank_model_id: config.rerank_model_id,
+          top_k: config.top_k,
+          score: config.score,
+          retrieve_mode: config.retrieve_mode,
+          rerank_weight: config.rerank_weight,
+        };
+      }
+
+      // NL2SQL 工具
+      if (config.enable_nl2sql && config.nl2sql_datasource_id) {
+        localToolsConfig.nl2sql = {
+          datasource: config.nl2sql_datasource_id,
+          embedding_model_id: config.nl2sql_embedding_model_id,
+        };
+      }
+
+      // 如果有本地工具配置，添加到 tools 数组
+      if (Object.keys(localToolsConfig).length > 0) {
+        const localToolPriority = config.knowledge_retrieval_priority || config.nl2sql_priority;
+        tools.push({
+          type: 'local_tools',
+          enabled: true,
+          priority: localToolPriority,
+          config: localToolsConfig,
+        });
+      }
+
+      // 2. MCP 工具（独立的工具类型）
+      if (config.use_mcp && config.mcp_service_tools && Object.keys(config.mcp_service_tools).length > 0) {
+        tools.push({
+          type: 'mcp',
+          enabled: true,
+          priority: config.mcp_priority,
+          config: {
+            service_tools: config.mcp_service_tools,
+          }
+        });
+      }
+
       if (editingPresetId) {
         await agentApi.update(editingPresetId, {
           user_id: USER.ID,
           preset_name: presetName,
           description,
           config,
+          tools: tools.length > 0 ? tools : undefined,
           is_public: isPublic,
         });
 
@@ -199,6 +304,7 @@ export default function AgentBuilder() {
           preset_name: presetName,
           description,
           config,
+          tools: tools.length > 0 ? tools : undefined,
           is_public: isPublic,
         });
         showSuccess('创建成功');

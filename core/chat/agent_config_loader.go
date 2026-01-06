@@ -50,6 +50,16 @@ func LoadAgentPresetConfig(ctx context.Context, req *v1.ChatReq) *v1.ChatReq {
 		return req
 	}
 
+	// 反序列化工具配置
+	var tools []*v1.ToolConfig
+	if preset.Tools != nil && len(preset.Tools) > 0 {
+		if err := json.Unmarshal(preset.Tools, &tools); err != nil {
+			g.Log().Warningf(ctx, "Tools配置反序列化失败: %v", err)
+			// 不阻断流程，工具配置解析失败时使用空数组
+			tools = nil
+		}
+	}
+
 	g.Log().Infof(ctx, "成功加载Agent预设配置: %s", preset.PresetName)
 
 	// 合并配置：请求参数优先，未指定的参数使用Agent预设
@@ -84,9 +94,9 @@ func LoadAgentPresetConfig(ctx context.Context, req *v1.ChatReq) *v1.ChatReq {
 		req.JsonFormat = config.JsonFormat
 	}
 
-	// 新的统一工具配置
+	// 新的统一工具配置（从独立的Tools字段加载）
 	if req.Tools == nil || len(req.Tools) == 0 {
-		req.Tools = config.Tools
+		req.Tools = tools
 	}
 
 	return req

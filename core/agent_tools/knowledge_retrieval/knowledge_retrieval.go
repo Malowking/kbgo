@@ -93,6 +93,15 @@ func (t *KnowledgeRetrievalTool) Execute(ctx context.Context, config *KnowledgeR
 	}
 
 	result.Documents = retrieverRes.Document
+
+	// 为每个文档添加工具类型标识
+	for _, doc := range result.Documents {
+		if doc.MetaData == nil {
+			doc.MetaData = make(map[string]interface{})
+		}
+		doc.MetaData["tool_type"] = "knowledge_retrieval"
+	}
+
 	g.Log().Infof(ctx, "Knowledge retrieval completed: Retrieved %d documents", len(retrieverRes.Document))
 
 	return result, nil

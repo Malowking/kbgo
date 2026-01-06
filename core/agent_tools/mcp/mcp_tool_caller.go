@@ -365,7 +365,18 @@ func (tc *MCPToolCaller) CallToolsWithLLM(ctx context.Context, modelID string, q
 	return allDocuments, allMCPResults, finalAnswer, nil
 }
 
-// callSingleTool 调用单个工具
+// CallSingleTool 调用单个工具（导出方法供外部使用）
+func (tc *MCPToolCaller) CallSingleTool(
+	ctx context.Context,
+	serviceName string,
+	toolName string,
+	arguments map[string]interface{},
+	convID string,
+) (*schema.Document, *v1.MCPResult, error) {
+	return tc.callSingleTool(ctx, serviceName, toolName, arguments, convID)
+}
+
+// callSingleTool 调用单个工具（内部方法）
 func (tc *MCPToolCaller) callSingleTool(
 	ctx context.Context,
 	serviceName string,

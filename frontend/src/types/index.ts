@@ -84,6 +84,7 @@ export interface Message {
 export interface ToolConfig {
   type: string; // "local_tools" or "mcp"
   enabled: boolean; // 是否启用该类型的工具
+  priority?: number; // 工具优先级（可选），数字越小优先级越高
   config: Record<string, any>; // 工具配置参数
 }
 
@@ -275,6 +276,10 @@ export interface AgentConfig {
   enable_nl2sql?: boolean;
   nl2sql_datasource_id?: string;
   nl2sql_embedding_model_id?: string; // NL2SQL Schema向量化使用的embedding模型
+  // 工具优先级配置
+  knowledge_retrieval_priority?: number;
+  nl2sql_priority?: number;
+  mcp_priority?: number;
 }
 
 export interface AgentPreset {
@@ -283,6 +288,7 @@ export interface AgentPreset {
   preset_name: string;
   description: string;
   config: AgentConfig;
+  tools?: ToolConfig[]; // 工具配置数组
   is_public: boolean;
   create_time: string;
   update_time: string;
@@ -293,6 +299,7 @@ export interface CreateAgentPresetRequest {
   preset_name: string;
   description: string;
   config: AgentConfig;
+  tools?: ToolConfig[]; // 工具配置数组
   is_public: boolean;
 }
 
@@ -302,6 +309,7 @@ export interface UpdateAgentPresetRequest {
   preset_name?: string;
   description?: string;
   config?: AgentConfig;
+  tools?: ToolConfig[]; // 工具配置数组
   is_public?: boolean;
 }
 

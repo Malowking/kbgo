@@ -34,12 +34,6 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 		err               error
 	}
 
-	type mcpResult struct {
-		mcpResults  []*v1.MCPResult
-		mcpMetadata []map[string]interface{}
-		err         error
-	}
-
 	type fileParseResult struct {
 		multimodalFiles []*common.MultimodalFile // 多模态文件（图片、音频、视频等）
 		fileContent     string                   // 文档文件的解析文本内容
@@ -161,12 +155,16 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 		g.Log().Infof(ctx, "Added parsed document content to documents (%d chars)", len(fileParseRes.fileContent))
 	}
 
-	// 2. 执行工具调用 (使用统一的工具执行器)
-	var mcpRes mcpResult
+	// 2. 执行工具调用（使用统一的工具执行器）
+	var toolResult *agent_tools.ExecuteResult
 	if req.Tools != nil && len(req.Tools) > 0 {
-		g.Log().Infof(ctx, "Executing tools using unified executor")
+		g.Log().Infof(ctx, "Executing tools using unified executor with LLM selection")
 		executor := agent_tools.NewToolExecutor()
-		toolResult, err := executor.Execute(ctx, req.Tools, req.Question, req.ModelID, req.EmbeddingModelID, documents)
+
+		var err error
+		toolResult, err = executor.Execute(ctx, req.Tools, req.Question,
+			req.ModelID, req.EmbeddingModelID, documents, req.SystemPrompt, req.ConvID)
+
 		if err != nil {
 			g.Log().Errorf(ctx, "Tool execution failed: %v", err)
 		} else {
@@ -174,22 +172,6 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 			if len(toolResult.Documents) > 0 {
 				documents = append(documents, toolResult.Documents...)
 			}
-
-			// 设置MCP结果
-			if toolResult.MCPResults != nil {
-				mcpRes.mcpResults = toolResult.MCPResults
-				mcpRes.mcpMetadata = make([]map[string]interface{}, len(toolResult.MCPResults))
-				for i, res := range toolResult.MCPResults {
-					mcpRes.mcpMetadata[i] = map[string]interface{}{
-						"type":         "mcp",
-						"service_name": res.ServiceName,
-						"tool_name":    res.ToolName,
-						"content":      res.Content,
-					}
-				}
-			}
-
-			// 注意：NL2SQL结果在流式响应中不需要单独处理，会作为documents传递给LLM
 
 			// 如果工具返回了最终答案(仅MCP可能返回),处理流式返回
 			if toolResult.FinalAnswer != "" {
@@ -237,11 +219,26 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 	}
 	defer streamReader.Close()
 
-	// 在流式响应中添加MCP结果
-	allDocuments := h.buildAllDocuments(documents, mcpRes.mcpResults)
+	// 在流式响应中添加工具结果
+	var mcpResults []*v1.MCPResult
+	var mcpMetadata []map[string]interface{}
+	if toolResult != nil && toolResult.MCPResults != nil {
+		mcpResults = toolResult.MCPResults
+		mcpMetadata = make([]map[string]interface{}, len(toolResult.MCPResults))
+		for i, res := range toolResult.MCPResults {
+			mcpMetadata[i] = map[string]interface{}{
+				"type":         "mcp",
+				"service_name": res.ServiceName,
+				"tool_name":    res.ToolName,
+				"content":      res.Content,
+			}
+		}
+	}
+
+	allDocuments := h.buildAllDocuments(documents, mcpResults)
 
 	// 准备元数据
-	metadata := h.buildMetadata(retrievalRes.retrieverMetadata, mcpRes.mcpMetadata)
+	metadata := h.buildMetadata(retrievalRes.retrieverMetadata, mcpMetadata)
 
 	// 将元数据添加到所有文档中
 	if len(metadata) > 0 {

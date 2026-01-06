@@ -133,7 +133,7 @@ func (c *ControllerV1) AgentChat(ctx context.Context, req *v1.AgentChatReq) (res
 		RetrieveMode:     preset.Config.RetrieveMode,
 		Stream:           req.Stream,
 		JsonFormat:       preset.Config.JsonFormat,
-		Tools:            preset.Config.Tools,
+		Tools:            preset.Tools,
 	}
 
 	// 调用Chat处理器
@@ -177,8 +177,6 @@ func (c *ControllerV1) AgentChat(ctx context.Context, req *v1.AgentChatReq) (res
 
 // handleAgentStreamChat 处理Agent流式聊天请求
 func (c *ControllerV1) handleAgentStreamChat(ctx context.Context, req *v1.AgentChatReq, uploadedFiles []*common.MultimodalFile) error {
-	g.Log().Infof(ctx, "Agent流式对话请求 - PresetID: %s, ConvID: %s, Files: %d", req.PresetID, req.ConvID, len(uploadedFiles))
-
 	agentService := agent.NewAgentService()
 
 	// 获取Agent预设配置
@@ -224,7 +222,7 @@ func (c *ControllerV1) handleAgentStreamChat(ctx context.Context, req *v1.AgentC
 		RetrieveMode:     preset.Config.RetrieveMode,
 		Stream:           true,
 		JsonFormat:       preset.Config.JsonFormat,
-		Tools:            preset.Config.Tools,
+		Tools:            preset.Tools,
 	}
 
 	// 调用原有的流式Chat处理器，传递上传的文件
