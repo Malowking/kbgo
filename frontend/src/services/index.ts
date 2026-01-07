@@ -1,5 +1,5 @@
 import { apiClient } from './api';
-import { handleSSEStream, handleSSEStreamWithFormData } from '@/lib/sse-client';
+import { handleSSEStream, handleSSEStreamWithFormData, ToolCallInfo, LLMIterationInfo } from '@/lib/sse-client';
 import type {
   KnowledgeBase,
   CreateKBRequest,
@@ -322,7 +322,14 @@ export const agentApi = {
   chatStream: async (
     data: AgentChatRequest & { files?: File[] },
     onMessage: (chunk: string, reasoningChunk?: string, references?: Document[]) => void,
-    onError?: (error: Error) => void
+    onError?: (error: Error) => void,
+    // 新增：工具调用相关回调
+    callbacks?: {
+      onToolCallStart?: (toolCall: ToolCallInfo) => void;
+      onToolCallEnd?: (toolCall: ToolCallInfo) => void;
+      onLLMIteration?: (iteration: LLMIterationInfo) => void;
+      onThinking?: (thinking: string) => void;
+    }
   ) => {
     const hasFiles = data.files && data.files.length > 0;
 
@@ -361,6 +368,10 @@ export const agentApi = {
         onChunk: handleChunk,
         onReasoning: handleReasoning,
         onReferences: handleReferences,
+        onToolCallStart: callbacks?.onToolCallStart,
+        onToolCallEnd: callbacks?.onToolCallEnd,
+        onLLMIteration: callbacks?.onLLMIteration,
+        onThinking: callbacks?.onThinking,
         onError,
       });
     } else {
@@ -369,6 +380,10 @@ export const agentApi = {
         onChunk: handleChunk,
         onReasoning: handleReasoning,
         onReferences: handleReferences,
+        onToolCallStart: callbacks?.onToolCallStart,
+        onToolCallEnd: callbacks?.onToolCallEnd,
+        onLLMIteration: callbacks?.onLLMIteration,
+        onThinking: callbacks?.onThinking,
         onError,
       });
     }

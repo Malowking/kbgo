@@ -6,6 +6,8 @@ import type { AgentPresetItem } from '@/types';
 import { useNavigate } from 'react-router-dom';
 import MessageContent from '@/components/MessageContent';
 import ReferencesList from '@/components/ReferencesList';
+import ToolCallStatus from '@/components/ToolCallStatus';
+import { ToolCallInfo, LLMIterationInfo } from '@/lib/sse-client';
 import { logger } from '@/lib/logger';
 import { showError, showWarning } from '@/lib/toast';
 import { USER } from '@/config/constants';
@@ -18,6 +20,10 @@ interface Message {
   references?: any[];
   mcp_results?: any[];
   timestamp: string;
+  // 新增：工具调用相关字段
+  toolCalls?: ToolCallInfo[];
+  iteration?: LLMIterationInfo;
+  thinking?: string;
 }
 
 interface Conversation {
@@ -146,6 +152,8 @@ export default function AgentChat() {
       // 默认使用流式输出
       let accumulatedContent = '';
       let accumulatedReasoning = '';
+      // 工具调用状态管理
+      const toolCallsMap = new Map<string, ToolCallInfo>();
 
       setMessages(prev => [
         ...prev,
@@ -155,6 +163,7 @@ export default function AgentChat() {
           content: '',
           reasoning_content: '',
           timestamp: new Date().toISOString(),
+          toolCalls: [],
         },
       ]);
 
@@ -181,7 +190,10 @@ export default function AgentChat() {
                     ...msg,
                     content: accumulatedContent,
                     reasoning_content: accumulatedReasoning || undefined,
-                    references: references || msg.references
+                    references: references || msg.references,
+                    // 当开始接收内容时，清除迭代和思考状态
+                    iteration: undefined,
+                    thinking: undefined,
                   }
                 : msg
             )
@@ -193,10 +205,75 @@ export default function AgentChat() {
           setMessages(prev =>
             prev.map(msg =>
               msg.id === assistantMessageId
-                ? { ...msg, content: '抱歉，发生了错误：' + error.message }
+                ? {
+                    ...msg,
+                    content: '抱歉，发生了错误：' + error.message,
+                    iteration: undefined,
+                    thinking: undefined,
+                  }
                 : msg
             )
           );
+        },
+        // 新增：工具调用回调
+        {
+          onToolCallStart: (toolCall: ToolCallInfo) => {
+            logger.debug('Tool call started:', toolCall);
+            toolCallsMap.set(toolCall.tool_id, toolCall);
+            setMessages(prev =>
+              prev.map(msg =>
+                msg.id === assistantMessageId
+                  ? {
+                      ...msg,
+                      toolCalls: Array.from(toolCallsMap.values()),
+                    }
+                  : msg
+              )
+            );
+          },
+          onToolCallEnd: (toolCall: ToolCallInfo) => {
+            logger.debug('Tool call ended:', toolCall);
+            const existing = toolCallsMap.get(toolCall.tool_id);
+            if (existing) {
+              toolCallsMap.set(toolCall.tool_id, { ...existing, ...toolCall });
+              setMessages(prev =>
+                prev.map(msg =>
+                  msg.id === assistantMessageId
+                    ? {
+                        ...msg,
+                        toolCalls: Array.from(toolCallsMap.values()),
+                      }
+                    : msg
+                )
+              );
+            }
+          },
+          onLLMIteration: (iteration: LLMIterationInfo) => {
+            logger.debug('LLM iteration:', iteration);
+            setMessages(prev =>
+              prev.map(msg =>
+                msg.id === assistantMessageId
+                  ? {
+                      ...msg,
+                      iteration,
+                    }
+                  : msg
+              )
+            );
+          },
+          onThinking: (thinking: string) => {
+            logger.debug('Thinking:', thinking);
+            setMessages(prev =>
+              prev.map(msg =>
+                msg.id === assistantMessageId
+                  ? {
+                      ...msg,
+                      thinking,
+                    }
+                  : msg
+              )
+            );
+          },
         }
       );
     } catch (error: any) {
@@ -363,15 +440,31 @@ export default function AgentChat() {
                     {message.role === 'user' ? (
                       <div className="whitespace-pre-wrap break-words">{message.content}</div>
                     ) : (
-                      <MessageContent
-                        content={message.content}
-                        reasoningContent={message.reasoning_content}
-                        isStreaming={loading && messages[messages.length - 1]?.id === message.id}
-                      />
+                      <>
+                        {/* 如果是最后一条消息且正在加载且没有内容，显示加载动画 */}
+                        {loading && messages[messages.length - 1]?.id === message.id && !message.content ? (
+                          <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                        ) : (
+                          <MessageContent
+                            content={message.content}
+                            reasoningContent={message.reasoning_content}
+                            isStreaming={loading && messages[messages.length - 1]?.id === message.id}
+                          />
+                        )}
+                      </>
                     )}
 
                     {message.references && message.references.length > 0 && (
                       <ReferencesList references={message.references} />
+                    )}
+
+                    {/* 工具调用状态显示 */}
+                    {message.role === 'assistant' && (message.toolCalls || message.iteration || message.thinking) && (
+                      <ToolCallStatus
+                        toolCalls={message.toolCalls || []}
+                        iteration={message.iteration}
+                        thinking={message.thinking}
+                      />
                     )}
 
                     {message.mcp_results && message.mcp_results.length > 0 && (
@@ -409,19 +502,6 @@ export default function AgentChat() {
                   )}
                 </div>
               ))}
-
-              {loading && (
-                <div className="flex gap-3">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
-                      <Bot className="w-5 h-5 text-white" />
-                    </div>
-                  </div>
-                  <div className="bg-white border rounded-lg px-4 py-3">
-                    <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
-                  </div>
-                </div>
-              )}
 
               <div ref={messagesEndRef} />
             </>

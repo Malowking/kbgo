@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Database, Table, MessageSquare, Plus, Minus, ChevronDown, ChevronUp } from 'lucide-react';
+import { Database, Table, MessageSquare, FileDown, Plus, Minus, ChevronDown, ChevronUp } from 'lucide-react';
 import type { AgentConfig, KnowledgeBase, Model, MCPRegistry } from '@/types';
 
 interface ToolConfigurationPanelProps {
@@ -29,12 +29,14 @@ export default function ToolConfigurationPanel({
   const [enableKnowledgeRetrieval, setEnableKnowledgeRetrieval] = useState(false);
   const [enableNL2SQL, setEnableNL2SQL] = useState(false);
   const [enableMCP, setEnableMCP] = useState(false);
+  const [enableFileExport, setEnableFileExport] = useState(false);
 
   // 展开/折叠状态
   const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({
     knowledge: true,
     nl2sql: true,
     mcp: true,
+    fileExport: true,
   });
 
   // MCP 配置
@@ -45,6 +47,7 @@ export default function ToolConfigurationPanel({
     setEnableKnowledgeRetrieval(!!config.knowledge_id);
     setEnableNL2SQL(!!config.nl2sql_datasource_id);
     setEnableMCP(!!config.use_mcp);
+    setEnableFileExport(!!config.enable_file_export);
 
     // 初始化 MCP 配置
     if (config.mcp_service_tools) {
@@ -57,7 +60,7 @@ export default function ToolConfigurationPanel({
       );
       setMcpConfigs(configs);
     }
-  }, [config.knowledge_id, config.nl2sql_datasource_id, config.use_mcp, config.mcp_service_tools]);
+  }, [config.knowledge_id, config.nl2sql_datasource_id, config.use_mcp, config.mcp_service_tools, config.enable_file_export]);
 
   // 切换工具展开/折叠
   const toggleTool = (toolKey: string) => {
@@ -604,6 +607,88 @@ export default function ToolConfigurationPanel({
                 暂无可用的 MCP 服务，请先在 MCP 服务页面添加服务
               </p>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* 文件导出工具 */}
+      <div className="border rounded-lg overflow-hidden">
+        <div
+          className="flex items-center justify-between p-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
+          onClick={() => toggleTool('fileExport')}
+        >
+          <div className="flex items-center gap-3">
+            <FileDown className="w-5 h-5 text-orange-500" />
+            <div>
+              <h4 className="font-medium">文件导出</h4>
+              <p className="text-xs text-gray-500">将对话内容或数据导出为文件</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                checked={enableFileExport}
+                onChange={(e) => {
+                  setEnableFileExport(e.target.checked);
+                  onConfigChange({
+                    ...config,
+                    enable_file_export: e.target.checked,
+                  });
+                }}
+                className="w-4 h-4 text-blue-500 rounded focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-sm">启用</span>
+            </label>
+            {expandedTools.fileExport ? (
+              <ChevronUp className="w-5 h-5 text-gray-400" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-gray-400" />
+            )}
+          </div>
+        </div>
+
+        {expandedTools.fileExport && enableFileExport && (
+          <div className="p-4 space-y-4 border-t">
+            {/* 优先级配置 */}
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                工具优先级
+                <span className="text-xs text-gray-500 ml-2">（数字越小优先级越高，留空则不设置优先级）</span>
+              </label>
+              <input
+                type="number"
+                value={config.file_export_priority ?? ''}
+                onChange={(e) =>
+                  onConfigChange({
+                    ...config,
+                    file_export_priority: e.target.value ? parseInt(e.target.value) : undefined,
+                  })
+                }
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                placeholder="例如：4"
+                min={1}
+              />
+            </div>
+
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+              <h5 className="text-sm font-medium text-gray-700 mb-2">支持的导出格式</h5>
+              <ul className="text-xs text-gray-600 space-y-1">
+                <li>• <strong>Markdown (.md)</strong> - 适合文档和笔记</li>
+                <li>• <strong>PDF (.pdf)</strong> - 适合正式文档和报告</li>
+                <li>• <strong>Word (.docx)</strong> - 适合编辑和协作</li>
+                <li>• <strong>Excel (.xlsx)</strong> - 适合表格数据</li>
+                <li>• <strong>CSV (.csv)</strong> - 适合数据分析</li>
+                <li>• <strong>JSON (.json)</strong> - 适合程序处理</li>
+              </ul>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-sm text-blue-700">
+                <span className="font-medium">使用说明：</span>
+                启用后，Agent 可以根据用户需求将对话内容、查询结果或其他数据导出为指定格式的文件。
+              </p>
+            </div>
           </div>
         )}
       </div>

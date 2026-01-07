@@ -168,9 +168,12 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 		g.Log().Infof(ctx, "Executing tools using unified executor with LLM selection")
 		executor := agent_tools.NewToolExecutor()
 
+		// 生成消息ID（用于SSE事件关联，非流式场景可以传空字符串）
+		messageID := common.GenerateMessageID()
+
 		// 传入 SystemPrompt 和 ConvID，让工具选择阶段也能感知 Agent 的角色
 		toolResult, err := executor.Execute(ctx, req.Tools, req.Question,
-			req.ModelID, req.EmbeddingModelID, documents, req.SystemPrompt, req.ConvID)
+			req.ModelID, req.EmbeddingModelID, documents, req.SystemPrompt, req.ConvID, messageID)
 
 		if err != nil {
 			g.Log().Errorf(ctx, "Tool execution failed: %v", err)

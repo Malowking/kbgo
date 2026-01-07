@@ -13,12 +13,19 @@ import (
 	"github.com/google/uuid"
 )
 
+// GenerateMessageID 生成消息ID
+func GenerateMessageID() string {
+	return uuid.NewString()
+}
+
 type StreamData struct {
-	Id               string             `json:"id"`                          // 同一个消息里面的id是相同的
-	Created          int64              `json:"created"`                     // 消息初始生成时间
-	Content          string             `json:"content"`                     // 消息具体内容
-	ReasoningContent string             `json:"reasoning_content,omitempty"` // 思考内容（用于思考模型）
-	Document         []*schema.Document `json:"document"`
+	Id               string                 `json:"id"`                          // 同一个消息里面的id是相同的
+	Created          int64                  `json:"created"`                     // 消息初始生成时间
+	Type             string                 `json:"type,omitempty"`              // 事件类型: content, tool_call_start, tool_call_end, llm_iteration, thinking
+	Content          string                 `json:"content"`                     // 消息具体内容
+	ReasoningContent string                 `json:"reasoning_content,omitempty"` // 思考内容（用于思考模型）
+	Document         []*schema.Document     `json:"document"`
+	Metadata         map[string]interface{} `json:"metadata,omitempty"` // 元数据（用于工具调用、LLM迭代等信息）
 }
 
 func SteamResponse(ctx context.Context, streamReader schema.StreamReaderInterface[*schema.Message], docs []*schema.Document) (err error) {
@@ -97,4 +104,70 @@ func writeSSEError(resp *ghttp.Response, err error) {
 	g.Log().Error(context.Background(), err)
 	resp.Writeln(fmt.Sprintf("event: error\ndata: %s\n\n", err.Error()))
 	resp.Flush()
+}
+
+// WriteToolCallStart 发送工具调用开始事件
+func WriteToolCallStart(resp *ghttp.Response, messageID string, toolID string, toolName string, arguments map[string]interface{}) {
+	sd := &StreamData{
+		Id:      messageID,
+		Created: time.Now().Unix(),
+		Type:    "tool_call_start",
+		Metadata: map[string]interface{}{
+			"tool_id":   toolID,
+			"tool_name": toolName,
+			"arguments": arguments,
+		},
+	}
+	marshal, _ := sonic.Marshal(sd)
+	writeSSEData(resp, string(marshal))
+}
+
+// WriteToolCallEnd 发送工具调用结束事件
+func WriteToolCallEnd(resp *ghttp.Response, messageID string, toolID string, toolName string, result string, err error, durationMs int64) {
+	metadata := map[string]interface{}{
+		"tool_id":     toolID,
+		"tool_name":   toolName,
+		"result":      result,
+		"duration_ms": durationMs,
+	}
+	if err != nil {
+		metadata["error"] = err.Error()
+	}
+
+	sd := &StreamData{
+		Id:       messageID,
+		Created:  time.Now().Unix(),
+		Type:     "tool_call_end",
+		Metadata: metadata,
+	}
+	marshal, _ := sonic.Marshal(sd)
+	writeSSEData(resp, string(marshal))
+}
+
+// WriteLLMIteration 发送LLM迭代事件
+func WriteLLMIteration(resp *ghttp.Response, messageID string, iteration int, maxIterations int, message string) {
+	sd := &StreamData{
+		Id:      messageID,
+		Created: time.Now().Unix(),
+		Type:    "llm_iteration",
+		Metadata: map[string]interface{}{
+			"iteration":      iteration,
+			"max_iterations": maxIterations,
+			"message":        message,
+		},
+	}
+	marshal, _ := sonic.Marshal(sd)
+	writeSSEData(resp, string(marshal))
+}
+
+// WriteThinking 发送思考过程事件
+func WriteThinking(resp *ghttp.Response, messageID string, thinking string) {
+	sd := &StreamData{
+		Id:      messageID,
+		Created: time.Now().Unix(),
+		Type:    "thinking",
+		Content: thinking,
+	}
+	marshal, _ := sonic.Marshal(sd)
+	writeSSEData(resp, string(marshal))
 }

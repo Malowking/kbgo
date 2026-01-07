@@ -161,9 +161,12 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 		g.Log().Infof(ctx, "Executing tools using unified executor with LLM selection")
 		executor := agent_tools.NewToolExecutor()
 
+		// 生成消息ID（用于SSE事件关联）
+		messageID := common.GenerateMessageID()
+
 		var err error
 		toolResult, err = executor.Execute(ctx, req.Tools, req.Question,
-			req.ModelID, req.EmbeddingModelID, documents, req.SystemPrompt, req.ConvID)
+			req.ModelID, req.EmbeddingModelID, documents, req.SystemPrompt, req.ConvID, messageID)
 
 		if err != nil {
 			g.Log().Errorf(ctx, "Tool execution failed: %v", err)

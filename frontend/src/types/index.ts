@@ -276,10 +276,13 @@ export interface AgentConfig {
   enable_nl2sql?: boolean;
   nl2sql_datasource_id?: string;
   nl2sql_embedding_model_id?: string; // NL2SQL Schema向量化使用的embedding模型
+  // 文件导出相关配置
+  enable_file_export?: boolean;
   // 工具优先级配置
   knowledge_retrieval_priority?: number;
   nl2sql_priority?: number;
   mcp_priority?: number;
+  file_export_priority?: number;
 }
 
 export interface AgentPreset {

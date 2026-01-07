@@ -15,7 +15,7 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// QueryWithAdapters 执行NL2SQL查询（完整实现，使用适配器）
+// QueryWithAdapters 执行NL2SQL查询
 func (s *NL2SQLService) QueryWithAdapters(
 	ctx context.Context,
 	req *QueryRequest,
@@ -58,7 +58,7 @@ func (s *NL2SQLService) QueryWithAdapters(
 	retriever := vector.NewSchemaRetriever(s.db)
 
 	retrieveReq := &vector.RetrieveRequest{
-		SchemaID: req.DatasourceID, // 使用 DatasourceID 代替 SchemaID
+		SchemaID: req.DatasourceID,
 		Query:    req.Question,
 		TopK:     5,
 		MinScore: 0.3,

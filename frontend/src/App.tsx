@@ -10,6 +10,7 @@ import Models from '@/pages/Models';
 import MCP from '@/pages/MCP';
 import AgentBuilder from '@/pages/AgentBuilder';
 import AgentChat from '@/pages/AgentChat';
+import AgentTools from '@/pages/AgentTools';
 import NL2SQLDataSource from '@/pages/NL2SQLDataSource';
 import NL2SQLDataSourceDetail from '@/pages/NL2SQLDataSource/Detail';
 
@@ -60,6 +61,7 @@ function App() {
           <Route path="models" element={<Models />} />
           <Route path="mcp" element={<MCP />} />
           <Route path="agent-builder" element={<AgentBuilder />} />
+          <Route path="agent-tools/:presetId" element={<AgentTools />} />
         </Route>
       </Routes>
     </BrowserRouter>

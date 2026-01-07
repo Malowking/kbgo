@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Edit2, Trash2, Save, X, Bot, Settings, ChevronDown } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, X, Bot, Settings, ChevronDown, Wrench } from 'lucide-react';
 import { agentApi, knowledgeBaseApi, modelApi, mcpApi, conversationApi, nl2sqlApi } from '@/services';
 import type { AgentPresetItem, AgentConfig, KnowledgeBase, Model, MCPRegistry } from '@/types';
 import ModelSelectorModal from '@/components/ModelSelectorModal';
-import ToolConfigurationPanel from '@/components/ToolConfigurationPanel';
+import ToolConfigurationModal from '@/components/ToolConfigurationModal';
 import { logger } from '@/lib/logger';
 import { showError, showWarning, showSuccess } from '@/lib/toast';
 import { USER } from '@/config/constants';
@@ -16,6 +16,7 @@ export default function AgentBuilder() {
   const [showForm, setShowForm] = useState(false);
   const [editingPresetId, setEditingPresetId] = useState<string>('');
   const [showModelSelector, setShowModelSelector] = useState(false);
+  const [showToolConfig, setShowToolConfig] = useState(false);
   const { confirm, ConfirmDialog } = useConfirm();
 
   // Form state
@@ -142,6 +143,7 @@ export default function AgentBuilder() {
               if (tool.priority !== undefined) {
                 restoredConfig.knowledge_retrieval_priority = tool.priority;
                 restoredConfig.nl2sql_priority = tool.priority;
+                restoredConfig.file_export_priority = tool.priority;
               }
 
               // 恢复知识库检索配置
@@ -163,6 +165,11 @@ export default function AgentBuilder() {
                 restoredConfig.enable_nl2sql = true;
                 restoredConfig.nl2sql_datasource_id = nl2sql.datasource;
                 restoredConfig.nl2sql_embedding_model_id = nl2sql.embedding_model_id;
+              }
+
+              // 恢复文件导出配置
+              if (tool.config.file_export) {
+                restoredConfig.enable_file_export = true;
               }
               break;
 
@@ -232,7 +239,7 @@ export default function AgentBuilder() {
       // 构造 tools 数组
       const tools = [];
 
-      // 1. 构造 local_tools 配置（包含知识库检索、NL2SQL等本地工具）
+      // 1. 构造 local_tools 配置（包含知识库检索、NL2SQL、文件导出等本地工具）
       const localToolsConfig: Record<string, any> = {};
 
       // 知识库检索工具
@@ -256,9 +263,16 @@ export default function AgentBuilder() {
         };
       }
 
+      // 文件导出工具
+      if (config.enable_file_export) {
+        localToolsConfig.file_export = {
+          enabled: true,
+        };
+      }
+
       // 如果有本地工具配置，添加到 tools 数组
       if (Object.keys(localToolsConfig).length > 0) {
-        const localToolPriority = config.knowledge_retrieval_priority || config.nl2sql_priority;
+        const localToolPriority = config.knowledge_retrieval_priority || config.nl2sql_priority || config.file_export_priority;
         tools.push({
           type: 'local_tools',
           enabled: true,
@@ -285,7 +299,7 @@ export default function AgentBuilder() {
           preset_name: presetName,
           description,
           config,
-          tools: tools.length > 0 ? tools : undefined,
+          tools: tools, // 直接传递 tools 数组，即使为空也要传递
           is_public: isPublic,
         });
 
@@ -304,7 +318,7 @@ export default function AgentBuilder() {
           preset_name: presetName,
           description,
           config,
-          tools: tools.length > 0 ? tools : undefined,
+          tools: tools.length > 0 ? tools : undefined, // 创建时如果没有工具可以不传
           is_public: isPublic,
         });
         showSuccess('创建成功');
@@ -346,6 +360,34 @@ export default function AgentBuilder() {
   const getSelectedModelName = (): string => {
     const model = models.find(m => m.model_id === config.model_id);
     return model ? model.name : '选择模型';
+  };
+
+  // 获取已配置的工具列表
+  const getConfiguredTools = (): string[] => {
+    const tools: string[] = [];
+
+    if (config.enable_retriever && config.knowledge_id) {
+      const kb = kbList.find(k => k.id === config.knowledge_id);
+      tools.push(`知识库检索 (${kb?.name || '未知'})`);
+    }
+
+    if (config.enable_nl2sql && config.nl2sql_datasource_id) {
+      const ds = nl2sqlDatasources.find(d => d.id === config.nl2sql_datasource_id);
+      tools.push(`NL2SQL (${ds?.name || '未知'})`);
+    }
+
+    if (config.enable_file_export) {
+      tools.push('文件导出');
+    }
+
+    if (config.use_mcp && config.mcp_service_tools) {
+      const mcpCount = Object.keys(config.mcp_service_tools).length;
+      if (mcpCount > 0) {
+        tools.push(`MCP 工具 (${mcpCount}个服务)`);
+      }
+    }
+
+    return tools;
   };
 
   // 删除 Agent 的所有对话记录
@@ -510,16 +552,61 @@ export default function AgentBuilder() {
                 </div>
               </div>
 
-              {/* Tool Configuration Panel */}
+              {/* Tool Configuration Button */}
               <div className="border-t pt-6">
-                <ToolConfigurationPanel
-                  config={config}
-                  onConfigChange={setConfig}
-                  kbList={kbList}
-                  rerankModels={rerankModels}
-                  mcpServices={mcpServices}
-                  nl2sqlDatasources={nl2sqlDatasources}
-                />
+                <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
+                  <Wrench className="w-5 h-5" />
+                  工具配置
+                </h3>
+                {(() => {
+                  const configuredTools = getConfiguredTools();
+                  const hasTools = configuredTools.length > 0;
+
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowToolConfig(true)}
+                        className={`w-full px-4 py-3 rounded-lg transition-colors text-left ${
+                          hasTools
+                            ? 'bg-purple-50 border border-purple-200 hover:bg-purple-100'
+                            : 'border border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {hasTools ? (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium text-purple-900">
+                                已配置 {configuredTools.length} 个工具
+                              </span>
+                              <Wrench className="w-4 h-4 text-purple-600" />
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {configuredTools.map((tool, index) => (
+                                <span
+                                  key={index}
+                                  className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded"
+                                >
+                                  {tool}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center gap-2 text-gray-600">
+                            <Wrench className="w-5 h-5" />
+                            <span>配置 Agent 工具</span>
+                          </div>
+                        )}
+                      </button>
+                      {!hasTools && (
+                        <p className="mt-2 text-xs text-gray-500">
+                          点击配置知识库检索、NL2SQL、MCP 外部工具等
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
 
               {/* Submit Buttons */}
@@ -615,6 +702,19 @@ export default function AgentBuilder() {
           onSelect={handleModelSelect}
           currentModelId={config.model_id}
           modelTypes={['llm', 'multimodal']}
+        />
+      )}
+
+      {/* Tool Configuration Modal */}
+      {showToolConfig && (
+        <ToolConfigurationModal
+          config={config}
+          onConfigChange={setConfig}
+          kbList={kbList}
+          rerankModels={rerankModels}
+          mcpServices={mcpServices}
+          nl2sqlDatasources={nl2sqlDatasources}
+          onClose={() => setShowToolConfig(false)}
         />
       )}
 

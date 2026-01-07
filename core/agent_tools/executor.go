@@ -5,15 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/agent_tools/knowledge_retrieval"
 	"github.com/Malowking/kbgo/core/agent_tools/mcp"
 	"github.com/Malowking/kbgo/core/agent_tools/mcp/client"
 	"github.com/Malowking/kbgo/core/agent_tools/nl2sql"
+	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/internal/logic/chat"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/net/ghttp"
 )
 
 // ToolExecutor 统一的工具执行器
@@ -43,7 +46,7 @@ type ToolCallResult struct {
 }
 
 // Execute 执行所有配置的工具（统一由 LLM 选择）
-func (e *ToolExecutor) Execute(ctx context.Context, tools []*v1.ToolConfig, question string, modelID string, embeddingModelID string, documents []*schema.Document, systemPrompt string, convID string) (*ExecuteResult, error) {
+func (e *ToolExecutor) Execute(ctx context.Context, tools []*v1.ToolConfig, question string, modelID string, embeddingModelID string, documents []*schema.Document, systemPrompt string, convID string, messageID string) (*ExecuteResult, error) {
 	result := &ExecuteResult{
 		Documents: make([]*schema.Document, 0),
 	}
@@ -109,7 +112,7 @@ func (e *ToolExecutor) Execute(ctx context.Context, tools []*v1.ToolConfig, ques
 
 	// 5. 调用 LLM 智能选择并执行工具
 	return e.executeWithLLM(ctx, question, modelID, embeddingModelID, documents,
-		enhancedSystemPrompt, allLLMTools, localToolsConfig, mcpToolCaller, convID)
+		enhancedSystemPrompt, allLLMTools, localToolsConfig, mcpToolCaller, convID, messageID)
 }
 
 // buildFullQuestion 构建包含知识检索结果的完整问题
@@ -549,10 +552,18 @@ func (e *ToolExecutor) executeWithLLM(
 	localToolsConfig *v1.ToolConfig,
 	mcpToolCaller *mcp.MCPToolCaller,
 	convID string,
+	messageID string,
 ) (*ExecuteResult, error) {
 
 	result := &ExecuteResult{
 		Documents: make([]*schema.Document, 0),
+	}
+
+	// 获取 HTTP Response 对象（用于发送 SSE 事件）
+	var httpResp *ghttp.Response
+	httpReq := ghttp.RequestFromCtx(ctx)
+	if httpReq != nil {
+		httpResp = httpReq.Response
 	}
 
 	// 1. 构建初始消息
@@ -573,6 +584,11 @@ func (e *ToolExecutor) executeWithLLM(
 
 	for iteration := 0; iteration < maxIterations; iteration++ {
 		g.Log().Infof(ctx, "[统一工具调用] 第 %d/%d 轮", iteration+1, maxIterations)
+
+		// 发送 LLM 迭代事件
+		if httpResp != nil {
+			common.WriteLLMIteration(httpResp, messageID, iteration+1, maxIterations, fmt.Sprintf("正在进行第 %d 轮工具选择...", iteration+1))
+		}
 
 		// 调用 LLM
 		response, err := chatInstance.GenerateWithTools(ctx, modelID, messages, allTools)
@@ -613,9 +629,35 @@ func (e *ToolExecutor) executeWithLLM(
 				continue
 			}
 
+			// 发送工具调用开始事件
+			if httpResp != nil {
+				common.WriteToolCallStart(httpResp, messageID, toolCall.ID, toolName, args)
+			}
+
+			// 记录开始时间
+			startTime := time.Now()
+
 			// 根据工具名称分发执行
 			toolResult, err := e.dispatchToolCall(ctx, toolName, args,
 				localToolsConfig, mcpToolCaller, question, modelID, embeddingModelID, convID)
+
+			// 计算执行时间
+			duration := time.Since(startTime).Milliseconds()
+
+			// 发送工具调用结束事件
+			if httpResp != nil {
+				var resultSummary string
+				if err != nil {
+					resultSummary = fmt.Sprintf("工具执行失败: %v", err)
+				} else if toolResult != nil {
+					resultSummary = toolResult.Content
+					// 限制结果长度
+					if len(resultSummary) > 200 {
+						resultSummary = resultSummary[:200] + "..."
+					}
+				}
+				common.WriteToolCallEnd(httpResp, messageID, toolCall.ID, toolName, resultSummary, err, duration)
+			}
 
 			if err != nil {
 				errMsg := fmt.Sprintf("工具执行失败: %v", err)
