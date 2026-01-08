@@ -6,8 +6,8 @@ import type { AgentPreset, AgentConfig, KnowledgeBase, Model, MCPRegistry } from
 import ToolConfigurationPanel from '@/components/ToolConfigurationPanel';
 import { logger } from '@/lib/logger';
 import { showError, showSuccess } from '@/lib/toast';
-import { USER } from '@/config/constants';
 import { getRerankModels } from '@/lib/model-utils';
+import { USER } from '@/config/constants';
 
 export default function AgentTools() {
   const { presetId } = useParams<{ presetId: string }>();
@@ -104,10 +104,12 @@ export default function AgentTools() {
     try {
       setSaving(true);
       await agentApi.update(presetId, {
+        user_id: USER.ID,
         preset_name: preset.preset_name,
         description: preset.description,
         is_public: preset.is_public,
         config: config,
+        tools: preset.tools, // 保留原有的 tools 配置
       });
       showSuccess('工具配置保存成功');
     } catch (error) {

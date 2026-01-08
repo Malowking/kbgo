@@ -4,16 +4,12 @@
  */
 
 import React, { useState } from 'react';
-import { ToolCallInfo, LLMIterationInfo } from '@/lib/sse-client';
-import { Loader2, CheckCircle2, XCircle, ChevronDown, ChevronRight, Clock } from 'lucide-react';
+import { ToolCallInfo } from '@/lib/sse-client';
+import { Loader2, CheckCircle2, XCircle, ChevronDown, ChevronRight, Clock, Database, Search, FileText, Download } from 'lucide-react';
 
 interface ToolCallStatusProps {
   /** 工具调用列表 */
   toolCalls: ToolCallInfo[];
-  /** LLM迭代信息 */
-  iteration?: LLMIterationInfo;
-  /** 思考内容 */
-  thinking?: string;
 }
 
 /**
@@ -21,8 +17,6 @@ interface ToolCallStatusProps {
  */
 export const ToolCallStatus: React.FC<ToolCallStatusProps> = ({
   toolCalls,
-  iteration,
-  thinking,
 }) => {
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
 
@@ -49,6 +43,21 @@ export const ToolCallStatus: React.FC<ToolCallStatusProps> = ({
     return nameMap[toolName] || toolName;
   };
 
+  // 获取工具图标
+  const getToolIcon = (toolName: string) => {
+    const iconClass = "w-4 h-4";
+    switch (toolName) {
+      case 'knowledge_retrieval':
+        return <Search className={iconClass} />;
+      case 'nl2sql':
+        return <Database className={iconClass} />;
+      case 'file_export':
+        return <FileText className={iconClass} />;
+      default:
+        return <FileText className={iconClass} />;
+    }
+  };
+
   // 格式化执行时间
   const formatDuration = (ms?: number): string => {
     if (!ms) return '';
@@ -56,44 +65,26 @@ export const ToolCallStatus: React.FC<ToolCallStatusProps> = ({
     return `${(ms / 1000).toFixed(2)}s`;
   };
 
-  if (toolCalls.length === 0 && !iteration && !thinking) {
+  if (toolCalls.length === 0) {
     return null;
   }
 
   return (
     <div className="space-y-2 my-3">
-      {/* LLM迭代进度 */}
-      {iteration && (
-        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 bg-blue-50 dark:bg-blue-900/20 px-3 py-2 rounded-lg">
-          <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
-          <span>
-            第 {iteration.iteration}/{iteration.max_iterations} 轮 - {iteration.message}
-          </span>
-        </div>
-      )}
-
-      {/* 思考过程 */}
-      {thinking && (
-        <div className="text-sm text-gray-600 dark:text-gray-400 bg-purple-50 dark:bg-purple-900/20 px-3 py-2 rounded-lg italic">
-          💭 {thinking}
-        </div>
-      )}
-
       {/* 工具调用列表 */}
-      {toolCalls.length > 0 && (
-        <div className="space-y-2">
-          {toolCalls.map((tool) => {
-            const isExpanded = expandedTools.has(tool.tool_id);
-            const hasDetails = tool.arguments || tool.result || tool.error;
+      <div className="space-y-2">
+        {toolCalls.map((tool) => {
+          const isExpanded = expandedTools.has(tool.tool_id);
+          const hasDetails = tool.arguments || tool.result || tool.error;
 
-            return (
+          return (
               <div
                 key={tool.tool_id}
-                className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
+                className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden animate-fadeIn"
               >
                 {/* 工具头部 */}
                 <div
-                  className={`flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
+                  className={`flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-all duration-200 ${
                     tool.status === 'running'
                       ? 'bg-blue-50 dark:bg-blue-900/20'
                       : tool.status === 'success'
@@ -104,16 +95,26 @@ export const ToolCallStatus: React.FC<ToolCallStatusProps> = ({
                   }`}
                   onClick={() => hasDetails && toggleToolExpand(tool.tool_id)}
                 >
+                  {/* 工具图标 */}
+                  <div className={`flex-shrink-0 ${
+                    tool.status === 'running' ? 'text-blue-500' :
+                    tool.status === 'success' ? 'text-green-500' :
+                    tool.status === 'error' ? 'text-red-500' :
+                    'text-gray-500'
+                  }`}>
+                    {getToolIcon(tool.tool_name)}
+                  </div>
+
                   {/* 状态图标 */}
                   <div className="flex-shrink-0">
                     {tool.status === 'running' && (
                       <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
                     )}
                     {tool.status === 'success' && (
-                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                      <CheckCircle2 className="w-4 h-4 text-green-500 animate-fadeIn" />
                     )}
                     {tool.status === 'error' && (
-                      <XCircle className="w-4 h-4 text-red-500" />
+                      <XCircle className="w-4 h-4 text-red-500 animate-fadeIn" />
                     )}
                   </div>
 
@@ -124,15 +125,29 @@ export const ToolCallStatus: React.FC<ToolCallStatusProps> = ({
 
                   {/* 执行时间 */}
                   {tool.duration && (
-                    <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                    <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 animate-fadeIn">
                       <Clock className="w-3 h-3" />
                       <span>{formatDuration(tool.duration)}</span>
                     </div>
                   )}
 
+                  {/* 下载按钮（如果有文件URL） */}
+                  {tool.file_url && tool.status === 'success' && (
+                    <a
+                      href={tool.file_url}
+                      download
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-white bg-blue-500 hover:bg-blue-600 rounded transition-colors duration-200 animate-fadeIn"
+                      title="下载文件"
+                    >
+                      <Download className="w-3 h-3" />
+                      <span>下载</span>
+                    </a>
+                  )}
+
                   {/* 展开/折叠图标 */}
                   {hasDetails && (
-                    <div className="flex-shrink-0">
+                    <div className="flex-shrink-0 transition-transform duration-200">
                       {isExpanded ? (
                         <ChevronDown className="w-4 h-4 text-gray-400" />
                       ) : (
@@ -144,7 +159,7 @@ export const ToolCallStatus: React.FC<ToolCallStatusProps> = ({
 
                 {/* 工具详情（展开时显示） */}
                 {isExpanded && hasDetails && (
-                  <div className="px-3 py-2 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 space-y-2">
+                  <div className="px-3 py-2 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 space-y-2 animate-fadeIn">
                     {/* 参数 */}
                     {tool.arguments && (
                       <div>
@@ -184,9 +199,8 @@ export const ToolCallStatus: React.FC<ToolCallStatusProps> = ({
                 )}
               </div>
             );
-          })}
-        </div>
-      )}
+        })}
+      </div>
     </div>
   );
 };

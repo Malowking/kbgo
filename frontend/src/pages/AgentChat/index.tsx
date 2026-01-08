@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Bot, User, ArrowLeft, Plus, Loader2, Paperclip } from 'lucide-react';
-import { agentApi } from '@/services';
-import { generateId } from '@/lib/utils';
+import { Send, Bot, User, ArrowLeft, Plus, Loader2, Paperclip, MessageSquare, Trash2 } from 'lucide-react';
+import { agentApi, conversationApi } from '@/services';
+import { generateId, formatDate, truncate } from '@/lib/utils';
 import type { AgentPresetItem } from '@/types';
 import { useNavigate } from 'react-router-dom';
 import MessageContent from '@/components/MessageContent';
 import ReferencesList from '@/components/ReferencesList';
 import ToolCallStatus from '@/components/ToolCallStatus';
+import ThinkingProcess from '@/components/ThinkingProcess';
+import MultiTurnDisplay from '@/components/MultiTurnDisplay';
 import { ToolCallInfo, LLMIterationInfo } from '@/lib/sse-client';
 import { logger } from '@/lib/logger';
 import { showError, showWarning } from '@/lib/toast';
@@ -30,6 +32,11 @@ interface Conversation {
   conv_id: string;
   preset_id: string;
   preset_name: string;
+  title?: string;
+  last_message?: string;
+  last_message_time?: string;
+  message_count: number;
+  create_time?: string;
   messages: Message[];
 }
 
@@ -47,6 +54,108 @@ export default function AgentChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // 获取指定Agent的对话列表
+  const fetchConversations = useCallback(async (presetId: string) => {
+    try {
+      const response = await conversationApi.list({
+        conversation_type: 'agent',
+        page: 1,
+        page_size: 100,
+      });
+
+      logger.debug('Fetched conversations:', response);
+      logger.debug('Looking for preset_id:', presetId);
+
+      // 过滤出属于当前Agent的对话
+      const agentConversations = response.conversations.filter((conv: any) => {
+        logger.debug('Checking conversation:', conv.conv_id, 'metadata:', conv.metadata);
+        // 从metadata中提取preset_id
+        if (conv.metadata && conv.metadata.preset_id === presetId) {
+          return true;
+        }
+        return false;
+      });
+
+      logger.debug('Filtered conversations:', agentConversations);
+
+      // 转换为前端格式
+      const formattedConvs: Conversation[] = agentConversations.map((conv: any) => ({
+        conv_id: conv.conv_id,
+        preset_id: presetId,
+        preset_name: conv.metadata?.preset_name || 'Agent',
+        title: conv.title,
+        last_message: conv.last_message,
+        last_message_time: conv.last_message_time || conv.create_time,
+        message_count: conv.message_count || 0,
+        create_time: conv.create_time,
+        messages: [], // 消息会在选择对话时加载
+      }));
+
+      logger.debug('Formatted conversations:', formattedConvs);
+
+      setConversations(formattedConvs);
+      return formattedConvs;
+    } catch (error) {
+      logger.error('Failed to fetch conversations:', error);
+      return [];
+    }
+  }, []);
+
+  const handleSelectPreset = useCallback(async (presetId: string) => {
+    setSelectedPreset(presetId);
+    setMessages([]);
+
+    // 获取该Agent的对话列表
+    const convs = await fetchConversations(presetId);
+
+    // 如果没有对话，自动创建一个新对话
+    if (convs.length === 0) {
+      const newConvId = generateId();
+      const preset = presets.find(p => p.preset_id === presetId);
+
+      try {
+        // 调用后端API创建对话
+        await conversationApi.createAgentConversation({
+          conv_id: newConvId,
+          preset_id: presetId,
+          user_id: USER.ID,
+        });
+
+        const newConv: Conversation = {
+          conv_id: newConvId,
+          preset_id: presetId,
+          preset_name: preset?.preset_name || 'Agent',
+          message_count: 0,
+          messages: [],
+        };
+
+        setConversations([newConv]);
+        setCurrentConvId(newConvId);
+      } catch (error: any) {
+        logger.error('Failed to create conversation:', error);
+        showError('创建对话失败: ' + (error.message || '未知错误'));
+        setCurrentConvId('');
+      }
+    } else {
+      // 如果有对话，选择最新的一个
+      setCurrentConvId(convs[0].conv_id);
+    }
+  }, [fetchConversations, presets]);
+
+  const fetchPresets = useCallback(async () => {
+    try {
+      const response = await agentApi.list({ user_id: USER.ID, page: 1, page_size: 100 });
+      setPresets(response.list || []);
+      // 不再自动选择第一个preset，让用户手动选择
+    } catch (error) {
+      logger.error('Failed to fetch agent presets:', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchPresets();
   }, []);
@@ -55,40 +164,7 @@ export default function AgentChat() {
     scrollToBottom();
   }, [messages]);
 
-  // 当选择的 Agent 变化时，清空对话历史
-  useEffect(() => {
-    if (selectedPreset) {
-      setConversations([]);
-      setMessages([]);
-      setCurrentConvId('');
-    }
-  }, [selectedPreset]);
-
-  const fetchPresets = useCallback(async () => {
-    try {
-      const response = await agentApi.list({ user_id: USER.ID, page: 1, page_size: 100 });
-      setPresets(response.list || []);
-
-      // Auto-select first preset if available
-      if (response.list && response.list.length > 0 && !selectedPreset) {
-        setSelectedPreset(response.list[0].preset_id);
-      }
-    } catch (error) {
-      logger.error('Failed to fetch agent presets:', error);
-    }
-  }, [selectedPreset]);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const handleSelectPreset = (presetId: string) => {
-    setSelectedPreset(presetId);
-    setCurrentConvId('');
-    setMessages([]);
-  };
-
-  const handleNewConversation = () => {
+  const handleNewConversation = async () => {
     if (!selectedPreset) {
       showWarning('请先选择一个 Agent');
       return;
@@ -97,16 +173,29 @@ export default function AgentChat() {
     const newConvId = generateId();
     const preset = presets.find(p => p.preset_id === selectedPreset);
 
-    const newConv: Conversation = {
-      conv_id: newConvId,
-      preset_id: selectedPreset,
-      preset_name: preset?.preset_name || 'Agent',
-      messages: [],
-    };
+    try {
+      // 调用后端API创建对话
+      await conversationApi.createAgentConversation({
+        conv_id: newConvId,
+        preset_id: selectedPreset,
+        user_id: USER.ID,
+      });
 
-    setConversations(prev => [newConv, ...prev]);
-    setCurrentConvId(newConvId);
-    setMessages([]);
+      const newConv: Conversation = {
+        conv_id: newConvId,
+        preset_id: selectedPreset,
+        preset_name: preset?.preset_name || 'Agent',
+        message_count: 0,
+        messages: [],
+      };
+
+      setConversations(prev => [newConv, ...prev]);
+      setCurrentConvId(newConvId);
+      setMessages([]);
+    } catch (error: any) {
+      logger.error('Failed to create conversation:', error);
+      showError('创建对话失败: ' + (error.message || '未知错误'));
+    }
   };
 
   const handleSend = useCallback(async () => {
@@ -115,19 +204,10 @@ export default function AgentChat() {
       return;
     }
 
-    const convId = currentConvId || generateId();
+    // 确保有conv_id
     if (!currentConvId) {
-      setCurrentConvId(convId);
-
-      // Create conversation entry
-      const preset = presets.find(p => p.preset_id === selectedPreset);
-      const newConv: Conversation = {
-        conv_id: convId,
-        preset_id: selectedPreset,
-        preset_name: preset?.preset_name || 'Agent',
-        messages: [],
-      };
-      setConversations(prev => [newConv, ...prev]);
+      showWarning('请先点击"新对话"按钮创建对话');
+      return;
     }
 
     // 使用时间戳 + 随机数确保唯一性
@@ -172,7 +252,7 @@ export default function AgentChat() {
           preset_id: selectedPreset,
           user_id: USER.ID,
           question: currentInput,
-          conv_id: convId,
+          conv_id: currentConvId,
           stream: true,
           files: currentFiles, // 传递文件
         },
@@ -215,7 +295,6 @@ export default function AgentChat() {
             )
           );
         },
-        // 新增：工具调用回调
         {
           onToolCallStart: (toolCall: ToolCallInfo) => {
             logger.debug('Tool call started:', toolCall);
@@ -313,6 +392,25 @@ export default function AgentChat() {
     setAttachedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleDeleteConversation = async (e: React.MouseEvent, convId: string) => {
+    e.stopPropagation();
+    if (!confirm('确定要删除这个对话吗?')) return;
+
+    try {
+      await conversationApi.delete(convId);
+      // 从列表中移除
+      setConversations(prev => prev.filter(c => c.conv_id !== convId));
+      // 如果删除的是当前对话，清空消息
+      if (currentConvId === convId) {
+        setCurrentConvId('');
+        setMessages([]);
+      }
+    } catch (error) {
+      logger.error('Failed to delete conversation:', error);
+      showError('删除对话失败');
+    }
+  };
+
   const selectedPresetName = presets.find(p => p.preset_id === selectedPreset)?.preset_name || 'Agent';
 
   return (
@@ -357,33 +455,74 @@ export default function AgentChat() {
         </div>
 
         {/* Conversations List */}
-        <div className="flex-1 overflow-auto p-4">
-          <h3 className="text-sm font-medium text-gray-700 mb-2">对话历史</h3>
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {conversations.length === 0 ? (
-            <p className="text-sm text-gray-500">暂无对话</p>
-          ) : (
-            <div className="space-y-2">
-              {conversations.map((conv) => (
-                <button
-                  key={conv.conv_id}
-                  onClick={() => {
-                    setCurrentConvId(conv.conv_id);
-                    setMessages(conv.messages);
-                    setSelectedPreset(conv.preset_id);
-                  }}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                    currentConvId === conv.conv_id
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'hover:bg-gray-50'
-                  }`}
-                >
-                  <div className="font-medium truncate">{conv.preset_name}</div>
-                  <div className="text-xs text-gray-500">
-                    {conv.messages.length} 条消息
-                  </div>
-                </button>
-              ))}
+            <div className="text-center py-8 text-gray-500 text-sm">
+              还没有对话记录
             </div>
+          ) : (
+            conversations.map((conv) => (
+              <div
+                key={conv.conv_id}
+                onClick={async () => {
+                  setCurrentConvId(conv.conv_id);
+                  setSelectedPreset(conv.preset_id);
+
+                  // 从后端加载该对话的消息历史
+                  try {
+                    const detail = await conversationApi.get(conv.conv_id);
+                    // 转换消息格式
+                    const loadedMessages: Message[] = detail.messages.map((msg: any, index: number) => ({
+                      id: Date.now() + index,
+                      role: msg.role,
+                      content: msg.content,
+                      reasoning_content: msg.reasoning_content,
+                      references: msg.references,
+                      timestamp: msg.create_time || new Date().toISOString(),
+                    }));
+                    setMessages(loadedMessages);
+                  } catch (error) {
+                    logger.error('Failed to load conversation messages:', error);
+                    showError('加载对话消息失败');
+                    setMessages([]);
+                  }
+                }}
+                className={`p-3 rounded-lg cursor-pointer transition-colors group ${
+                  conv.conv_id === currentConvId
+                    ? 'bg-primary-50 border border-primary-200'
+                    : 'hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center space-x-2 mb-1">
+                      <MessageSquare className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                      <h3 className="text-sm font-medium text-gray-900 truncate">
+                        {conv.create_time ? formatDate(conv.create_time) : '新对话'}
+                      </h3>
+                    </div>
+                    <p className="text-xs text-gray-500 line-clamp-2">
+                      {truncate(conv.last_message || '暂无消息', 60)}
+                    </p>
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="text-xs text-gray-400">
+                        {conv.last_message_time ? formatDate(conv.last_message_time) : ''}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {conv.message_count} 条消息
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={(e) => handleDeleteConversation(e, conv.conv_id)}
+                    className="ml-2 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-100 text-red-600 transition-opacity"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))
           )}
         </div>
       </div>
@@ -407,7 +546,17 @@ export default function AgentChat() {
 
         {/* Messages */}
         <div className="flex-1 overflow-auto p-6 space-y-4">
-          {messages.length === 0 ? (
+          {!selectedPreset ? (
+            <div className="text-center py-12">
+              <Bot className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500 mb-2 text-lg font-medium">欢迎使用 Agent 对话</p>
+              <p className="text-sm text-gray-400 mb-4">请先在左侧选择一个 Agent 开始对话</p>
+              <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
+                <ArrowLeft className="w-4 h-4" />
+                <span>在左侧下拉菜单中选择 Agent</span>
+              </div>
+            </div>
+          ) : messages.length === 0 ? (
             <div className="text-center py-12">
               <Bot className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <p className="text-gray-500 mb-2">开始与 {selectedPresetName} 对话</p>
@@ -458,12 +607,20 @@ export default function AgentChat() {
                       <ReferencesList references={message.references} />
                     )}
 
+                    {/* 多轮迭代显示 */}
+                    {message.role === 'assistant' && message.iteration && (
+                      <MultiTurnDisplay iteration={message.iteration} />
+                    )}
+
+                    {/* 思考过程显示 */}
+                    {message.role === 'assistant' && message.thinking && !message.content && (
+                      <ThinkingProcess content={message.thinking} typewriter={false} />
+                    )}
+
                     {/* 工具调用状态显示 */}
-                    {message.role === 'assistant' && (message.toolCalls || message.iteration || message.thinking) && (
+                    {message.role === 'assistant' && message.toolCalls && message.toolCalls.length > 0 && (
                       <ToolCallStatus
-                        toolCalls={message.toolCalls || []}
-                        iteration={message.iteration}
-                        thinking={message.thinking}
+                        toolCalls={message.toolCalls}
                       />
                     )}
 

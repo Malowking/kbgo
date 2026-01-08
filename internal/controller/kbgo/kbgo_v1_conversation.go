@@ -24,12 +24,15 @@ func getConversationManager() *conversation.Manager {
 
 // ConversationList 获取会话列表
 func (c *ControllerV1) ConversationList(ctx context.Context, req *v1.ConversationListReq) (res *v1.ConversationListRes, err error) {
-	g.Log().Infof(ctx, "ConversationList request - KnowledgeID: %s, Page: %d, PageSize: %d", req.KnowledgeID, req.Page, req.PageSize)
+	g.Log().Infof(ctx, "ConversationList request - KnowledgeID: %s, ConversationType: %s, Page: %d, PageSize: %d", req.KnowledgeID, req.ConversationType, req.Page, req.PageSize)
 
 	// 构建筛选条件
 	filters := make(map[string]interface{})
 	if req.KnowledgeID != "" {
 		filters["knowledge_id"] = req.KnowledgeID
+	}
+	if req.ConversationType != "" {
+		filters["conversation_type"] = req.ConversationType
 	}
 	if req.Status != "" {
 		filters["status"] = req.Status
@@ -186,5 +189,20 @@ func (c *ControllerV1) ConversationBatchDelete(ctx context.Context, req *v1.Conv
 		DeletedCount: deletedCount,
 		FailedConvs:  failed,
 		Message:      message,
+	}, nil
+}
+
+// CreateAgentConversation 创建Agent对话
+func (c *ControllerV1) CreateAgentConversation(ctx context.Context, req *v1.CreateAgentConversationReq) (res *v1.CreateAgentConversationRes, err error) {
+	g.Log().Infof(ctx, "CreateAgentConversation request - ConvID: %s, PresetID: %s, UserID: %s", req.ConvID, req.PresetID, req.UserID)
+
+	// 创建会话记录
+	if err := getConversationManager().CreateAgentConversation(ctx, req.ConvID, req.PresetID, req.UserID, req.Title); err != nil {
+		g.Log().Errorf(ctx, "创建Agent对话失败: %v", err)
+		return nil, err
+	}
+
+	return &v1.CreateAgentConversationRes{
+		ConvID: req.ConvID,
 	}, nil
 }

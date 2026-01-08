@@ -119,7 +119,7 @@ type DeleteAgentPresetRes struct {
 type AgentChatReq struct {
 	g.Meta   `path:"/v1/agent/chat" method:"post" tags:"agent" summary:"使用Agent预设进行对话"`
 	PresetID string                  `json:"preset_id" v:"required#预设ID不能为空"` // Agent预设ID
-	ConvID   string                  `json:"conv_id"`                         // 会话ID（可选，首次为空会创建新会话）
+	ConvID   string                  `json:"conv_id" v:"required#会话ID不能为空"`   // 会话ID（必须先创建对话）
 	UserID   string                  `json:"user_id" v:"required#用户ID不能为空"`   // 用户ID
 	Question string                  `json:"question" v:"required#问题不能为空"`    // 用户问题
 	Stream   bool                    `json:"stream"`                          // 是否流式返回

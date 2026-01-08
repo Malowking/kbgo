@@ -8,19 +8,26 @@ import (
 	"time"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/agent_tools/claude_skills"
+	"github.com/Malowking/kbgo/core/agent_tools/file_export"
 	"github.com/Malowking/kbgo/core/agent_tools/knowledge_retrieval"
 	"github.com/Malowking/kbgo/core/agent_tools/mcp"
 	"github.com/Malowking/kbgo/core/agent_tools/mcp/client"
 	"github.com/Malowking/kbgo/core/agent_tools/nl2sql"
 	"github.com/Malowking/kbgo/core/common"
+	"github.com/Malowking/kbgo/internal/dao"
+	"github.com/Malowking/kbgo/internal/history"
 	"github.com/Malowking/kbgo/internal/logic/chat"
+	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
 // ToolExecutor 统一的工具执行器
-type ToolExecutor struct{}
+type ToolExecutor struct {
+	skillManager *claude_skills.SkillManager // Skill 管理器
+}
 
 // NewToolExecutor 创建工具执行器
 func NewToolExecutor() *ToolExecutor {
@@ -42,6 +49,7 @@ type ToolCallResult struct {
 	Documents    []*schema.Document   // 工具返回的文档
 	NL2SQLResult *v1.NL2SQLChatResult // NL2SQL结果
 	MCPResults   []*v1.MCPResult      // MCP结果
+	FileURL      string               // 文件下载URL（用于文件导出等工具）
 	Error        error                // 错误信息
 }
 
@@ -61,6 +69,10 @@ func (e *ToolExecutor) Execute(ctx context.Context, tools []*v1.ToolConfig, ques
 	var allLLMTools []*schema.ToolInfo
 	var localToolsConfig *v1.ToolConfig
 	var mcpServiceTools map[string][]string
+	var skillManager *claude_skills.SkillManager
+
+	// TODO: 从上下文中获取用户ID
+	ownerID := "default_user"
 
 	for _, toolConfig := range tools {
 		if !toolConfig.Enabled {
@@ -80,6 +92,40 @@ func (e *ToolExecutor) Execute(ctx context.Context, tools []*v1.ToolConfig, ques
 			// 提取 MCP 工具配置
 			if serviceTools, ok := toolConfig.Config["service_tools"].(map[string]interface{}); ok {
 				mcpServiceTools = convertToServiceToolsMap(serviceTools)
+			}
+
+		case "claude_skills":
+			// 加载用户的 Claude Skills
+			skills, err := dao.ClaudeSkill.ListActive(ctx, ownerID)
+			if err != nil {
+				g.Log().Errorf(ctx, "Failed to load Claude Skills: %v", err)
+			} else if len(skills) > 0 {
+				// 从配置文件读取路径（不允许用户覆盖）
+				venvBaseDir := g.Cfg().MustGet(ctx, "skills.venvBaseDir", "/data/kbgo_venvs").String()
+				skillsDir := g.Cfg().MustGet(ctx, "skills.scriptsDir", "/data/kbgo_skills").String()
+
+				g.Log().Infof(ctx, "Claude Skills config: venvBaseDir=%s, scriptsDir=%s", venvBaseDir, skillsDir)
+
+				skillManager, err = claude_skills.NewSkillManager(venvBaseDir, skillsDir)
+				if err != nil {
+					g.Log().Errorf(ctx, "Failed to create Skill manager: %v", err)
+				} else {
+					// 注册所有启用的 Skills
+					for _, skillModel := range skills {
+						skill := convertGormSkillToExecutorSkill(skillModel)
+						if err := skillManager.RegisterSkill(skill); err != nil {
+							g.Log().Errorf(ctx, "Failed to register skill %s: %v", skill.Name, err)
+						}
+					}
+
+					// 获取 LLM 工具定义
+					skillTools := skillManager.GetLLMTools()
+					allLLMTools = append(allLLMTools, skillTools...)
+					g.Log().Infof(ctx, "Added %d Claude Skills", len(skillTools))
+
+					// 保存 skillManager 到 executor
+					e.skillManager = skillManager
+				}
 			}
 		}
 	}
@@ -208,6 +254,7 @@ func (e *ToolExecutor) buildEnhancedSystemPrompt(agentSystemPrompt string, tools
    - 需要查询/统计数据时 → 使用 nl2sql
    - 需要调用外部服务时 → 使用相应的 MCP 工具
    - 需要导出数据时 → 使用 file_export
+   - 需要执行自定义脚本或特殊功能时 → 使用 Claude Skills（以 skill__ 开头的工具）
 3. **可以组合使用多个工具**，例如先用 nl2sql 查询数据，再用 file_export 导出
 4. **如果不需要工具**，直接基于已有信息回答
 5. **收到工具结果后**，基于结果生成清晰、准确的最终答案
@@ -264,6 +311,13 @@ func (e *ToolExecutor) buildToolOrderSuggestion(tools []*v1.ToolConfig) string {
 				priority: *toolConfig.Priority,
 				config:   toolConfig,
 			})
+		} else if toolConfig.Type == "claude_skills" {
+			// Claude Skills
+			prioritizedTools = append(prioritizedTools, toolWithPriority{
+				name:     "claude_skills",
+				priority: *toolConfig.Priority,
+				config:   toolConfig,
+			})
 		}
 	}
 
@@ -291,6 +345,7 @@ func (e *ToolExecutor) buildToolOrderSuggestion(tools []*v1.ToolConfig) string {
 		"nl2sql":              "nl2sql（数据查询）",
 		"file_export":         "file_export（文件导出）",
 		"mcp_tools":           "MCP工具（外部服务调用）",
+		"claude_skills":       "Claude Skills（自定义脚本）",
 	}
 
 	for i, tool := range prioritizedTools {
@@ -321,7 +376,12 @@ func (e *ToolExecutor) dispatchToolCall(
 	convID string,
 ) (*ToolCallResult, error) {
 
-	// 判断是本地工具还是 MCP 工具
+	// 判断工具类型
+	if strings.HasPrefix(toolName, "skill__") {
+		// Claude Skill 工具（格式：skill__tool_name）
+		return e.executeSkillTool(ctx, toolName, args)
+	}
+
 	if strings.Contains(toolName, "__") {
 		// MCP 工具（格式：service__tool）
 		return e.executeMCPTool(ctx, toolName, args, mcpToolCaller, convID)
@@ -488,11 +548,106 @@ func (e *ToolExecutor) executeFileExport(
 	config *v1.ToolConfig,
 ) (*ToolCallResult, error) {
 
-	// TODO: 实现文件导出逻辑
-	g.Log().Warningf(ctx, "[文件导出工具] 功能尚未实现")
+	g.Log().Infof(ctx, "[文件导出工具] 开始执行")
+
+	// 1. 从参数中提取数据
+	dataInterface, ok := args["data"]
+	if !ok || dataInterface == nil {
+		return nil, fmt.Errorf("file_export: 缺少必需参数 'data'")
+	}
+
+	// 将数据转换为 []map[string]interface{}
+	var data []map[string]interface{}
+	switch v := dataInterface.(type) {
+	case []interface{}:
+		// 如果是 []interface{}，需要转换每个元素
+		for i, item := range v {
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				data = append(data, itemMap)
+			} else {
+				return nil, fmt.Errorf("file_export: data[%d] 不是有效的对象格式", i)
+			}
+		}
+	case []map[string]interface{}:
+		data = v
+	default:
+		return nil, fmt.Errorf("file_export: data 参数格式不正确，应为数组")
+	}
+
+	if len(data) == 0 {
+		return nil, fmt.Errorf("file_export: data 数组为空，没有数据可导出")
+	}
+
+	// 2. 提取格式参数（默认为 excel）
+	format := "xlsx"
+	if formatStr, ok := args["format"].(string); ok && formatStr != "" {
+		format = strings.ToLower(formatStr)
+		// 标准化格式名称
+		switch format {
+		case "excel", "xlsx":
+			format = "xlsx"
+		case "csv":
+			format = "csv"
+		case "json":
+			format = "json"
+		case "markdown", "md":
+			format = "md"
+		case "text", "txt":
+			format = "txt"
+		case "pdf":
+			format = "pdf"
+		case "docx", "word":
+			format = "docx"
+		default:
+			return nil, fmt.Errorf("file_export: 不支持的格式 '%s'，支持的格式: excel, csv, json, markdown, text, pdf, docx", format)
+		}
+	}
+
+	g.Log().Infof(ctx, "[文件导出工具] 格式: %s, 数据行数: %d", format, len(data))
+
+	// 3. 提取列名（从第一行数据中获取）
+	var columns []string
+	for key := range data[0] {
+		columns = append(columns, key)
+	}
+
+	// 4. 生成文件名
+	timestamp := time.Now().Format("20060102_150405")
+	filename := fmt.Sprintf("export_%s", timestamp)
+
+	// 5. 创建导出请求
+	exporter := file_export.NewFileExporter("upload")
+	exportReq := &file_export.ExportRequest{
+		Format:      file_export.ExportFormat(format),
+		Filename:    filename,
+		Columns:     columns,
+		Data:        data,
+		Title:       "数据导出",
+		Description: fmt.Sprintf("导出时间: %s\n数据行数: %d", time.Now().Format("2006-01-02 15:04:05"), len(data)),
+	}
+
+	// 6. 执行导出
+	result, err := exporter.Export(ctx, exportReq)
+	if err != nil {
+		g.Log().Errorf(ctx, "[文件导出工具] 导出失败: %v", err)
+		return nil, fmt.Errorf("文件导出失败: %w", err)
+	}
+
+	g.Log().Infof(ctx, "[文件导出工具] 导出成功: %s (大小: %d bytes)", result.FileURL, result.Size)
+
+	// 7. 构建返回内容
+	var contentBuilder strings.Builder
+	contentBuilder.WriteString(fmt.Sprintf("✅ 文件导出成功\n\n"))
+	contentBuilder.WriteString(fmt.Sprintf("**文件信息:**\n"))
+	contentBuilder.WriteString(fmt.Sprintf("- 文件名: %s\n", result.Filename))
+	contentBuilder.WriteString(fmt.Sprintf("- 格式: %s\n", strings.ToUpper(result.Format)))
+	contentBuilder.WriteString(fmt.Sprintf("- 大小: %.2f KB\n", float64(result.Size)/1024))
+	contentBuilder.WriteString(fmt.Sprintf("- 行数: %d\n", result.RowCount))
+	contentBuilder.WriteString(fmt.Sprintf("- 下载链接: %s\n", result.FileURL))
 
 	return &ToolCallResult{
-		Content: "文件导出功能尚未实现",
+		Content: contentBuilder.String(),
+		FileURL: result.FileURL,
 	}, nil
 }
 
@@ -598,6 +753,17 @@ func (e *ToolExecutor) executeWithLLM(
 
 		messages = append(messages, response)
 
+		// 保存assistant消息（如果有ToolCalls且convID不为空）
+		if len(response.ToolCalls) > 0 && convID != "" {
+			historyManager := history.NewManager()
+			if err := historyManager.SaveMessageWithMetadata(response, convID, nil); err != nil {
+				g.Log().Warningf(ctx, "保存assistant消息失败: %v", err)
+				// 不阻断流程，继续执行
+			} else {
+				g.Log().Infof(ctx, "成功保存assistant消息，包含 %d 个工具调用", len(response.ToolCalls))
+			}
+		}
+
 		// 如果没有工具调用，结束循环
 		if len(response.ToolCalls) == 0 {
 			g.Log().Info(ctx, "LLM 未调用工具，工具执行完成")
@@ -610,6 +776,9 @@ func (e *ToolExecutor) executeWithLLM(
 
 		// 3. 执行所有工具调用
 		g.Log().Infof(ctx, "执行 %d 个工具调用", len(response.ToolCalls))
+
+		// 标记是否有工具被执行
+		hasToolExecuted := false
 
 		for _, toolCall := range response.ToolCalls {
 			toolName := toolCall.Function.Name
@@ -647,16 +816,18 @@ func (e *ToolExecutor) executeWithLLM(
 			// 发送工具调用结束事件
 			if httpResp != nil {
 				var resultSummary string
+				var fileURL string
 				if err != nil {
 					resultSummary = fmt.Sprintf("工具执行失败: %v", err)
 				} else if toolResult != nil {
 					resultSummary = toolResult.Content
+					fileURL = toolResult.FileURL
 					// 限制结果长度
 					if len(resultSummary) > 200 {
 						resultSummary = resultSummary[:200] + "..."
 					}
 				}
-				common.WriteToolCallEnd(httpResp, messageID, toolCall.ID, toolName, resultSummary, err, duration)
+				common.WriteToolCallEnd(httpResp, messageID, toolCall.ID, toolName, resultSummary, err, duration, fileURL)
 			}
 
 			if err != nil {
@@ -672,6 +843,9 @@ func (e *ToolExecutor) executeWithLLM(
 				continue
 			}
 
+			// 标记工具已执行
+			hasToolExecuted = true
+
 			// 收集结果
 			if toolResult.Documents != nil {
 				result.Documents = append(result.Documents, toolResult.Documents...)
@@ -684,18 +858,43 @@ func (e *ToolExecutor) executeWithLLM(
 			}
 
 			// 添加工具结果到消息历史
-			messages = append(messages, &schema.Message{
+			toolMessage := &schema.Message{
 				Role:       schema.Tool,
 				Content:    toolResult.Content,
 				ToolCallID: toolCall.ID,
-			})
+			}
+			messages = append(messages, toolMessage)
+
+			// 保存tool消息（如果convID不为空）
+			if convID != "" {
+				historyManager := history.NewManager()
+				// 构建metadata，包含工具名称和参数
+				metadata := map[string]interface{}{
+					"tool_name": toolName,
+					"tool_args": args,
+				}
+				if err := historyManager.SaveMessageWithMetadata(toolMessage, convID, metadata); err != nil {
+					g.Log().Warningf(ctx, "保存tool消息失败: %v", err)
+					// 不阻断流程，继续执行
+				} else {
+					g.Log().Infof(ctx, "成功保存tool消息: %s (tool_call_id: %s)", toolName, toolCall.ID)
+				}
+			}
 		}
 
-		// 如果是最后一轮，强制 LLM 给出最终答案
-		if iteration == maxIterations-1 {
-			g.Log().Warning(ctx, "达到最大迭代次数，获取最终答案")
+		// 4. 如果有工具被执行，且不是最后一轮，继续让 LLM 处理工具结果
+		if hasToolExecuted && iteration < maxIterations-1 {
+			g.Log().Infof(ctx, "工具执行完成，继续下一轮让 LLM 处理工具结果")
+			continue
+		}
 
-			// 最后一次调用 LLM（不提供工具）
+		// 5. 如果是最后一轮，或者没有工具执行，强制 LLM 给出最终答案
+		if iteration == maxIterations-1 || !hasToolExecuted {
+			if iteration == maxIterations-1 {
+				g.Log().Warning(ctx, "达到最大迭代次数，获取最终答案")
+			}
+
+			// 调用 LLM 生成最终答案（不提供工具）
 			finalResponse, err := chatInstance.GenerateWithTools(ctx, modelID, messages, []*schema.ToolInfo{})
 			if err != nil {
 				g.Log().Errorf(ctx, "获取最终答案失败: %v", err)
@@ -707,4 +906,120 @@ func (e *ToolExecutor) executeWithLLM(
 	}
 
 	return result, nil
+}
+
+// convertGormSkillToExecutorSkill 将 GORM Skill 模型转换为执行器 Skill
+func convertGormSkillToExecutorSkill(skillModel *gormModel.ClaudeSkill) *claude_skills.Skill {
+	var requirements []string
+	json.Unmarshal([]byte(skillModel.Requirements), &requirements)
+
+	var toolParameters map[string]claude_skills.SkillToolParameter
+	json.Unmarshal([]byte(skillModel.ToolParameters), &toolParameters)
+
+	var metadata map[string]interface{}
+	json.Unmarshal([]byte(skillModel.Metadata), &metadata)
+
+	return &claude_skills.Skill{
+		ID:          skillModel.ID,
+		Name:        skillModel.Name,
+		Description: skillModel.Description,
+		Version:     skillModel.Version,
+		Runtime: claude_skills.SkillRuntime{
+			Type:         skillModel.RuntimeType,
+			Version:      skillModel.RuntimeVersion,
+			Requirements: requirements,
+		},
+		Tool: claude_skills.SkillTool{
+			Name:        skillModel.ToolName,
+			Description: skillModel.ToolDescription,
+			Parameters:  toolParameters,
+		},
+		Script:   skillModel.Script,
+		Metadata: metadata,
+	}
+}
+
+// executeSkillTool 执行 Claude Skill 工具
+func (e *ToolExecutor) executeSkillTool(
+	ctx context.Context,
+	toolName string,
+	args map[string]interface{},
+) (*ToolCallResult, error) {
+
+	if e.skillManager == nil {
+		return nil, fmt.Errorf("Skill管理器未初始化")
+	}
+
+	// 提取 skill 名称（去掉 "skill__" 前缀）
+	skillToolName := strings.TrimPrefix(toolName, "skill__")
+
+	g.Log().Infof(ctx, "[Claude Skill] 执行 %s", skillToolName)
+
+	// 获取 Skill
+	skill, exists := e.skillManager.GetSkill(skillToolName)
+	if !exists {
+		return nil, fmt.Errorf("Skill 不存在: %s", skillToolName)
+	}
+
+	// 获取 HTTP Response 对象（用于发送 SSE 进度事件）
+	var httpResp *ghttp.Response
+	httpReq := ghttp.RequestFromCtx(ctx)
+	if httpReq != nil {
+		httpResp = httpReq.Response
+	}
+
+	// 获取 messageID（从 context 或其他地方）
+	messageID := ""
+	if httpReq != nil {
+		messageID = httpReq.GetQuery("message_id").String()
+	}
+
+	// 发送 Skill 开始执行事件
+	if httpResp != nil {
+		common.WriteSkillProgress(httpResp, messageID, toolName, "start",
+			fmt.Sprintf("开始执行 Skill: %s", skillToolName), nil)
+	}
+
+	// 创建进度回调函数
+	progressCallback := func(stage string, message string, metadata map[string]interface{}) {
+		if httpResp != nil {
+			common.WriteSkillProgress(httpResp, messageID, toolName, stage, message, metadata)
+		}
+	}
+
+	// 直接执行 Skill（带进度回调）
+	result, err := e.skillManager.Executor.ExecuteSkill(ctx, skill, args, progressCallback)
+	if err != nil {
+		// 发送失败事件
+		if httpResp != nil {
+			common.WriteSkillProgress(httpResp, messageID, toolName, "error",
+				fmt.Sprintf("执行失败: %v", err), nil)
+		}
+		return nil, fmt.Errorf("Skill执行失败: %w", err)
+	}
+
+	// 检查执行结果
+	if !result.Success {
+		// 发送失败事件
+		if httpResp != nil {
+			common.WriteSkillProgress(httpResp, messageID, toolName, "error",
+				fmt.Sprintf("执行失败: %s", result.Error), nil)
+		}
+		return nil, fmt.Errorf("Skill执行失败: %s", result.Error)
+	}
+
+	// 发送成功事件
+	if httpResp != nil {
+		metadata := map[string]interface{}{
+			"duration_ms": result.Duration,
+		}
+		common.WriteSkillProgress(httpResp, messageID, toolName, "completed",
+			fmt.Sprintf("执行成功 (耗时: %dms)", result.Duration), metadata)
+	}
+
+	g.Log().Infof(ctx, "[Claude Skill] 执行成功: %s (耗时: %dms)", skillToolName, result.Duration)
+
+	return &ToolCallResult{
+		Content: result.Output,
+	}, nil
 }

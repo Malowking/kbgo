@@ -13,6 +13,7 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gfile"
 	"github.com/google/uuid"
+	"github.com/jung-kurt/gofpdf"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -25,6 +26,8 @@ const (
 	FormatMarkdown ExportFormat = "md"
 	FormatText     ExportFormat = "txt"
 	FormatJSON     ExportFormat = "json"
+	FormatPDF      ExportFormat = "pdf"
+	FormatDOCX     ExportFormat = "docx"
 )
 
 // ExportRequest 导出请求
@@ -102,6 +105,10 @@ func (e *FileExporter) Export(ctx context.Context, req *ExportRequest) (*ExportR
 		size, err = e.exportMarkdown(targetPath, req)
 	case FormatText:
 		size, err = e.exportText(targetPath, req)
+	case FormatPDF:
+		size, err = e.exportPDF(targetPath, req)
+	case FormatDOCX:
+		size, err = e.exportDOCX(targetPath, req)
 	default:
 		return nil, fmt.Errorf("unsupported export format: %s", req.Format)
 	}
@@ -161,6 +168,16 @@ func (e *FileExporter) exportCSV(filePath string, req *ExportRequest) (int64, er
 	return info.Size(), nil
 }
 
+// columnIndexToName 将列索引转换为Excel列名 (0->A, 1->B, ..., 25->Z, 26->AA, ...)
+func columnIndexToName(index int) string {
+	name := ""
+	for index >= 0 {
+		name = string(rune('A'+(index%26))) + name
+		index = index/26 - 1
+	}
+	return name
+}
+
 // exportExcel 导出为Excel格式
 func (e *FileExporter) exportExcel(filePath string, req *ExportRequest) (int64, error) {
 	f := excelize.NewFile()
@@ -191,7 +208,8 @@ func (e *FileExporter) exportExcel(filePath string, req *ExportRequest) (int64, 
 	})
 
 	for i, col := range req.Columns {
-		cell := fmt.Sprintf("%c%d", 'A'+i, rowIndex)
+		colName := columnIndexToName(i)
+		cell := fmt.Sprintf("%s%d", colName, rowIndex)
 		f.SetCellValue(sheetName, cell, col)
 		f.SetCellStyle(sheetName, cell, cell, headerStyle)
 	}
@@ -200,7 +218,8 @@ func (e *FileExporter) exportExcel(filePath string, req *ExportRequest) (int64, 
 	// 写入数据
 	for _, row := range req.Data {
 		for i, col := range req.Columns {
-			cell := fmt.Sprintf("%c%d", 'A'+i, rowIndex)
+			colName := columnIndexToName(i)
+			cell := fmt.Sprintf("%s%d", colName, rowIndex)
 			f.SetCellValue(sheetName, cell, row[col])
 		}
 		rowIndex++
@@ -208,7 +227,7 @@ func (e *FileExporter) exportExcel(filePath string, req *ExportRequest) (int64, 
 
 	// 自动调整列宽
 	for i := range req.Columns {
-		colName := string('A' + i)
+		colName := columnIndexToName(i)
 		f.SetColWidth(sheetName, colName, colName, 15)
 	}
 
@@ -371,6 +390,80 @@ func (e *FileExporter) exportText(filePath string, req *ExportRequest) (int64, e
 	return info.Size(), nil
 }
 
+// exportPDF 导出为PDF格式
+func (e *FileExporter) exportPDF(filePath string, req *ExportRequest) (int64, error) {
+	pdf := gofpdf.New("P", "mm", "A4", "")
+	pdf.AddPage()
+
+	// 添加中文字体支持（使用内置字体）
+	pdf.SetFont("Arial", "", 12)
+
+	// 写入标题
+	if req.Title != "" {
+		pdf.SetFont("Arial", "B", 16)
+		pdf.Cell(0, 10, req.Title)
+		pdf.Ln(12)
+		pdf.SetFont("Arial", "", 12)
+	}
+
+	// 写入描述
+	if req.Description != "" {
+		pdf.MultiCell(0, 5, req.Description, "", "", false)
+		pdf.Ln(5)
+	}
+
+	// 计算列宽（根据页面宽度平均分配）
+	pageWidth := 210.0 // A4宽度（mm）
+	margins := 20.0    // 左右边距
+	usableWidth := pageWidth - margins
+	colWidth := usableWidth / float64(len(req.Columns))
+
+	// 写入表头
+	pdf.SetFont("Arial", "B", 10)
+	pdf.SetFillColor(224, 224, 224)
+	for _, col := range req.Columns {
+		pdf.CellFormat(colWidth, 8, col, "1", 0, "C", true, 0, "")
+	}
+	pdf.Ln(-1)
+
+	// 写入数据
+	pdf.SetFont("Arial", "", 9)
+	for _, row := range req.Data {
+		for _, col := range req.Columns {
+			value := fmt.Sprintf("%v", row[col])
+			// 限制单元格内容长度
+			if len(value) > 30 {
+				value = value[:27] + "..."
+			}
+			pdf.CellFormat(colWidth, 7, value, "1", 0, "L", false, 0, "")
+		}
+		pdf.Ln(-1)
+	}
+
+	// 写入统计信息
+	pdf.Ln(5)
+	pdf.SetFont("Arial", "I", 10)
+	pdf.Cell(0, 10, fmt.Sprintf("Total: %d rows", len(req.Data)))
+
+	// 保存文件
+	if err := pdf.OutputFileAndClose(filePath); err != nil {
+		return 0, fmt.Errorf("failed to save PDF file: %w", err)
+	}
+
+	// 获取文件大小
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return 0, err
+	}
+	return info.Size(), nil
+}
+
+// exportDOCX 导出为DOCX格式
+func (e *FileExporter) exportDOCX(filePath string, req *ExportRequest) (int64, error) {
+	// DOCX 格式暂不支持，建议使用 PDF 格式
+	return 0, fmt.Errorf("DOCX format is not currently supported. Please use PDF format instead")
+}
+
 // validateRequest 验证导出请求
 func (e *FileExporter) validateRequest(req *ExportRequest) error {
 	if req.Filename == "" {
@@ -396,5 +489,7 @@ func (e *FileExporter) GetSupportedFormats() []ExportFormat {
 		FormatJSON,
 		FormatMarkdown,
 		FormatText,
+		FormatPDF,
+		// FormatDOCX, // 暂不支持
 	}
 }

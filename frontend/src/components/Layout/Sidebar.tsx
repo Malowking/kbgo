@@ -10,7 +10,8 @@ import {
   HardDrive,
   Table,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Code2
 } from 'lucide-react';
 import { useAppStore } from '@/store';
 import { useState } from 'react';
@@ -34,6 +35,7 @@ const navigation: NavItem[] = [
   { name: '对话', href: '/chat', icon: MessageSquare },
   { name: 'Agent构建', href: '/agent-builder', icon: Bot },
   { name: 'Agent对话', href: '/agent-chat', icon: Bot },
+  { name: 'Claude Skills', href: '/claude-skills', icon: Code2 },
   { name: 'MCP服务', href: '/mcp', icon: Plug },
   { name: '模型管理', href: '/models', icon: Settings },
 ];

@@ -85,3 +85,11 @@ streaming:
   memoryBufferSize: 100                # 内存 channel 缓冲区大小（默认 100）
   redisBufferSize: 1000                # Redis Stream 最大长度（默认 1000）
   redisStreamTTL: 300                  # Redis Stream 过期时间（秒），默认 5分钟
+
+# Claude Skills 配置
+skills:
+  venvBaseDir: "/data/kbgo_venvs"     # 虚拟环境存储目录
+  scriptsDir: "/data/kbgo_skills"     # Skill 脚本存储目录
+  maxExecutionTime: 300                # 最大执行时间（秒），默认 5分钟
+  cleanupInterval: 86400               # 清理间隔（秒），默认 24小时
+  cleanupMaxAge: 604800                # 虚拟环境最大未使用时间（秒），默认 7天

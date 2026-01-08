@@ -123,7 +123,7 @@ func WriteToolCallStart(resp *ghttp.Response, messageID string, toolID string, t
 }
 
 // WriteToolCallEnd 发送工具调用结束事件
-func WriteToolCallEnd(resp *ghttp.Response, messageID string, toolID string, toolName string, result string, err error, durationMs int64) {
+func WriteToolCallEnd(resp *ghttp.Response, messageID string, toolID string, toolName string, result string, err error, durationMs int64, fileURL ...string) {
 	metadata := map[string]interface{}{
 		"tool_id":     toolID,
 		"tool_name":   toolName,
@@ -132,6 +132,10 @@ func WriteToolCallEnd(resp *ghttp.Response, messageID string, toolID string, too
 	}
 	if err != nil {
 		metadata["error"] = err.Error()
+	}
+	// 如果提供了 fileURL，添加到 metadata
+	if len(fileURL) > 0 && fileURL[0] != "" {
+		metadata["file_url"] = fileURL[0]
 	}
 
 	sd := &StreamData{
@@ -167,6 +171,33 @@ func WriteThinking(resp *ghttp.Response, messageID string, thinking string) {
 		Created: time.Now().Unix(),
 		Type:    "thinking",
 		Content: thinking,
+	}
+	marshal, _ := sonic.Marshal(sd)
+	writeSSEData(resp, string(marshal))
+}
+
+// WriteSkillProgress 发送 Skill 执行进度事件
+func WriteSkillProgress(resp *ghttp.Response, messageID string, toolID string, stage string, message string, metadata map[string]interface{}) {
+	if resp == nil {
+		return
+	}
+
+	meta := map[string]interface{}{
+		"tool_id": toolID,
+		"stage":   stage,
+		"message": message,
+	}
+
+	// 合并额外的 metadata
+	for k, v := range metadata {
+		meta[k] = v
+	}
+
+	sd := &StreamData{
+		Id:       messageID,
+		Created:  time.Now().Unix(),
+		Type:     "skill_progress",
+		Metadata: meta,
 	}
 	marshal, _ := sonic.Marshal(sd)
 	writeSSEData(resp, string(marshal))

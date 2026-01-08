@@ -52,7 +52,7 @@ function getToolTypeInfo(toolType?: string, type?: string) {
 /**
  * 单个文档分组组件
  */
-function DocumentGroup({ docName, chunks, toolType }: DocumentGroupProps) {
+function DocumentGroup({ docName, chunks }: DocumentGroupProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   // 从第一个 chunk 获取工具类型信息

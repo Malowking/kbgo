@@ -27,7 +27,10 @@ export default function ConversationSidebar({
   const fetchConversations = async () => {
     try {
       setLoading(true);
-      const response = await conversationApi.list({ page_size: 50 });
+      const response = await conversationApi.list({
+        page_size: 50,
+        conversation_type: 'text' // 只查询普通对话
+      });
       setConversations(response.conversations || []);
     } catch (error) {
       console.error('Failed to fetch conversations:', error);

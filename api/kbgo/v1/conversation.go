@@ -6,13 +6,14 @@ import (
 
 // ConversationListReq 会话列表请求
 type ConversationListReq struct {
-	g.Meta      `path:"/v1/conversations" method:"get" tags:"conversation"`
-	KnowledgeID string `json:"knowledge_id" v:""`       // 知识库ID（可选，用于筛选）
-	Page        int    `json:"page" d:"1"`              // 页码，默认1
-	PageSize    int    `json:"page_size" d:"20"`        // 每页数量，默认20
-	Status      string `json:"status" v:""`             // 状态筛选：active/archived
-	SortBy      string `json:"sort_by" d:"update_time"` // 排序字段：create_time/update_time/message_count
-	Order       string `json:"order" d:"desc"`          // 排序方向：asc/desc
+	g.Meta           `path:"/v1/conversations" method:"get" tags:"conversation"`
+	KnowledgeID      string `json:"knowledge_id" v:""`       // 知识库ID（可选，用于筛选）
+	ConversationType string `json:"conversation_type" v:""`  // 会话类型（可选，用于筛选）：text/agent
+	Page             int    `json:"page" d:"1"`              // 页码，默认1
+	PageSize         int    `json:"page_size" d:"20"`        // 每页数量，默认20
+	Status           string `json:"status" v:""`             // 状态筛选：active/archived
+	SortBy           string `json:"sort_by" d:"update_time"` // 排序字段：create_time/update_time/message_count
+	Order            string `json:"order" d:"desc"`          // 排序方向：asc/desc
 }
 
 // ConversationListRes 会话列表响应
@@ -143,4 +144,19 @@ type ConversationBatchDeleteRes struct {
 	DeletedCount int      `json:"deleted_count"`
 	FailedConvs  []string `json:"failed_convs,omitempty"` // 删除失败的会话ID
 	Message      string   `json:"message"`
+}
+
+// CreateAgentConversationReq 创建Agent对话请求
+type CreateAgentConversationReq struct {
+	g.Meta   `path:"/v1/conversations/agent" method:"post" tags:"conversation" summary:"创建Agent对话"`
+	ConvID   string `json:"conv_id" v:"required#会话ID不能为空"`   // 会话ID（由前端生成）
+	PresetID string `json:"preset_id" v:"required#预设ID不能为空"` // Agent预设ID
+	UserID   string `json:"user_id" v:"required#用户ID不能为空"`   // 用户ID
+	Title    string `json:"title"`                           // 对话标题（可选，默认使用Agent名称）
+}
+
+// CreateAgentConversationRes 创建Agent对话响应
+type CreateAgentConversationRes struct {
+	g.Meta `mime:"application/json"`
+	ConvID string `json:"conv_id"` // 会话ID
 }

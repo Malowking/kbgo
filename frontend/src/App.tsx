@@ -13,6 +13,7 @@ import AgentChat from '@/pages/AgentChat';
 import AgentTools from '@/pages/AgentTools';
 import NL2SQLDataSource from '@/pages/NL2SQLDataSource';
 import NL2SQLDataSourceDetail from '@/pages/NL2SQLDataSource/Detail';
+import ClaudeSkills from '@/pages/ClaudeSkills';
 
 function App() {
   return (
@@ -62,6 +63,7 @@ function App() {
           <Route path="mcp" element={<MCP />} />
           <Route path="agent-builder" element={<AgentBuilder />} />
           <Route path="agent-tools/:presetId" element={<AgentTools />} />
+          <Route path="claude-skills" element={<ClaudeSkills />} />
         </Route>
       </Routes>
     </BrowserRouter>

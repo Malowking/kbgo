@@ -278,11 +278,15 @@ export interface AgentConfig {
   nl2sql_embedding_model_id?: string; // NL2SQL Schema向量化使用的embedding模型
   // 文件导出相关配置
   enable_file_export?: boolean;
+  // Claude Skills 相关配置
+  enable_claude_skills?: boolean;
+  claude_skill_ids?: string[]; // 选中的 Skills IDs
   // 工具优先级配置
   knowledge_retrieval_priority?: number;
   nl2sql_priority?: number;
   mcp_priority?: number;
   file_export_priority?: number;
+  claude_skills_priority?: number;
 }
 
 export interface AgentPreset {
@@ -346,4 +350,135 @@ export interface AgentChatResponse {
   reasoning_content?: string;
   references?: AgentDoc[];
   mcp_results?: MCPResult[];
+}
+
+// Claude Skills 相关类型
+export interface SkillToolParameterDef {
+  type: 'string' | 'number' | 'boolean' | 'array' | 'object';
+  required: boolean;
+  description: string;
+  default?: any;
+}
+
+export interface ClaudeSkill {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  author: string;
+  category: string;
+  tags: string;
+  runtime_type: 'python' | 'node' | 'shell';
+  runtime_version: string;
+  requirements: string[];
+  tool_name: string;
+  tool_description: string;
+  tool_parameters: Record<string, SkillToolParameterDef>;
+  script: string;
+  script_hash: string;
+  metadata?: Record<string, any>;
+  call_count: number;
+  success_count: number;
+  fail_count: number;
+  avg_duration: number;
+  last_used_at?: string;
+  status: 0 | 1; // 0-disabled, 1-enabled
+  is_public: boolean;
+  owner_id: string;
+  create_time: string;
+  update_time: string;
+}
+
+export interface SkillItem {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  author: string;
+  category: string;
+  tags: string;
+  runtime_type: 'python' | 'node' | 'shell';
+  requirements: string[];
+  tool_name: string;
+  tool_description: string;
+  call_count: number;
+  success_count: number;
+  avg_duration: number;
+  last_used_at?: string;
+  status: 0 | 1;
+  is_public: boolean;
+  owner_id: string;
+  create_time: string;
+  update_time: string;
+}
+
+export interface CreateSkillRequest {
+  name: string;
+  description: string;
+  version?: string;
+  author?: string;
+  category?: string;
+  tags?: string;
+  runtime_type: 'python' | 'node' | 'shell';
+  runtime_version?: string;
+  requirements?: string[];
+  tool_name: string;
+  tool_description: string;
+  tool_parameters?: Record<string, SkillToolParameterDef>;
+  script: string;
+  is_public?: boolean;
+  metadata?: Record<string, any>;
+}
+
+export interface UpdateSkillRequest {
+  id: string;
+  name?: string;
+  description?: string;
+  version?: string;
+  author?: string;
+  category?: string;
+  tags?: string;
+  runtime_type?: 'python' | 'node' | 'shell';
+  runtime_version?: string;
+  requirements?: string[];
+  tool_name?: string;
+  tool_description?: string;
+  tool_parameters?: Record<string, SkillToolParameterDef>;
+  script?: string;
+  status?: 0 | 1;
+  is_public?: boolean;
+  metadata?: Record<string, any>;
+}
+
+export interface SkillExecuteRequest {
+  id: string;
+  arguments: Record<string, any>;
+}
+
+export interface SkillExecuteResponse {
+  success: boolean;
+  output?: string;
+  error?: string;
+  duration: number;
+}
+
+export interface SkillCallLogItem {
+  id: string;
+  skill_id: string;
+  skill_name: string;
+  conversation_id?: string;
+  message_id?: string;
+  request_payload: string;
+  response_payload?: string;
+  success: boolean;
+  error_message?: string;
+  duration: number;
+  venv_hash?: string;
+  venv_cache_hit: boolean;
+  create_time: string;
+}
+
+export interface SkillCategoryItem {
+  name: string;
+  count: number;
 }

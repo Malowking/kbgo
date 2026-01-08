@@ -102,6 +102,7 @@ export const conversationApi = {
   // 获取会话列表
   list: (params?: {
     knowledge_id?: string;
+    conversation_type?: string;
     page?: number;
     page_size?: number;
     status?: string;
@@ -130,6 +131,10 @@ export const conversationApi = {
   // 批量删除会话
   batchDelete: (convIds: string[]) =>
     apiClient.post<{ deleted_count: number; failed_convs?: string[]; message: string }>('/api/v1/conversations/batch/delete', { conv_ids: convIds }),
+
+  // 创建Agent对话
+  createAgentConversation: (data: { conv_id: string; preset_id: string; user_id: string; title?: string }) =>
+    apiClient.post<{ conv_id: string }>('/api/v1/conversations/agent', data),
 };
 
 // 聊天 API
@@ -483,4 +488,53 @@ export const nl2sqlApi = {
       explanation?: string;
       error?: string;
     }>('/api/v1/nl2sql/query', data),
+};
+
+// Claude Skills API
+export const skillsApi = {
+  // 获取 Skills 列表
+  list: (params?: {
+    status?: 0 | 1;
+    category?: string;
+    include_public?: boolean;
+    public_only?: boolean;
+    keyword?: string;
+    order_by?: string;
+    page?: number;
+    page_size?: number;
+  }) =>
+    apiClient.get<{ list: import('@/types').SkillItem[]; total: number; page: number }>('/api/v1/skills', { params }),
+
+  // 获取单个 Skill
+  get: (id: string) =>
+    apiClient.get<import('@/types').ClaudeSkill>(`/api/v1/skills/${id}`),
+
+  // 创建 Skill
+  create: (data: import('@/types').CreateSkillRequest) =>
+    apiClient.post<{ id: string }>('/api/v1/skills', data),
+
+  // 更新 Skill
+  update: (id: string, data: Omit<import('@/types').UpdateSkillRequest, 'id'>) =>
+    apiClient.put<void>(`/api/v1/skills/${id}`, data),
+
+  // 删除 Skill
+  delete: (id: string) =>
+    apiClient.delete<void>(`/api/v1/skills/${id}`),
+
+  // 执行 Skill
+  execute: (id: string, args: Record<string, any>) =>
+    apiClient.post<import('@/types').SkillExecuteResponse>(`/api/v1/skills/${id}/execute`, { arguments: args }),
+
+  // 获取 Skill 调用日志
+  logs: (id: string, params?: {
+    conversation_id?: string;
+    success?: boolean;
+    page?: number;
+    page_size?: number;
+  }) =>
+    apiClient.get<{ list: import('@/types').SkillCallLogItem[]; total: number; page: number }>(`/api/v1/skills/${id}/logs`, { params }),
+
+  // 获取分类列表
+  categories: () =>
+    apiClient.get<{ categories: import('@/types').SkillCategoryItem[] }>('/api/v1/skills/categories'),
 };

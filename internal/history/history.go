@@ -127,6 +127,16 @@ func (h *Manager) SaveMessageWithMetadata(message *schema.Message, convID string
 		metadataJSON = gormModel.JSON(data)
 	}
 
+	// 处理工具调用
+	var toolCallsJSON gormModel.JSON
+	if message.ToolCalls != nil && len(message.ToolCalls) > 0 {
+		data, err := json.Marshal(message.ToolCalls)
+		if err != nil {
+			return errors.Newf(errors.ErrInternalError, "failed to marshal tool calls: %v", err)
+		}
+		toolCallsJSON = gormModel.JSON(data)
+	}
+
 	now := time.Now()
 	// 创建消息记录
 	msg := &gormModel.Message{
@@ -135,6 +145,8 @@ func (h *Manager) SaveMessageWithMetadata(message *schema.Message, convID string
 		Role:       string(message.Role),
 		CreateTime: &now,
 		Metadata:   metadataJSON,
+		ToolCalls:  toolCallsJSON,
+		ToolCallID: message.ToolCallID, // 保存工具调用ID（用于tool role消息）
 	}
 
 	// 处理内容块 - 支持多模态内容
@@ -185,6 +197,27 @@ func (h *Manager) SaveMessageWithMetadata(message *schema.Message, convID string
 			SortOrder:   0,
 			CreateTime:  &now,
 		}
+
+		// 如果是tool role的消息，在metadata中保存工具调用信息
+		if message.Role == schema.Tool && message.ToolCallID != "" {
+			toolMetadata := map[string]interface{}{
+				"tool_call_id": message.ToolCallID,
+			}
+			// 如果metadata中有工具名称，也保存
+			if metadata != nil {
+				if toolName, ok := metadata["tool_name"].(string); ok {
+					toolMetadata["tool_name"] = toolName
+				}
+				if toolArgs, ok := metadata["tool_args"]; ok {
+					toolMetadata["tool_args"] = toolArgs
+				}
+			}
+			metadataJSON, err := json.Marshal(toolMetadata)
+			if err == nil {
+				content.Metadata = gormModel.JSON(metadataJSON)
+			}
+		}
+
 		contents = append(contents, content)
 	}
 

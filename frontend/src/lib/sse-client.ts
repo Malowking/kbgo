@@ -26,6 +26,8 @@ export interface ToolCallInfo {
   end_time?: number;
   /** 执行时长（毫秒） */
   duration?: number;
+  /** 文件下载URL（用于文件导出等工具） */
+  file_url?: string;
 }
 
 /** LLM迭代信息 */
@@ -188,6 +190,7 @@ export async function handleSSEStream(
                     error: parsed.metadata.error,
                     end_time: parsed.created * 1000,
                     duration: parsed.metadata.duration_ms,
+                    file_url: parsed.metadata.file_url,
                   };
                   onToolCallEnd(toolCall);
                   logger.debug('Tool call ended:', toolCall);
@@ -373,6 +376,7 @@ export async function handleSSEStreamWithFormData(
                     error: parsed.metadata.error,
                     end_time: parsed.created * 1000,
                     duration: parsed.metadata.duration_ms,
+                    file_url: parsed.metadata.file_url,
                   };
                   onToolCallEnd(toolCall);
                 }

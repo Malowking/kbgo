@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Database, Table, MessageSquare, FileDown, Plus, Minus, ChevronDown, ChevronUp } from 'lucide-react';
-import type { AgentConfig, KnowledgeBase, Model, MCPRegistry } from '@/types';
+import { Database, Table, MessageSquare, FileDown, Plus, Minus, ChevronDown, ChevronUp, Code2 } from 'lucide-react';
+import type { AgentConfig, KnowledgeBase, Model, MCPRegistry, SkillItem } from '@/types';
+import { skillsApi } from '@/services';
+import { logger } from '@/lib/logger';
 
 interface ToolConfigurationPanelProps {
   config: AgentConfig;
   onConfigChange: (config: AgentConfig) => void;
   kbList: KnowledgeBase[];
   rerankModels: Model[];
+
   mcpServices: MCPRegistry[];
   nl2sqlDatasources: any[];
 }
@@ -30,6 +33,7 @@ export default function ToolConfigurationPanel({
   const [enableNL2SQL, setEnableNL2SQL] = useState(false);
   const [enableMCP, setEnableMCP] = useState(false);
   const [enableFileExport, setEnableFileExport] = useState(false);
+  const [enableClaudeSkills, setEnableClaudeSkills] = useState(false);
 
   // 展开/折叠状态
   const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({
@@ -37,10 +41,16 @@ export default function ToolConfigurationPanel({
     nl2sql: true,
     mcp: true,
     fileExport: true,
+    claudeSkills: true,
   });
 
   // MCP 配置
   const [mcpConfigs, setMcpConfigs] = useState<McpServiceConfig[]>([]);
+
+  // Claude Skills 配置
+  const [skills, setSkills] = useState<SkillItem[]>([]);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [loadingSkills, setLoadingSkills] = useState(false);
 
   // 初始化工具启用状态
   useEffect(() => {
@@ -48,6 +58,7 @@ export default function ToolConfigurationPanel({
     setEnableNL2SQL(!!config.nl2sql_datasource_id);
     setEnableMCP(!!config.use_mcp);
     setEnableFileExport(!!config.enable_file_export);
+    setEnableClaudeSkills(!!config.enable_claude_skills);
 
     // 初始化 MCP 配置
     if (config.mcp_service_tools) {
@@ -60,7 +71,29 @@ export default function ToolConfigurationPanel({
       );
       setMcpConfigs(configs);
     }
-  }, [config.knowledge_id, config.nl2sql_datasource_id, config.use_mcp, config.mcp_service_tools, config.enable_file_export]);
+
+    // 初始化 Claude Skills 选择
+    if (config.claude_skill_ids) {
+      setSelectedSkills(config.claude_skill_ids);
+    }
+  }, [config.knowledge_id, config.nl2sql_datasource_id, config.use_mcp, config.mcp_service_tools, config.enable_file_export, config.enable_claude_skills, config.claude_skill_ids]);
+
+  // 获取 Skills 列表
+  useEffect(() => {
+    fetchSkills();
+  }, []);
+
+  const fetchSkills = async () => {
+    try {
+      setLoadingSkills(true);
+      const response = await skillsApi.list({ status: 1, page_size: 100 });
+      setSkills(response.list || []);
+    } catch (error) {
+      logger.error('Failed to fetch skills:', error);
+    } finally {
+      setLoadingSkills(false);
+    }
+  };
 
   // 切换工具展开/折叠
   const toggleTool = (toolKey: string) => {
@@ -173,6 +206,16 @@ export default function ToolConfigurationPanel({
       mcp_service_tools: Object.keys(newSelectedTools).length > 0 ? newSelectedTools : undefined,
     });
   }, [mcpConfigs, enableMCP]);
+
+  // 同步 Claude Skills 选择到 config
+  useEffect(() => {
+    if (!enableClaudeSkills) return;
+
+    onConfigChange({
+      ...config,
+      claude_skill_ids: selectedSkills.length > 0 ? selectedSkills : undefined,
+    });
+  }, [selectedSkills, enableClaudeSkills]);
 
   return (
     <div className="space-y-4">
@@ -687,6 +730,170 @@ export default function ToolConfigurationPanel({
               <p className="text-sm text-blue-700">
                 <span className="font-medium">使用说明：</span>
                 启用后，Agent 可以根据用户需求将对话内容、查询结果或其他数据导出为指定格式的文件。
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Claude Skills 工具 */}
+      <div className="border rounded-lg overflow-hidden">
+        <div
+          className="flex items-center justify-between p-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
+          onClick={() => toggleTool('claudeSkills')}
+        >
+          <div className="flex items-center gap-3">
+            <Code2 className="w-5 h-5 text-indigo-500" />
+            <div>
+              <h4 className="font-medium">Claude Skills</h4>
+              <p className="text-xs text-gray-500">自定义 Python/Node.js 代码执行</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                checked={enableClaudeSkills}
+                onChange={(e) => {
+                  setEnableClaudeSkills(e.target.checked);
+                  onConfigChange({
+                    ...config,
+                    enable_claude_skills: e.target.checked,
+                    claude_skill_ids: e.target.checked ? selectedSkills : undefined,
+                  });
+                }}
+                className="w-4 h-4 text-blue-500 rounded focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-sm">启用</span>
+            </label>
+            {expandedTools.claudeSkills ? (
+              <ChevronUp className="w-5 h-5 text-gray-400" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-gray-400" />
+            )}
+          </div>
+        </div>
+
+        {expandedTools.claudeSkills && enableClaudeSkills && (
+          <div className="p-4 space-y-4 border-t">
+            {/* 优先级配置 */}
+            <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                工具优先级
+                <span className="text-xs text-gray-500 ml-2">（数字越小优先级越高，留空则不设置优先级）</span>
+              </label>
+              <input
+                type="number"
+                value={config.claude_skills_priority ?? ''}
+                onChange={(e) =>
+                  onConfigChange({
+                    ...config,
+                    claude_skills_priority: e.target.value ? parseInt(e.target.value) : undefined,
+                  })
+                }
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="例如：5"
+                min={1}
+              />
+            </div>
+
+            {loadingSkills ? (
+              <div className="text-center py-8">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+                <p className="text-sm text-gray-500 mt-2">加载 Skills...</p>
+              </div>
+            ) : skills.length === 0 ? (
+              <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed">
+                <Code2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-sm text-gray-500 mb-2">暂无可用的 Skills</p>
+                <p className="text-xs text-gray-400">请先在 Claude Skills 页面创建 Skill</p>
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    选择 Skills
+                    <span className="text-xs text-gray-500 ml-2">({selectedSkills.length} 个已选)</span>
+                  </label>
+                  {selectedSkills.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSkills([])}
+                      className="text-xs text-red-600 hover:text-red-700"
+                    >
+                      清空选择
+                    </button>
+                  )}
+                </div>
+                <div className="border rounded-lg divide-y max-h-80 overflow-auto">
+                  {skills.map((skill) => (
+                    <div key={skill.id} className="p-3 hover:bg-gray-50 transition-colors">
+                      <label className="flex items-start cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          checked={selectedSkills.includes(skill.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedSkills([...selectedSkills, skill.id]);
+                            } else {
+                              setSelectedSkills(selectedSkills.filter(id => id !== skill.id));
+                            }
+                          }}
+                        />
+                        <div className="ml-3 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-gray-900">{skill.name}</span>
+                            {skill.status === 1 && (
+                              <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">
+                                启用
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500 mt-0.5">{skill.description}</p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-xs bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded">
+                              {skill.runtime_type}
+                            </span>
+                            {skill.category && (
+                              <span className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
+                                {skill.category}
+                              </span>
+                            )}
+                            {skill.call_count > 0 && (
+                              <span className="text-xs text-gray-500">
+                                调用 {skill.call_count} 次
+                              </span>
+                            )}
+                            {skill.success_count > 0 && (
+                              <span className="text-xs text-green-600">
+                                成功率 {((skill.success_count / skill.call_count) * 100).toFixed(0)}%
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+              <h5 className="text-sm font-medium text-gray-700 mb-2">关于 Claude Skills</h5>
+              <ul className="text-xs text-gray-600 space-y-1">
+                <li>• <strong>Python Skills</strong> - 执行 Python 脚本，支持 pandas、numpy 等库</li>
+                <li>• <strong>Node.js Skills</strong> - 执行 JavaScript/TypeScript 代码</li>
+                <li>• <strong>Shell Skills</strong> - 执行 Shell 命令（需谨慎使用）</li>
+                <li>• 每个 Skill 在独立的虚拟环境中运行，确保安全隔离</li>
+                <li>• 首次执行可能较慢（需要安装依赖），后续会使用缓存</li>
+              </ul>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-sm text-blue-700">
+                <span className="font-medium">使用说明：</span>
+                启用后，Agent 可以调用选中的 Skills 来执行自定义代码逻辑，如数据分析、文件处理、API 调用等。
               </p>
             </div>
           </div>

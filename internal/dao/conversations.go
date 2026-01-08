@@ -75,6 +75,9 @@ func (d *ConversationDAO) List(ctx context.Context, filters map[string]interface
 	if userID, ok := filters["user_id"].(string); ok && userID != "" {
 		query = query.Where("user_id = ?", userID)
 	}
+	if conversationType, ok := filters["conversation_type"].(string); ok && conversationType != "" {
+		query = query.Where("conversation_type = ?", conversationType)
+	}
 
 	// 统计总数
 	if err := query.Count(&total).Error; err != nil {

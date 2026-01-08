@@ -355,6 +355,49 @@ func (m *Manager) ExportConversation(ctx context.Context, convID, format string)
 	}
 }
 
+// CreateAgentConversation 创建Agent对话
+func (m *Manager) CreateAgentConversation(ctx context.Context, convID, presetID, userID, title string) error {
+	// 获取Agent预设信息
+	preset, err := dao.AgentPreset.GetByPresetID(ctx, presetID)
+	if err != nil {
+		return errors.Newf(errors.ErrDatabaseQuery, "查询Agent预设失败: %v", err)
+	}
+	if preset == nil {
+		return errors.Newf(errors.ErrNotFound, "Agent预设不存在: %s", presetID)
+	}
+
+	// 如果没有提供标题，使用预设名称
+	if title == "" {
+		title = preset.PresetName
+	}
+
+	// 构建元数据
+	metadata := map[string]interface{}{
+		"preset_id":   presetID,
+		"preset_name": preset.PresetName,
+	}
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return errors.Newf(errors.ErrInternalError, "序列化元数据失败: %v", err)
+	}
+
+	// 创建会话记录
+	now := time.Now()
+	conversation := &gormModel.Conversation{
+		ConvID:           convID,
+		UserID:           userID,
+		Title:            title,
+		ModelName:        "", // Agent会话不直接关联模型
+		ConversationType: "agent",
+		Status:           "active",
+		Metadata:         metadataJSON,
+		CreateTime:       &now,
+		UpdateTime:       &now,
+	}
+
+	return dao.Conversation.Create(ctx, conversation)
+}
+
 // toConversationItem 转换为会话列表项
 func (m *Manager) toConversationItem(ctx context.Context, conv *gormModel.Conversation) (*ConversationItem, error) {
 	// 查询消息数量

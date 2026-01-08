@@ -9,7 +9,7 @@ import (
 	"github.com/Malowking/kbgo/core/chat"
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/internal/dao"
-	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
+	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -97,26 +97,27 @@ func (c *ControllerV1) AgentChat(ctx context.Context, req *v1.AgentChatReq) (res
 		return nil, err
 	}
 
-	// 如果没有conv_id，创建新会话
+	// 验证conv_id：前端必须传递conv_id
 	convID := req.ConvID
 	if convID == "" {
-		convID = "conv_" + generateUUID()
-
-		// 创建会话记录
-		conversation := &gormModel.Conversation{
-			ConvID:        convID,
-			UserID:        req.UserID,
-			Title:         "Agent: " + preset.PresetName,
-			ModelName:     preset.Config.ModelID,
-			Status:        "active",
-			AgentPresetID: req.PresetID, // 关联Agent预设
-		}
-
-		if err := dao.Conversation.Create(ctx, conversation); err != nil {
-			g.Log().Warningf(ctx, "创建会话记录失败: %v", err)
-			// 不阻断流程，继续执行
-		}
+		g.Log().Errorf(ctx, "conv_id不能为空")
+		return nil, gerror.New("会话ID不能为空")
 	}
+
+	// 检查对话是否存在
+	existingConv, err := dao.Conversation.GetByConvID(ctx, convID)
+	if err != nil {
+		g.Log().Errorf(ctx, "查询会话失败: %v", err)
+		return nil, gerror.Newf("查询会话失败: %v", err)
+	}
+
+	// 如果对话不存在，返回错误
+	if existingConv == nil {
+		g.Log().Errorf(ctx, "会话不存在: %s", convID)
+		return nil, gerror.Newf("会话不存在")
+	}
+
+	g.Log().Infof(ctx, "使用会话: %s, type: %s", convID, existingConv.ConversationType)
 
 	// 构造ChatReq
 	chatReq := &v1.ChatReq{
@@ -186,26 +187,27 @@ func (c *ControllerV1) handleAgentStreamChat(ctx context.Context, req *v1.AgentC
 		return err
 	}
 
-	// 如果没有conv_id，创建新会话
+	// 验证conv_id：前端必须传递conv_id
 	convID := req.ConvID
 	if convID == "" {
-		convID = "conv_" + generateUUID()
-
-		// 创建会话记录（与AgentChat保持一致）
-		conversation := &gormModel.Conversation{
-			ConvID:        convID,
-			UserID:        req.UserID,
-			Title:         "Agent: " + preset.PresetName,
-			ModelName:     preset.Config.ModelID,
-			Status:        "active",
-			AgentPresetID: req.PresetID, // 关联Agent预设
-		}
-
-		if err := dao.Conversation.Create(ctx, conversation); err != nil {
-			g.Log().Warningf(ctx, "创建会话记录失败: %v", err)
-			// 不阻断流程，继续执行
-		}
+		g.Log().Errorf(ctx, "conv_id不能为空")
+		return gerror.New("会话ID不能为空")
 	}
+
+	// 检查对话是否存在
+	existingConv, err := dao.Conversation.GetByConvID(ctx, convID)
+	if err != nil {
+		g.Log().Errorf(ctx, "查询会话失败: %v", err)
+		return gerror.Newf("查询会话失败: %v", err)
+	}
+
+	// 如果对话不存在，返回错误
+	if existingConv == nil {
+		g.Log().Errorf(ctx, "会话不存在: %s", convID)
+		return gerror.Newf("会话不存在")
+	}
+
+	g.Log().Infof(ctx, "使用会话: %s, type: %s", convID, existingConv.ConversationType)
 
 	// 构造ChatReq
 	chatReq := &v1.ChatReq{
@@ -227,11 +229,4 @@ func (c *ControllerV1) handleAgentStreamChat(ctx context.Context, req *v1.AgentC
 
 	// 调用原有的流式Chat处理器，传递上传的文件
 	return c.handleStreamChat(ctx, chatReq, uploadedFiles)
-}
-
-// generateUUID 生成UUID
-func generateUUID() string {
-	// 这里可以使用uuid库生成
-	// 为了简化，暂时返回时间戳
-	return "temp_uuid"
 }

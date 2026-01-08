@@ -53,8 +53,8 @@ export default function CreateKBModal({ kb, onClose, onSuccess }: CreateKBModalP
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.name.trim() || !formData.description.trim()) {
-      showError('请填写名称和描述');
+    if (!formData.name.trim()) {
+      showError('请填写名称');
       return;
     }
 
@@ -109,24 +109,20 @@ export default function CreateKBModal({ kb, onClose, onSuccess }: CreateKBModalP
               className="input"
               placeholder="输入知识库名称"
               required
-              minLength={3}
               maxLength={50}
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              描述 <span className="text-red-500">*</span>
+              描述
             </label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               className="input"
-              placeholder="输入知识库描述"
+              placeholder="输入知识库描述（可选）"
               rows={4}
-              required
-              minLength={3}
-              maxLength={200}
             />
           </div>
 
@@ -140,7 +136,6 @@ export default function CreateKBModal({ kb, onClose, onSuccess }: CreateKBModalP
               onChange={(e) => setFormData({ ...formData, category: e.target.value })}
               className="input"
               placeholder="输入分类（可选）"
-              maxLength={50}
             />
           </div>
 
