@@ -92,7 +92,7 @@ func ProcessRetrieval(ctx context.Context, req *v1.RetrieverReq) (*v1.RetrieverR
 	if embeddingModelID == "" {
 		// 从数据库获取知识库信息
 		var kb gormModel.KnowledgeBase
-		err := dao.GetDB().WithContext(ctx).Where("id = ?", req.KnowledgeId).First(&kb)
+		err := dao.GetDB().WithContext(ctx).Where("id = ?", req.KnowledgeId).First(&kb).Error
 		if err != nil {
 			return nil, errors.Newf(errors.ErrKBNotFound, "failed to get knowledge base: %v", err)
 		}
