@@ -391,13 +391,13 @@ func (h *Manager) GetHistory(convID string, limit int) ([]*schema.Message, error
 		schemaMsg := &schema.Message{
 			Role:       schema.RoleType(msg.Role),
 			Extra:      make(map[string]any),
-			ToolCallID: msg.ToolCallID, // 设置 tool_call_id，用于 role=tool 的消息
+			ToolCallID: msg.ToolCallID,
 		}
 
 		// 如果消息有 tool_calls，也需要加载
 		if len(msg.ToolCalls) > 0 {
-			var toolCalls []*schema.ToolCall
-			if err := json.Unmarshal(msg.ToolCalls, &toolCalls); err == nil {
+			var toolCalls []schema.ToolCall
+			if err := json.Unmarshal(msg.ToolCalls, &toolCalls); err == nil && len(toolCalls) > 0 {
 				schemaMsg.ToolCalls = toolCalls
 			}
 		}
