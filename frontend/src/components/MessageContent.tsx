@@ -81,7 +81,7 @@ export default function MessageContent({ content, reasoningContent, isStreaming 
 
             // Handle Mermaid diagrams
             if (language === 'mermaid' && !inline) {
-              return <MermaidDiagram chart={codeString} />;
+              return <MermaidDiagram chart={codeString} isStreaming={isStreaming} />;
             }
 
             // Inline code
@@ -292,37 +292,99 @@ export default function MessageContent({ content, reasoningContent, isStreaming 
 }
 
 // Mermaid Diagram Component
-function MermaidDiagram({ chart }: { chart: string }) {
+function MermaidDiagram({ chart, isStreaming = false }: { chart: string; isStreaming?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [isRendering, setIsRendering] = useState(true);
+  const renderTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    // Clear any pending render timeout
+    if (renderTimeoutRef.current) {
+      clearTimeout(renderTimeoutRef.current);
+    }
+
     const renderDiagram = async () => {
       if (!chart) return;
+
+      // Check if the chart looks incomplete (basic validation)
+      const trimmedChart = chart.trim();
+      const hasGraphDeclaration = /^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey)/i.test(trimmedChart);
+
+      if (!hasGraphDeclaration) {
+        setIsRendering(true);
+        return;
+      }
 
       setIsRendering(true);
       setError('');
 
       try {
+        // Clean and validate the chart code
+        let cleanedChart = trimmedChart;
+
+        // Remove any markdown code fence artifacts
+        cleanedChart = cleanedChart.replace(/^```mermaid\n?/i, '').replace(/\n?```$/i, '');
+
+        // Fix common syntax issues
+        // 1. Fix node labels with numbers that aren't properly quoted
+        cleanedChart = cleanedChart.replace(/\[([^\]]*\d[^\]]*)\]/g, (match, content) => {
+          // If content contains numbers and special chars, ensure it's properly formatted
+          if (/\d/.test(content) && !/^["'].*["']$/.test(content)) {
+            // Escape special characters
+            const escaped = content.replace(/[|]/g, '');
+            return `["${escaped}"]`;
+          }
+          return match;
+        });
+
+        // 2. Fix arrow labels with numbers
+        cleanedChart = cleanedChart.replace(/\|([^|]*\d[^|]*)\|/g, (match, content) => {
+          // Ensure arrow labels are properly quoted
+          if (!/^["'].*["']$/.test(content.trim())) {
+            return `|"${content.trim()}"|`;
+          }
+          return match;
+        });
+
         // Generate unique ID for mermaid
         const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
         // Render mermaid diagram
-        const result = await mermaid.render(id, chart);
+        const result = await mermaid.render(id, cleanedChart);
         setSvg(result.svg);
         setError('');
       } catch (err: any) {
-        console.error('Mermaid rendering error:', err);
-        setError(err.message || 'Failed to render diagram');
+        // Only log errors if not streaming (to avoid console spam during partial renders)
+        if (!isStreaming) {
+          console.error('Mermaid rendering error:', err);
+          setError(err.message || 'Failed to render diagram');
+        } else {
+          // During streaming, silently fail and keep showing loading state
+          setError('');
+        }
       } finally {
         setIsRendering(false);
       }
     };
 
-    renderDiagram();
-  }, [chart]);
+    // If streaming, debounce the render to avoid rendering incomplete diagrams
+    if (isStreaming) {
+      renderTimeoutRef.current = setTimeout(() => {
+        renderDiagram();
+      }, 500); // Wait 500ms after last update before rendering
+    } else {
+      // If not streaming, render immediately
+      renderDiagram();
+    }
+
+    return () => {
+      if (renderTimeoutRef.current) {
+        clearTimeout(renderTimeoutRef.current);
+      }
+    };
+  }, [chart, isStreaming]);
 
   if (error) {
     return (
