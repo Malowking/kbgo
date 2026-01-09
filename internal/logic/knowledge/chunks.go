@@ -58,10 +58,10 @@ func SaveChunksData(ctx context.Context, documentsId string, chunks []gormModel.
 
 	result := db.WithContext(ctx).CreateInBatches(&gormChunks, len(gormChunks))
 
-	status := int(v1.StatusIndexing)
+	status := int(v1.ChunkStatusActive)
 	if result.Error != nil {
 		g.Log().Errorf(ctx, "SaveChunksData err=%+v", result.Error)
-		status = int(v1.StatusFailed)
+		status = int(v1.ChunkStatusFailed)
 	}
 
 	err := UpdateDocumentsStatus(ctx, documentsId, status)
@@ -152,7 +152,7 @@ func UpdateChunkByIdsWithTx(ctx context.Context, tx *gorm.DB, ids []string, data
 	if data.Content != "" {
 		updates["content"] = data.Content
 	}
-	if data.Status == 0 || data.Status == 1 {
+	if data.Status == int8(v1.ChunkStatusDisable) || data.Status == int8(v1.ChunkStatusActive) {
 		updates["status"] = data.Status
 	}
 	result := tx.WithContext(ctx).Model(&gormModel.KnowledgeChunks{}).Where("id IN ?", ids).Updates(updates)

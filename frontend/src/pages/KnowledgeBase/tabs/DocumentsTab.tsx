@@ -67,10 +67,9 @@ export default function DocumentsTab({ kbId }: DocumentsTabProps) {
   }, [fetchDocuments, confirm]);
 
   const handleUploadSuccess = (documentIds: string[]) => {
-    // 上传成功后，打开索引模态框
-    setPendingDocumentIds(documentIds);
-    setShowIndexModal(true);
+    // 上传成功后，仅刷新文档列表
     fetchDocuments();
+    showSuccess(`${documentIds.length} 个文档上传成功`);
   };
 
   const handleOpenReindex = () => {

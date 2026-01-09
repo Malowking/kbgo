@@ -317,7 +317,7 @@ func (s *DocumentIndexer) stepSaveChunks(idxCtx *indexContext) error {
 			Content:        normalizedContent, // 使用清洗后的内容
 			Ext:            extData,
 			CollectionName: idxCtx.collectionName,
-			Status:         int8(v1.StatusPending),
+			Status:         int8(v1.ChunkStatusActive),
 		}
 		chunk.ID = chunkId
 	}

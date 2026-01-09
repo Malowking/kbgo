@@ -673,7 +673,6 @@ func (m *MilvusStore) ConvertSearchResultsToDocuments(ctx context.Context, colum
 		}
 	}
 
-	// Permission control: Filter out chunks with status != 1
 	// Collect all chunk IDs
 	chunkIDs := make([]string, 0, len(result))
 	for _, doc := range result {
@@ -755,8 +754,8 @@ func (m *MilvusStore) VectorSearchOnly(ctx context.Context, conf GeneralRetrieve
 	// Milvus 检索的 TopK，可以设置得比最终需要的数量大一些
 	// 因为后续会经过 rerank 重新排序
 	milvusTopK := topK * 5 // 取5倍数量，给 rerank 更多选择空间
-	if milvusTopK < 20 {
-		milvusTopK = 20 // 至少取20个
+	if milvusTopK < 15 {
+		milvusTopK = 15 // 至少取15个
 	}
 
 	// 执行检索

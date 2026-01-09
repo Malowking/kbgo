@@ -475,8 +475,8 @@ func (r *postgresRetriever) Retrieve(ctx context.Context, query string, opts ...
 		scoreThreshold = options.ScoreThreshold
 	}
 
-	// 如果没有设置阈值，使用默认值0.0
-	threshold := 0.0
+	// 如果没有设置阈值，使用默认值0.2
+	threshold := 0.2
 	if scoreThreshold != nil {
 		threshold = *scoreThreshold
 	}
@@ -486,7 +486,7 @@ func (r *postgresRetriever) Retrieve(ctx context.Context, query string, opts ...
 
 // vectorSearchWithThreshold 带阈值的向量搜索
 func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query string, topK int, threshold float64) ([]*schema.Document, error) {
-	// 获取embedding配置 - 使用接口方法获取,避免循环依赖
+	// 获取embedding配置
 	var apiKey, baseURL, embeddingModel string
 	if r.config != nil {
 		// 尝试通过接口方法获取配置
