@@ -67,20 +67,14 @@ export default function AgentChat() {
         page_size: 100,
       });
 
-      logger.debug('Fetched conversations:', response);
-      logger.debug('Looking for preset_id:', presetId);
-
       // 过滤出属于当前Agent的对话
       const agentConversations = response.conversations.filter((conv: any) => {
-        logger.debug('Checking conversation:', conv.conv_id, 'metadata:', conv.metadata);
         // 从metadata中提取preset_id
         if (conv.metadata && conv.metadata.preset_id === presetId) {
           return true;
         }
         return false;
       });
-
-      logger.debug('Filtered conversations:', agentConversations);
 
       // 转换为前端格式
       const formattedConvs: Conversation[] = agentConversations.map((conv: any) => ({
@@ -94,8 +88,6 @@ export default function AgentChat() {
         create_time: conv.create_time,
         messages: [], // 消息会在选择对话时加载
       }));
-
-      logger.debug('Formatted conversations:', formattedConvs);
 
       setConversations(formattedConvs);
       return formattedConvs;
@@ -297,7 +289,6 @@ export default function AgentChat() {
         },
         {
           onToolCallStart: (toolCall: ToolCallInfo) => {
-            logger.debug('Tool call started:', toolCall);
             toolCallsMap.set(toolCall.tool_id, toolCall);
             setMessages(prev =>
               prev.map(msg =>
@@ -311,7 +302,6 @@ export default function AgentChat() {
             );
           },
           onToolCallEnd: (toolCall: ToolCallInfo) => {
-            logger.debug('Tool call ended:', toolCall);
             const existing = toolCallsMap.get(toolCall.tool_id);
             if (existing) {
               toolCallsMap.set(toolCall.tool_id, { ...existing, ...toolCall });
@@ -328,7 +318,6 @@ export default function AgentChat() {
             }
           },
           onLLMIteration: (iteration: LLMIterationInfo) => {
-            logger.debug('LLM iteration:', iteration);
             setMessages(prev =>
               prev.map(msg =>
                 msg.id === assistantMessageId
@@ -341,7 +330,6 @@ export default function AgentChat() {
             );
           },
           onThinking: (thinking: string) => {
-            logger.debug('Thinking:', thinking);
             setMessages(prev =>
               prev.map(msg =>
                 msg.id === assistantMessageId

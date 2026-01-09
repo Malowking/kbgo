@@ -16,6 +16,8 @@ interface Message {
   explanation?: string;
   error?: string;
   timestamp: Date;
+  isStreaming?: boolean; // 是否正在流式显示
+  displayedContent?: string; // 当前显示的内容
 }
 
 interface ChatTabProps {
@@ -35,9 +37,17 @@ export default function ChatTab({ datasource }: ChatTabProps) {
   const [llmModel, setLlmModel] = useState<string>('');
   const [models, setModels] = useState<any[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const streamingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     fetchModels();
+
+    // 清理定时器
+    return () => {
+      if (streamingIntervalRef.current) {
+        clearInterval(streamingIntervalRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -64,6 +74,44 @@ export default function ChatTab({ datasource }: ChatTabProps) {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // 伪流式显示文本
+  const streamText = (messageId: string, fullText: string, speed: number = 20) => {
+    let currentIndex = 0;
+
+    if (streamingIntervalRef.current) {
+      clearInterval(streamingIntervalRef.current);
+    }
+
+    streamingIntervalRef.current = setInterval(() => {
+      if (currentIndex < fullText.length) {
+        const charsToAdd = Math.min(2, fullText.length - currentIndex); // 每次显示2个字符
+        currentIndex += charsToAdd;
+
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === messageId
+              ? { ...msg, displayedContent: fullText.substring(0, currentIndex) }
+              : msg
+          )
+        );
+      } else {
+        if (streamingIntervalRef.current) {
+          clearInterval(streamingIntervalRef.current);
+          streamingIntervalRef.current = null;
+        }
+
+        // 流式显示完成，移除 isStreaming 标记
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === messageId
+              ? { ...msg, isStreaming: false, displayedContent: undefined }
+              : msg
+          )
+        );
+      }
+    }, speed);
   };
 
   const handleSend = async () => {
@@ -99,8 +147,9 @@ export default function ChatTab({ datasource }: ChatTabProps) {
         llm_model_id: llmModel,
       });
 
+      const assistantMessageId = (Date.now() + 1).toString();
       const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: assistantMessageId,
         role: 'assistant',
         content: response.explanation || '查询完成',
         sql: response.sql,
@@ -108,9 +157,25 @@ export default function ChatTab({ datasource }: ChatTabProps) {
         explanation: response.explanation,
         error: response.error,
         timestamp: new Date(),
+        isStreaming: true,
+        displayedContent: '',
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+
+      // 开始伪流式显示
+      if (response.explanation) {
+        streamText(assistantMessageId, response.explanation);
+      } else {
+        // 如果没有 explanation，直接显示完整内容
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? { ...msg, isStreaming: false }
+              : msg
+          )
+        );
+      }
 
       if (response.error) {
         showError(response.error);
@@ -284,7 +349,12 @@ export default function ChatTab({ datasource }: ChatTabProps) {
                     {/* Explanation */}
                     {message.explanation && (
                       <div className="space-y-2">
-                        <p className="text-sm text-gray-700">{message.explanation}</p>
+                        <p className="text-sm text-gray-700">
+                          {message.isStreaming && message.displayedContent !== undefined
+                            ? message.displayedContent
+                            : message.explanation}
+                          {message.isStreaming && <span className="inline-block w-1 h-4 bg-gray-700 ml-1 animate-pulse" />}
+                        </p>
                       </div>
                     )}
 

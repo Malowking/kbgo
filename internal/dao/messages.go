@@ -70,7 +70,7 @@ func (d *MessageDAO) ListByConvID(ctx context.Context, convID string, page, page
 		return nil, 0, err
 	}
 
-	// 分页查询
+	// 分页查询 - 使用 create_time 升序排序
 	offset := (page - 1) * pageSize
 	if err := query.Offset(offset).Limit(pageSize).Order("create_time ASC").Find(&messages).Error; err != nil {
 		g.Log().Errorf(ctx, "查询消息列表失败: %v", err)
@@ -84,7 +84,7 @@ func (d *MessageDAO) ListByConvID(ctx context.Context, convID string, page, page
 func (d *MessageDAO) ListByConvIDWithContents(ctx context.Context, convID string) ([]*gormModel.Message, error) {
 	var messages []*gormModel.Message
 
-	// 查询消息
+	// 查询消息 - 使用 create_time 升序排序
 	if err := GetDB().WithContext(ctx).Where("conv_id = ?", convID).Order("create_time ASC").Find(&messages).Error; err != nil {
 		g.Log().Errorf(ctx, "查询消息列表失败: %v", err)
 		return nil, err

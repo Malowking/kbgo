@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Malowking/kbgo/core/common"
@@ -91,7 +92,13 @@ func (s *NL2SQLService) CreateDataSource(ctx context.Context, req *CreateDataSou
 
 	// 3. 创建数据源记录
 	configJSON, _ := json.Marshal(req.Config)
+
+	// 生成 collection 名称
+	datasourceID := strings.ReplaceAll(uuid.New().String(), "-", "")
+	collectionName := fmt.Sprintf("nl2sql_%s", datasourceID)
+
 	ds := &dbgorm.NL2SQLDataSource{
+		ID:               datasourceID,
 		Name:             req.Name,
 		Type:             req.Type,
 		DBType:           req.DBType,
@@ -100,6 +107,7 @@ func (s *NL2SQLService) CreateDataSource(ctx context.Context, req *CreateDataSou
 		Status:           nl2sqlCommon.DataSourceStatusPending,
 		CreatedBy:        &req.CreatedBy,
 		EmbeddingModelID: req.EmbeddingModelID, // 保存embedding模型ID
+		VectorDatabase:   collectionName,       // 保存向量数据库collection名称
 	}
 
 	if err := s.db.Create(ds).Error; err != nil {
@@ -118,7 +126,7 @@ func (s *NL2SQLService) CreateDataSource(ctx context.Context, req *CreateDataSou
 	}
 
 	// 5. 创建向量表（原子操作的关键部分）
-	collectionName, err := s.createVectorCollection(ctx, ds.ID, req.EmbeddingModelID)
+	createdCollectionName, err := s.createVectorCollection(ctx, ds.ID, req.EmbeddingModelID)
 	if err != nil {
 		// 向量表创建失败，删除数据源记录（回滚）
 		g.Log().Errorf(ctx, "向量表创建失败，回滚数据源: %v", err)
@@ -126,7 +134,7 @@ func (s *NL2SQLService) CreateDataSource(ctx context.Context, req *CreateDataSou
 		return nil, fmt.Errorf("创建向量表失败: %w", err)
 	}
 
-	g.Log().Infof(ctx, "向量表创建成功 - Collection: %s", collectionName)
+	g.Log().Infof(ctx, "向量表创建成功 - Collection: %s", createdCollectionName)
 
 	// 6. 更新数据源状态为active
 	ds.Status = nl2sqlCommon.DataSourceStatusActive
@@ -373,17 +381,16 @@ func (s *NL2SQLService) Query(ctx context.Context, req *QueryRequest) (*QueryRes
 	// 4. 创建LLM适配器
 	llmAdapter := adapter.NewLLMAdapter(llmModelConfig)
 
-	// 5. 创建向量搜索适配器（使用数据源的embedding模型）
+	// 5. 创建向量搜索适配器（使用数据源的embedding模型和vector_database）
 	var vectorAdapter *adapter.VectorSearchAdapter
-	if ds.EmbeddingModelID != "" {
+	if ds.EmbeddingModelID != "" && ds.VectorDatabase != "" {
 		embeddingModelConfig := model.Registry.Get(ds.EmbeddingModelID)
 		if embeddingModelConfig != nil {
 			vectorStore, err := internalService.GetVectorStore()
 			if err != nil {
 				g.Log().Warningf(ctx, "获取向量存储失败: %v，将不使用向量搜索", err)
 			} else {
-				collectionName := fmt.Sprintf("nl2sql_%s", req.DatasourceID)
-				vectorAdapter = adapter.NewVectorSearchAdapter(vectorStore, collectionName, req.DatasourceID, embeddingModelConfig)
+				vectorAdapter = adapter.NewVectorSearchAdapter(vectorStore, ds.VectorDatabase, req.DatasourceID, embeddingModelConfig)
 			}
 		}
 	}
@@ -453,7 +460,13 @@ func getInt(m map[string]interface{}, key string) int {
 func (s *NL2SQLService) vectorizeSchema(ctx context.Context, datasourceID, embeddingModelID string) error {
 	g.Log().Infof(ctx, "开始向量化Schema - DatasourceID: %s, EmbeddingModelID: %s", datasourceID, embeddingModelID)
 
-	// 1. 获取embedding模型配置
+	// 1. 获取数据源信息（包含vector_database字段）
+	var ds dbgorm.NL2SQLDataSource
+	if err := s.db.First(&ds, "id = ?", datasourceID).Error; err != nil {
+		return fmt.Errorf("数据源不存在: %w", err)
+	}
+
+	// 2. 获取embedding模型配置
 	modelConfig := model.Registry.Get(embeddingModelID)
 	if modelConfig == nil {
 		return fmt.Errorf("embedding模型不存在: %s", embeddingModelID)
@@ -464,16 +477,19 @@ func (s *NL2SQLService) vectorizeSchema(ctx context.Context, datasourceID, embed
 		return fmt.Errorf("模型 %s 不是embedding模型，类型为: %s", embeddingModelID, modelConfig.Type)
 	}
 
-	// 2. 使用全局单例向量存储
+	// 3. 使用全局单例向量存储
 	vectorStore, err := internalService.GetVectorStore()
 	if err != nil {
 		return fmt.Errorf("获取向量存储失败: %w", err)
 	}
 
-	// 3. 获取collection名称
-	collectionName := fmt.Sprintf("nl2sql_%s", datasourceID)
+	// 4. 从数据源获取collection名称
+	collectionName := ds.VectorDatabase
+	if collectionName == "" {
+		return fmt.Errorf("数据源的vector_database字段为空")
+	}
 
-	// 4. 检查集合是否存在
+	// 5. 检查集合是否存在
 	exists, err := vectorStore.CollectionExists(ctx, collectionName)
 	if err != nil {
 		return fmt.Errorf("集合不存在: %w", err)
@@ -485,7 +501,7 @@ func (s *NL2SQLService) vectorizeSchema(ctx context.Context, datasourceID, embed
 
 	g.Log().Infof(ctx, "向量集合已存在，开始向量化: %s", collectionName)
 
-	// 5. 获取embedding维度（默认1024）
+	// 6. 获取embedding维度（默认1024）
 	dimension := 1024
 	if dim, ok := modelConfig.Extra["dimension"].(float64); ok {
 		dimension = int(dim)
@@ -493,7 +509,7 @@ func (s *NL2SQLService) vectorizeSchema(ctx context.Context, datasourceID, embed
 		dimension = dim
 	}
 
-	// 6. 创建embedding客户端
+	// 7. 创建embedding客户端
 	embedder, err := common.NewEmbedding(ctx, &embeddingConfigAdapter{
 		apiKey:  modelConfig.APIKey,
 		baseURL: modelConfig.BaseURL,
@@ -503,10 +519,10 @@ func (s *NL2SQLService) vectorizeSchema(ctx context.Context, datasourceID, embed
 		return fmt.Errorf("创建embedding客户端失败: %w", err)
 	}
 
-	// 7. 创建向量化器
+	// 8. 创建向量化器
 	vectorizer := vector.NewSchemaVectorizer(s.db)
 
-	// 8. 定义embedding函数
+	// 9. 定义embedding函数
 	embeddingFunc := func(text string) ([]float32, error) {
 		// 调用embedding API
 		vectors, err := embedder.EmbedStrings(ctx, []string{text}, dimension)
@@ -519,7 +535,7 @@ func (s *NL2SQLService) vectorizeSchema(ctx context.Context, datasourceID, embed
 		return vectors[0], nil
 	}
 
-	// 9. 定义存储函数
+	// 10. 定义存储函数
 	storeFunc := func(doc *vector.VectorDocument) error {
 		// 从metadata中提取NL2SQL特定字段
 		entityType := ""
@@ -547,7 +563,7 @@ func (s *NL2SQLService) vectorizeSchema(ctx context.Context, datasourceID, embed
 		return err
 	}
 
-	// 10. 执行向量化
+	// 11. 执行向量化
 	req := &vector.VectorizeSchemaRequest{
 		DatasourceID:    datasourceID,
 		KnowledgeBaseID: collectionName, // 使用collection名称作为知识库ID

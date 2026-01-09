@@ -149,6 +149,14 @@ func (c *ControllerV1) NL2SQLDeleteDataSource(ctx context.Context, req *v1.NL2SQ
 		allFilePaths = append(allFilePaths, filePaths...)
 	}
 
+	// 4.5. 删除该数据源下所有的 nl2sql_vector_docs（包括 metric 和 relation 类型）
+	if err := tx.Where("datasource_id = ?", req.DatasourceID).Delete(&dbgorm.NL2SQLVectorDoc{}).Error; err != nil {
+		tx.Rollback()
+		g.Log().Errorf(ctx, "Failed to delete vector docs: %v", err)
+		return nil, fmt.Errorf("删除向量文档失败: %w", err)
+	}
+	g.Log().Infof(ctx, "Deleted all vector docs for datasource %s", req.DatasourceID)
+
 	// 5. 删除数据源记录
 	if err := tx.Delete(&dbgorm.NL2SQLDataSource{}, "id = ?", req.DatasourceID).Error; err != nil {
 		tx.Rollback()
@@ -172,13 +180,14 @@ func (c *ControllerV1) NL2SQLDeleteDataSource(ctx context.Context, req *v1.NL2SQ
 	}
 
 	// 8. 删除向量库中的collection（在事务外）
-	collectionName := fmt.Sprintf("nl2sql_%s", req.DatasourceID)
-	redisClient := cache.GetRedisClient()
-	nl2sqlService := service.NewNL2SQLService(db, redisClient)
-	if err := nl2sqlService.DeleteVectorCollection(ctx, collectionName); err != nil {
-		g.Log().Warningf(ctx, "Failed to delete vector collection %s: %v", collectionName, err)
-	} else {
-		g.Log().Infof(ctx, "Deleted vector collection: %s", collectionName)
+	if ds.VectorDatabase != "" {
+		redisClient := cache.GetRedisClient()
+		nl2sqlService := service.NewNL2SQLService(db, redisClient)
+		if err := nl2sqlService.DeleteVectorCollection(ctx, ds.VectorDatabase); err != nil {
+			g.Log().Warningf(ctx, "Failed to delete vector collection %s: %v", ds.VectorDatabase, err)
+		} else {
+			g.Log().Infof(ctx, "Deleted vector collection: %s", ds.VectorDatabase)
+		}
 	}
 
 	g.Log().Infof(ctx, "Datasource deleted successfully: %s", req.DatasourceID)

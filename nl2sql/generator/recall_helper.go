@@ -13,14 +13,14 @@ import (
 func (gen *SQLGenerator) recallSchemaWithVector(ctx context.Context, schemaID, question string) (*SchemaContext, error) {
 	g.Log().Infof(ctx, "开始向量检索 - SchemaID: %s, Question: %s", schemaID, question)
 
-	// 创建向量搜索器
-	vectorSearcher, err := vector.NewNL2SQLVectorSearcher()
+	// 创建向量搜索器（传入数据库连接）
+	vectorSearcher, err := vector.NewNL2SQLVectorSearcher(gen.db)
 	if err != nil {
 		return nil, fmt.Errorf("创建向量搜索器失败: %w", err)
 	}
 
 	// 执行向量搜索
-	vectorResults, err := vectorSearcher.SearchSchemaSimple(ctx, schemaID, question, 15)
+	vectorResults, err := vectorSearcher.SearchSchemaSimple(ctx, schemaID, question, 20)
 	if err != nil {
 		return nil, fmt.Errorf("向量搜索失败: %w", err)
 	}

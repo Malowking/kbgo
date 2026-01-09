@@ -5,18 +5,21 @@ import (
 	"fmt"
 
 	"github.com/Malowking/kbgo/core/vector_store"
+	dbgorm "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/Malowking/kbgo/internal/service"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
+	"gorm.io/gorm"
 )
 
 // NL2SQLVectorSearcher NL2SQL向量搜索器
 type NL2SQLVectorSearcher struct {
 	vectorStore vector_store.VectorStore
+	db          *gorm.DB
 }
 
 // NewNL2SQLVectorSearcher 创建NL2SQL向量搜索器
-func NewNL2SQLVectorSearcher() (*NL2SQLVectorSearcher, error) {
+func NewNL2SQLVectorSearcher(db *gorm.DB) (*NL2SQLVectorSearcher, error) {
 	vectorStore, err := service.GetVectorStore()
 	if err != nil {
 		return nil, fmt.Errorf("获取向量存储失败: %w", err)
@@ -24,6 +27,7 @@ func NewNL2SQLVectorSearcher() (*NL2SQLVectorSearcher, error) {
 
 	return &NL2SQLVectorSearcher{
 		vectorStore: vectorStore,
+		db:          db,
 	}, nil
 }
 
@@ -61,8 +65,16 @@ func (s *NL2SQLVectorSearcher) SearchSchema(ctx context.Context, req *SearchSche
 		req.MinScore = 0.3
 	}
 
-	// 构建collection名称
-	collectionName := fmt.Sprintf("nl2sql_schema_%s", req.SchemaID)
+	// 从数据库查询数据源信息，获取vector_database字段
+	var ds dbgorm.NL2SQLDataSource
+	if err := s.db.First(&ds, "id = ?", req.SchemaID).Error; err != nil {
+		return nil, fmt.Errorf("数据源不存在: %w", err)
+	}
+
+	collectionName := ds.VectorDatabase
+	if collectionName == "" {
+		return nil, fmt.Errorf("数据源的vector_database字段为空")
+	}
 
 	g.Log().Infof(ctx, "NL2SQL向量搜索 - Collection: %s, Query: %s, TopK: %d, MinScore: %.2f",
 		collectionName, req.Query, req.TopK, req.MinScore)

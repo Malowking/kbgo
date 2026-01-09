@@ -127,7 +127,7 @@ export async function handleSSEStream(
       const { done, value } = await reader.read();
 
       if (done) {
-        logger.debug('SSE stream completed');
+        
         break;
       }
 
@@ -153,7 +153,6 @@ export async function handleSSEStream(
 
           // 流结束标记
           if (jsonStr === '[DONE]') {
-            logger.debug('SSE stream received [DONE]');
             continue;
           }
 
@@ -175,7 +174,6 @@ export async function handleSSEStream(
                     start_time: parsed.created * 1000, // 转换为毫秒
                   };
                   onToolCallStart(toolCall);
-                  logger.debug('Tool call started:', toolCall);
                 }
                 break;
 
@@ -193,7 +191,6 @@ export async function handleSSEStream(
                     file_url: parsed.metadata.file_url,
                   };
                   onToolCallEnd(toolCall);
-                  logger.debug('Tool call ended:', toolCall);
                 }
                 break;
 
@@ -206,7 +203,6 @@ export async function handleSSEStream(
                     message: parsed.metadata.message,
                   };
                   onLLMIteration(iteration);
-                  logger.debug('LLM iteration:', iteration);
                 }
                 break;
 
@@ -214,7 +210,6 @@ export async function handleSSEStream(
                 // 思考过程事件
                 if (onThinking && parsed.content) {
                   onThinking(parsed.content);
-                  logger.debug('Thinking:', parsed.content);
                 }
                 break;
 

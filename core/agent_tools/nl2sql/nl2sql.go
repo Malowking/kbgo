@@ -145,8 +145,7 @@ func (t *NL2SQLTool) DetectAndExecute(ctx context.Context, question string, data
 	}
 
 	var vectorAdapter *adapter.VectorSearchAdapter
-	if vectorModelID != "" {
-		collectionName := fmt.Sprintf("nl2sql_%s", datasourceID)
+	if vectorModelID != "" && ds.VectorDatabase != "" {
 		embeddingModelConfig, err := t.getModelConfig(ctx, vectorModelID)
 		if err != nil {
 			g.Log().Warningf(ctx, "NL2SQL Tool - Failed to get embedding model config: %v, will proceed without vector search", err)
@@ -155,7 +154,7 @@ func (t *NL2SQLTool) DetectAndExecute(ctx context.Context, question string, data
 			if err != nil {
 				g.Log().Warningf(ctx, "NL2SQL Tool - Failed to get vector store: %v, will proceed without vector search", err)
 			} else {
-				vectorAdapter = adapter.NewVectorSearchAdapter(vectorStore, collectionName, datasourceID, embeddingModelConfig)
+				vectorAdapter = adapter.NewVectorSearchAdapter(vectorStore, ds.VectorDatabase, datasourceID, embeddingModelConfig)
 			}
 		}
 	}

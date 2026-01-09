@@ -21,6 +21,7 @@ type NL2SQLDataSource struct {
 
 	// 模型相关字段
 	EmbeddingModelID string `gorm:"size:100;not null" json:"embedding_model_id"` // Embedding模型ID（用于Schema向量化）
+	VectorDatabase   string `gorm:"size:100;not null" json:"vector_database"`    // 向量数据库名称（用于存储Schema向量）
 
 	CreateTime *time.Time `gorm:"column:create_time;autoCreateTime" json:"create_time"`
 	UpdateTime *time.Time `gorm:"column:update_time;autoUpdateTime" json:"update_time"`

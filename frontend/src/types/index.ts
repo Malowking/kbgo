@@ -78,6 +78,15 @@ export interface Message {
   create_time: string;
   tokens_used?: number;
   latency_ms?: number;
+  extra?: {
+    tool_results?: Array<{
+      content: string;
+      tool_call_id?: string;
+      tool_name?: string;
+      tool_args?: any;
+    }>;
+    [key: string]: any;
+  };
 }
 
 // 工具配置类型

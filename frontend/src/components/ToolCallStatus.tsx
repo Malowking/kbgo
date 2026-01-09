@@ -37,7 +37,7 @@ export const ToolCallStatus: React.FC<ToolCallStatusProps> = ({
   const getToolDisplayName = (toolName: string): string => {
     const nameMap: Record<string, string> = {
       knowledge_retrieval: '知识检索',
-      nl2sql: '数据查询',
+      nl2sql: 'NL2SQL查询',
       file_export: '文件导出',
     };
     return nameMap[toolName] || toolName;
