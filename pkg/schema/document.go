@@ -9,5 +9,5 @@ type Document struct {
 	// MetaData 文档元数据
 	MetaData map[string]interface{} `json:"metadata,omitempty"`
 	// Score 相关性得分（检索时使用）- 使用float32以直接与向量库兼容
-	Score float32 `json:"score,omitempty"`
+	Score float32 `json:"score"`
 }

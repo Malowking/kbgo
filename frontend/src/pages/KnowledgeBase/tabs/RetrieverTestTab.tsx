@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, PlayCircle, Settings as SettingsIcon, Loader2 } from 'lucide-react';
+import { Search, PlayCircle, Settings as SettingsIcon, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { modelApi } from '@/services';
@@ -22,6 +22,10 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<Document[]>([]);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
 
   // Models
   const [rerankModels, setRerankModels] = useState<Model[]>([]);
@@ -66,6 +70,7 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
     try {
       setLoading(true);
       setResults([]);
+      setCurrentPage(1);
 
       const requestBody = {
         question: question.trim(),
@@ -106,6 +111,20 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
       setLoading(false);
     }
   }, [question, kbId, rerankModelId, topK, score, retrieveMode, rerankWeight, enableRewrite, rewriteAttempts]);
+
+  // Calculate pagination
+  const totalPages = Math.ceil(results.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentResults = results.slice(startIndex, endIndex);
+
+  const handlePreviousPage = () => {
+    setCurrentPage((prev) => Math.max(1, prev - 1));
+  };
+
+  const handleNextPage = () => {
+    setCurrentPage((prev) => Math.min(totalPages, prev + 1));
+  };
 
   return (
     <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -337,89 +356,124 @@ export default function RetrieverTestTab({ kbId }: RetrieverTestTabProps) {
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {results.map((doc, index) => (
-                <div key={index} className="border rounded-lg p-4 hover:shadow-sm transition-shadow">
-                  <div className="flex items-start justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-700">
-                      文档 #{index + 1}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">
-                        相似度:
-                      </span>
-                      <span
-                        className={`px-2 py-1 text-xs font-semibold rounded ${
-                          doc.score >= 0.8
-                            ? 'bg-green-100 text-green-800'
-                            : doc.score >= 0.5
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}
-                      >
-                        {doc.score.toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="text-sm text-gray-700 prose max-w-none mb-3">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        // Images
-                        img({ src, alt, ...props }) {
-                          return (
-                            <div className="my-2">
-                              <img
-                                src={src}
-                                alt={alt}
-                                className="max-w-full h-auto rounded-lg shadow-md"
-                                loading="lazy"
-                                {...props}
-                              />
-                              {alt && <p className="text-sm text-gray-500 mt-1 text-center italic">{alt}</p>}
-                            </div>
-                          );
-                        },
-                        // Paragraphs
-                        p({ children, ...props }) {
-                          return (
-                            <p className="my-1 leading-relaxed" {...props}>
-                              {children}
-                            </p>
-                          );
-                        },
-                        // Code
-                        code({ inline, children, ...props }: any) {
-                          if (inline) {
-                            return <code className="px-1 py-0.5 rounded bg-gray-100 text-red-600 text-xs font-mono" {...props}>{children}</code>;
-                          }
-                          return <code className="block p-2 bg-gray-100 rounded text-xs font-mono overflow-x-auto" {...props}>{children}</code>;
-                        },
-                      }}
-                    >
-                      {doc.content}
-                    </ReactMarkdown>
-                  </div>
-
-                  {doc.metadata && Object.keys(doc.metadata).length > 0 && (
-                    <div className="pt-3 border-t">
-                      <p className="text-xs font-medium text-gray-500 mb-2">元数据:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {Object.entries(doc.metadata).map(([key, value]) => (
-                          <span
-                            key={key}
-                            className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded"
-                          >
-                            {key}: {String(value)}
+            <>
+              <div className="space-y-4">
+                {currentResults.map((doc, index) => {
+                  const globalIndex = startIndex + index;
+                  return (
+                    <div key={globalIndex} className="border rounded-lg p-4 hover:shadow-sm transition-shadow">
+                      <div className="flex items-start justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-700">
+                          文档 #{globalIndex + 1}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500">
+                            相似度:
                           </span>
-                        ))}
+                          <span
+                            className={`px-2 py-1 text-xs font-semibold rounded ${
+                              doc.score >= 0.8
+                                ? 'bg-green-100 text-green-800'
+                                : doc.score >= 0.5
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-red-100 text-red-800'
+                            }`}
+                          >
+                            {(doc.score ?? 0).toFixed(2)}
+                          </span>
+                        </div>
                       </div>
+
+                      <div className="text-sm text-gray-700 prose max-w-none mb-3">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            // Images
+                            img({ src, alt, ...props }) {
+                              return (
+                                <div className="my-2">
+                                  <img
+                                    src={src}
+                                    alt={alt}
+                                    className="max-w-full h-auto rounded-lg shadow-md"
+                                    loading="lazy"
+                                    {...props}
+                                  />
+                                  {alt && <p className="text-sm text-gray-500 mt-1 text-center italic">{alt}</p>}
+                                </div>
+                              );
+                            },
+                            // Paragraphs
+                            p({ children, ...props }) {
+                              return (
+                                <p className="my-1 leading-relaxed" {...props}>
+                                  {children}
+                                </p>
+                              );
+                            },
+                            // Code
+                            code({ inline, children, ...props }: any) {
+                              if (inline) {
+                                return <code className="px-1 py-0.5 rounded bg-gray-100 text-red-600 text-xs font-mono" {...props}>{children}</code>;
+                              }
+                              return <code className="block p-2 bg-gray-100 rounded text-xs font-mono overflow-x-auto" {...props}>{children}</code>;
+                            },
+                          }}
+                        >
+                          {doc.content}
+                        </ReactMarkdown>
+                      </div>
+
+                      {doc.metadata && Object.keys(doc.metadata).length > 0 && (
+                        <div className="pt-3 border-t">
+                          <p className="text-xs font-medium text-gray-500 mb-2">元数据:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {Object.entries(doc.metadata).map(([key, value]) => (
+                              <span
+                                key={key}
+                                className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded"
+                              >
+                                {key}: {String(value)}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  );
+                })}
+              </div>
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="mt-6 flex items-center justify-between border-t pt-4">
+                  <div className="text-sm text-gray-600">
+                    显示 {startIndex + 1}-{Math.min(endIndex, results.length)} / 共 {results.length} 条
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handlePreviousPage}
+                      disabled={currentPage === 1}
+                      className="flex items-center gap-1 px-3 py-2 text-sm border rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      上一页
+                    </button>
+                    <span className="text-sm text-gray-600">
+                      第 {currentPage} / {totalPages} 页
+                    </span>
+                    <button
+                      onClick={handleNextPage}
+                      disabled={currentPage === totalPages}
+                      className="flex items-center gap-1 px-3 py-2 text-sm border rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
+                    >
+                      下一页
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
       </div>

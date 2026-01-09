@@ -166,9 +166,7 @@ func ProcessRetrieval(ctx context.Context, req *v1.RetrieverReq) (*v1.RetrieverR
 	if req.TopK != 0 {
 		retrieveReq.TopK = &req.TopK
 	}
-	if req.Score != 0 {
-		retrieveReq.Score = &req.Score
-	}
+	retrieveReq.Score = &req.Score
 
 	// RetrieveMode 是独立的检索模式设置，不依赖于 EnableRewrite
 	if req.RetrieveMode != "" {

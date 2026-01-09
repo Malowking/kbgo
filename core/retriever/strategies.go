@@ -194,10 +194,16 @@ func retrieveWithPureRerank(ctx context.Context, conf *config.RetrieverConfig, r
 	// 转换回 schema.Document
 	docs = convertFromRerankDocs(rerankResults, docs)
 
+	g.Log().Infof(ctx, "After rerank: %d documents with scores", len(docs))
+	for i, doc := range docs {
+		g.Log().Debugf(ctx, "Doc %d: ID=%s, Score=%.4f, Threshold=%.4f", i, doc.ID[:8], doc.Score, *req.Score)
+	}
+
 	// 过滤低分文档
 	var relatedDocs []*schema.Document
 	for _, doc := range docs {
 		if doc.Score < float32(*req.Score) {
+			g.Log().Debugf(ctx, "Filtered out doc %s with score %.4f < threshold %.4f", doc.ID[:8], doc.Score, *req.Score)
 			continue
 		}
 		relatedDocs = append(relatedDocs, doc)

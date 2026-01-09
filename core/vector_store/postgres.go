@@ -14,6 +14,7 @@ import (
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
 )
@@ -475,8 +476,8 @@ func (r *postgresRetriever) Retrieve(ctx context.Context, query string, opts ...
 		scoreThreshold = options.ScoreThreshold
 	}
 
-	// 如果没有设置阈值，使用默认值0.2
-	threshold := 0.2
+	// 如果没有设置阈值，使用默认值0.0
+	threshold := 0.0
 	if scoreThreshold != nil {
 		threshold = *scoreThreshold
 	}
@@ -570,16 +571,34 @@ func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query
 	}
 
 	// 执行向量相似度搜索
-	searchSQL := fmt.Sprintf(`
-		SELECT id, text, document_id, metadata,
-		       %s as similarity_score
-		FROM %s
-		WHERE %s >= $2
-		ORDER BY %s
-		LIMIT $3
-	`, scoreCalc, r.tableName, scoreCalc, orderBy)
+	var searchSQL string
+	if threshold > 0 {
+		// 有阈值限制
+		searchSQL = fmt.Sprintf(`
+			SELECT id, text, document_id, metadata,
+			       %s as similarity_score
+			FROM %s
+			WHERE %s >= $2
+			ORDER BY %s
+			LIMIT $3
+		`, scoreCalc, r.tableName, scoreCalc, orderBy)
+	} else {
+		// 无阈值限制，返回所有结果
+		searchSQL = fmt.Sprintf(`
+			SELECT id, text, document_id, metadata,
+			       %s as similarity_score
+			FROM %s
+			ORDER BY %s
+			LIMIT $2
+		`, scoreCalc, r.tableName, orderBy)
+	}
 
-	rows, err := r.pool.Query(ctx, searchSQL, queryVector, threshold, topK)
+	var rows pgx.Rows
+	if threshold > 0 {
+		rows, err = r.pool.Query(ctx, searchSQL, queryVector, threshold, topK)
+	} else {
+		rows, err = r.pool.Query(ctx, searchSQL, queryVector, topK)
+	}
 	if err != nil {
 		return nil, errors.Newf(errors.ErrVectorSearch, "failed to execute vector search: %v", err)
 	}
@@ -623,6 +642,8 @@ func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query
 		return nil, errors.Newf(errors.ErrVectorSearch, "error iterating over rows: %v", err)
 	}
 
+	g.Log().Infof(ctx, "Vector search SQL returned %d rows", len(results))
+
 	// 权限控制：过滤掉status != 1的chunks
 	if len(results) > 0 {
 		chunkIDs := make([]string, 0, len(results))
@@ -634,6 +655,8 @@ func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query
 		if err != nil {
 			return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to query chunk status: %v", err)
 		}
+
+		g.Log().Infof(ctx, "Permission filter: %d active chunks out of %d total", len(activeIDs), len(chunkIDs))
 
 		// 收集document_ids以查询文档名称
 		documentIDsMap := make(map[string]bool)

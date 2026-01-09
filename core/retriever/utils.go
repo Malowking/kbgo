@@ -53,6 +53,11 @@ func retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 	var options []vector_store.Option
 	options = append(options, vector_store.WithTopK(realTopK))
 
+	// 添加分数阈值选项
+	if req.Score != nil {
+		options = append(options, vector_store.WithScoreThreshold(*req.Score))
+	}
+
 	// 只有在有过滤条件时才添加 filter
 	if filter != "" {
 		options = append(options, vector_store.WithFilter(filter))
