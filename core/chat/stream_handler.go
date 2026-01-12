@@ -176,7 +176,7 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 				documents = append(documents, toolResult.Documents...)
 			}
 
-			// 如果工具返回了最终答案(仅MCP可能返回),处理流式返回
+			// 如果工具返回了最终答案,处理流式返回
 			if toolResult.FinalAnswer != "" {
 				g.Log().Infof(ctx, "Tool returned final answer, using it for stream response")
 				// 注意：对于流式响应，我们不能直接返回最终答案

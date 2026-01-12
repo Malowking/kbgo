@@ -51,7 +51,7 @@ func (c *ControllerV1) ConversationList(ctx context.Context, req *v1.Conversatio
 		conversations = append(conversations, &v1.ConversationItem{
 			ConvID:           item.ConvID,
 			Title:            item.Title,
-			ModelName:        item.ModelName,
+			ModelID:          item.ModelID,
 			ConversationType: item.ConversationType,
 			Status:           item.Status,
 			MessageCount:     item.MessageCount,
@@ -99,7 +99,7 @@ func (c *ControllerV1) ConversationDetail(ctx context.Context, req *v1.Conversat
 		ConvID:           detail.ConvID,
 		UserID:           detail.UserID,
 		Title:            detail.Title,
-		ModelName:        detail.ModelName,
+		ModelID:          detail.ModelID,
 		ConversationType: detail.ConversationType,
 		Status:           detail.Status,
 		MessageCount:     detail.MessageCount,

@@ -1,13 +1,14 @@
 package claude_skills
 
 import (
-	"context"
 	"testing"
+
+	"github.com/gogf/gf/v2/os/gctx"
 )
 
 // TestSkillExecution 测试 Skill 执行
 func TestSkillExecution(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 
 	// 1. 创建 Skill 管理器
 	manager, err := NewSkillManager("/tmp/kbgo_venvs", "/tmp/kbgo_skills")
@@ -99,7 +100,7 @@ if __name__ == "__main__":
 
 // TestMultipleSkills 测试多个 Skills
 func TestMultipleSkills(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 
 	manager, err := NewSkillManager("/tmp/kbgo_venvs", "/tmp/kbgo_skills")
 	if err != nil {

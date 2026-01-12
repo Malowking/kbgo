@@ -44,9 +44,9 @@ func (NL2SQLDataSource) TableName() string {
 // NL2SQLMetric 指标表
 type NL2SQLMetric struct {
 	ID             string         `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	DatasourceID   string         `gorm:"type:char(32);not null;index" json:"datasource_id"` // 无连字符UUID，关联 DataSource
-	MetricID       string         `gorm:"size:100;not null" json:"metric_id"`                // 'metric_gmv'
-	Name           string         `gorm:"size:255;not null" json:"name"`                     // 'GMV'
+	DatasourceID   string         `gorm:"type:char(32);not null;index" json:"datasource_id"`     // 无连字符UUID，关联 DataSource
+	MetricCode     string         `gorm:"column:metric_id;size:100;not null" json:"metric_code"` // 'metric_gmv' - 业务唯一标识符
+	Name           string         `gorm:"size:255;not null" json:"name"`                         // 'GMV'
 	Description    string         `gorm:"type:text" json:"description"`
 	Formula        string         `gorm:"type:text;not null" json:"formula"` // 'SUM(orders.amount)'
 	DefaultFilters datatypes.JSON `gorm:"type:jsonb" json:"default_filters"` // {"orders.status": "paid"}
@@ -75,11 +75,6 @@ type NL2SQLTable struct {
 	UsagePatterns    datatypes.JSON `gorm:"type:jsonb" json:"usage_patterns"` // ['统计订单数量', '统计GMV']
 	CreateTime       *time.Time     `gorm:"column:create_time;autoCreateTime" json:"create_time"`
 	UpdateTime       *time.Time     `gorm:"column:update_time;autoUpdateTime" json:"update_time"`
-}
-
-// TableName specifies table name
-func (NL2SQLTable) TableName() string {
-	return "nl2sql_tables"
 }
 
 // NL2SQLColumn 字段元数据（L3）

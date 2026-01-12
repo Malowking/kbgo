@@ -64,7 +64,6 @@ func (a *LLMAdapter) Call(ctx context.Context, prompt string) (string, error) {
 	}
 
 	content := resp.Choices[0].Message.Content
-	g.Log().Debugf(ctx, "LLM response length: %d chars", len(content))
 
 	return content, nil
 }

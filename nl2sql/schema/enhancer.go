@@ -68,17 +68,17 @@ func (e *SchemaEnhancer) EnhanceSchema(ctx context.Context, req *EnhanceSchemaRe
 	for i := range tables {
 		table := &tables[i]
 		if err := e.enhanceTable(ctx, table); err != nil {
-			g.Log().Warningf(ctx, "增强表 %s 失败: %v", table.TableName, err)
+			g.Log().Warningf(ctx, "增强表 %s 失败: %v", table.DisplayName, err)
 			// 继续处理下一个表
 			continue
 		}
-		g.Log().Infof(ctx, "成功增强表: %s", table.TableName)
+		g.Log().Infof(ctx, "成功增强表: %s", table.DisplayName)
 	}
 
 	// 3. 生成表关系（Relations）
 	g.Log().Infof(ctx, "开始生成表关系 - DatasourceID: %s", req.DatasourceID)
 	if err := e.generateRelations(ctx, req.DatasourceID, tables); err != nil {
-		g.Log().Warningf(ctx, "生成表关系失败（非致命）: %v", err)
+		g.Log().Warningf(ctx, "生成表关系失败: %v", err)
 		// Relations生成失败不影响整体流程
 	} else {
 		g.Log().Infof(ctx, "表关系生成成功")
@@ -87,7 +87,7 @@ func (e *SchemaEnhancer) EnhanceSchema(ctx context.Context, req *EnhanceSchemaRe
 	// 4. 生成业务指标（Metrics）
 	g.Log().Infof(ctx, "开始生成业务指标 - DatasourceID: %s", req.DatasourceID)
 	if err := e.generateMetrics(ctx, req.DatasourceID, tables); err != nil {
-		g.Log().Warningf(ctx, "生成业务指标失败（非致命）: %v", err)
+		g.Log().Warningf(ctx, "生成业务指标失败: %v", err)
 		// Metrics生成失败不影响整体流程
 	} else {
 		g.Log().Infof(ctx, "业务指标生成成功")
@@ -114,7 +114,7 @@ func (e *SchemaEnhancer) enhanceTable(ctx context.Context, table *dbgorm.NL2SQLT
 	}
 
 	// 3. 调用LLM生成表描述
-	tableDesc, err := e.generateTableDescription(ctx, table.TableName(), columnDetails)
+	tableDesc, err := e.generateTableDescription(ctx, table.DisplayName, columnDetails)
 	if err != nil {
 		return fmt.Errorf("生成表描述失败: %w", err)
 	}
@@ -129,8 +129,8 @@ func (e *SchemaEnhancer) enhanceTable(ctx context.Context, table *dbgorm.NL2SQLT
 	// 5. 增强每个列的描述
 	for i := range columns {
 		col := &columns[i]
-		if err := e.enhanceColumn(ctx, table.TableName(), col); err != nil {
-			g.Log().Warningf(ctx, "增强列 %s.%s 失败: %v", table.TableName, col.ColumnName, err)
+		if err := e.enhanceColumn(ctx, table.DisplayName, col); err != nil {
+			g.Log().Warningf(ctx, "增强列 %s.%s 失败: %v", table.DisplayName, col.ColumnName, err)
 			continue
 		}
 	}
@@ -311,7 +311,7 @@ func (e *SchemaEnhancer) generateRelations(ctx context.Context, datasourceID str
 
 	for i := range tables {
 		table := &tables[i]
-		tableMap[table.Name] = table
+		tableMap[table.DisplayName] = table
 
 		var columns []dbgorm.NL2SQLColumn
 		if err := e.db.Where("table_id = ?", table.ID).Find(&columns).Error; err != nil {
@@ -323,7 +323,7 @@ func (e *SchemaEnhancer) generateRelations(ctx context.Context, datasourceID str
 			columnList[j] = fmt.Sprintf("  - %s (%s)", col.ColumnName, col.DataType)
 		}
 
-		tableSchema := fmt.Sprintf("表: %s\n%s", table.Name, strings.Join(columnList, "\n"))
+		tableSchema := fmt.Sprintf("表: %s\n%s", table.DisplayName, strings.Join(columnList, "\n"))
 		tableSchemas = append(tableSchemas, tableSchema)
 	}
 
@@ -442,7 +442,7 @@ func (e *SchemaEnhancer) generateRelations(ctx context.Context, datasourceID str
 
 // MetricSuggestion LLM建议的指标
 type MetricSuggestion struct {
-	MetricID       string   `json:"metric_id"`
+	MetricCode     string   `json:"metric_id"`
 	Name           string   `json:"name"`
 	Description    string   `json:"description"`
 	Formula        string   `json:"formula"`
@@ -485,7 +485,7 @@ func (e *SchemaEnhancer) generateMetrics(ctx context.Context, datasourceID strin
 			columnList[j] = fmt.Sprintf("  - %s", desc)
 		}
 
-		tableDesc := table.Name
+		tableDesc := table.DisplayName
 		if table.Description != "" {
 			tableDesc += fmt.Sprintf(" - %s", table.Description)
 		}
@@ -567,7 +567,7 @@ func (e *SchemaEnhancer) generateMetrics(ctx context.Context, datasourceID strin
 
 		metric := &dbgorm.NL2SQLMetric{
 			DatasourceID:   datasourceID,
-			MetricID:       suggestion.MetricID,
+			MetricCode:     suggestion.MetricCode,
 			Name:           suggestion.Name,
 			Description:    suggestion.Description,
 			Formula:        suggestion.Formula,
@@ -581,7 +581,7 @@ func (e *SchemaEnhancer) generateMetrics(ctx context.Context, datasourceID strin
 		}
 
 		createdCount++
-		g.Log().Infof(ctx, "创建指标: %s (%s)", suggestion.Name, suggestion.MetricID)
+		g.Log().Infof(ctx, "创建指标: %s (%s)", suggestion.Name, suggestion.MetricCode)
 	}
 
 	g.Log().Infof(ctx, "成功生成 %d 个业务指标", createdCount)

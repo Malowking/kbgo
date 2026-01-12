@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gogf/gf/v2/os/gctx"
+
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/agent_tools/mcp/client"
 	"github.com/Malowking/kbgo/core/errors"
@@ -485,7 +487,7 @@ func (tc *MCPToolCaller) callSingleTool(
 func (tc *MCPToolCaller) Close() {
 	for _, service := range tc.services {
 		if err := service.Client.Close(); err != nil {
-			g.Log().Errorf(context.Background(), "关闭 MCP 客户端失败: %v", err)
+			g.Log().Errorf(gctx.New(), "关闭 MCP 客户端失败: %v", err)
 		}
 	}
 }

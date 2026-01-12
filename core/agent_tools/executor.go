@@ -753,10 +753,13 @@ func (e *ToolExecutor) executeWithLLM(
 
 		messages = append(messages, response)
 
+		// 捕获 assistant 消息完成时间
+		assistantMessageTime := time.Now()
+
 		// 保存assistant消息（如果有ToolCalls且convID不为空）
 		if len(response.ToolCalls) > 0 && convID != "" {
 			historyManager := history.NewManager()
-			if err := historyManager.SaveMessageWithMetadata(response, convID, nil); err != nil {
+			if err := historyManager.SaveMessageWithMetadataAsync(response, convID, nil, &assistantMessageTime); err != nil {
 				g.Log().Warningf(ctx, "保存assistant消息失败: %v", err)
 				// 不阻断流程，继续执行
 			} else {
@@ -865,6 +868,9 @@ func (e *ToolExecutor) executeWithLLM(
 			}
 			messages = append(messages, toolMessage)
 
+			// 捕获 tool 消息完成时间
+			toolMessageTime := time.Now()
+
 			// 保存tool消息（如果convID不为空）
 			if convID != "" {
 				historyManager := history.NewManager()
@@ -873,7 +879,7 @@ func (e *ToolExecutor) executeWithLLM(
 					"tool_name": toolName,
 					"tool_args": args,
 				}
-				if err := historyManager.SaveMessageWithMetadata(toolMessage, convID, metadata); err != nil {
+				if err := historyManager.SaveMessageWithMetadataAsync(toolMessage, convID, metadata, &toolMessageTime); err != nil {
 					g.Log().Warningf(ctx, "保存tool消息失败: %v", err)
 					// 不阻断流程，继续执行
 				} else {

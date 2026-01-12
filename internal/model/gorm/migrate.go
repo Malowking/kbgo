@@ -1,7 +1,7 @@
 package gorm
 
 import (
-	"context"
+	"github.com/gogf/gf/v2/os/gctx"
 
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/glog"
@@ -10,7 +10,7 @@ import (
 
 // InitNL2SQLSchema 初始化NL2SQL schema（用于存储CSV/Excel解析的表）
 func InitNL2SQLSchema(db *gorm.DB) error {
-	ctx := context.Background()
+	ctx := gctx.New()
 
 	// 获取数据库类型
 	dbType := g.Cfg().MustGet(ctx, "database.default.type").String()
@@ -35,7 +35,7 @@ func InitNL2SQLSchema(db *gorm.DB) error {
 func Migrate(db *gorm.DB) error {
 	// 1. 初始化 NL2SQL schema/database（用于存储CSV/Excel解析的表）
 	if err := InitNL2SQLSchema(db); err != nil {
-		glog.Warning(context.Background(), "NL2SQL schema initialization failed:", err)
+		glog.Warning(gctx.New(), "NL2SQL schema initialization failed:", err)
 		// 不返回错误，继续迁移其他表
 	}
 
@@ -68,14 +68,14 @@ func Migrate(db *gorm.DB) error {
 		&NL2SQLVectorDoc{},  // 向量索引关联
 	)
 	if err != nil {
-		glog.Error(context.Background(), "数据库迁移失败:", err)
+		glog.Error(gctx.New(), "数据库迁移失败:", err)
 		return err
 	}
 
 	// 创建复合索引（AutoMigrate不会自动创建）
 	createIndexes(db)
 
-	glog.Info(context.Background(), "数据库迁移成功")
+	glog.Info(gctx.New(), "数据库迁移成功")
 	return nil
 }
 
@@ -114,7 +114,7 @@ func createIndexes(db *gorm.DB) {
 
 	for _, sql := range indexes {
 		if err := db.Exec(sql).Error; err != nil {
-			glog.Warning(context.Background(), "创建索引失败:", sql, err)
+			glog.Warning(gctx.New(), "创建索引失败:", sql, err)
 		}
 	}
 }

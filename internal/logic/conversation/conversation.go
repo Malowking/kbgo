@@ -106,6 +106,7 @@ func (m *Manager) GetConversationDetail(ctx context.Context, convID string) (*Co
 			Content:          msg.Content,
 			ReasoningContent: msg.ReasoningContent,
 			CreateTime:       createTime,
+			Extra:            msg.Extra, // 包含 tool_results 等信息
 		})
 	}
 
@@ -113,7 +114,7 @@ func (m *Manager) GetConversationDetail(ctx context.Context, convID string) (*Co
 		ConvID:           conv.ConvID,
 		UserID:           conv.UserID,
 		Title:            conv.Title,
-		ModelName:        conv.ModelName,
+		ModelID:          conv.ModelID,
 		ConversationType: conv.ConversationType,
 		Status:           conv.Status,
 		MessageCount:     len(messages),
@@ -321,7 +322,7 @@ func (m *Manager) ExportConversation(ctx context.Context, convID, format string)
 		var md strings.Builder
 		md.WriteString(fmt.Sprintf("# %s\n\n", detail.Title))
 		md.WriteString(fmt.Sprintf("- **会话ID**: %s\n", detail.ConvID))
-		md.WriteString(fmt.Sprintf("- **模型**: %s\n", detail.ModelName))
+		md.WriteString(fmt.Sprintf("- **模型**: %s\n", detail.ModelID))
 		md.WriteString(fmt.Sprintf("- **创建时间**: %s\n", detail.CreateTime))
 		md.WriteString(fmt.Sprintf("- **消息数**: %d\n\n", detail.MessageCount))
 
@@ -340,7 +341,7 @@ func (m *Manager) ExportConversation(ctx context.Context, convID, format string)
 		var txt strings.Builder
 		txt.WriteString(fmt.Sprintf("会话: %s\n", detail.Title))
 		txt.WriteString(fmt.Sprintf("会话ID: %s\n", detail.ConvID))
-		txt.WriteString(fmt.Sprintf("模型: %s\n", detail.ModelName))
+		txt.WriteString(fmt.Sprintf("模型: %s\n", detail.ModelID))
 		txt.WriteString(fmt.Sprintf("创建时间: %s\n", detail.CreateTime))
 		txt.WriteString(fmt.Sprintf("消息数: %d\n\n", detail.MessageCount))
 		txt.WriteString("========================================\n\n")
@@ -371,14 +372,17 @@ func (m *Manager) CreateAgentConversation(ctx context.Context, convID, presetID,
 		title = preset.PresetName
 	}
 
-	// 构建元数据
-	metadata := map[string]interface{}{
-		"preset_id":   presetID,
-		"preset_name": preset.PresetName,
-	}
-	metadataJSON, err := json.Marshal(metadata)
-	if err != nil {
-		return errors.Newf(errors.ErrInternalError, "序列化元数据失败: %v", err)
+	// 从 preset.Config 中解析 model_id
+	var config map[string]interface{}
+	modelID := ""
+	if len(preset.Config) > 0 {
+		if err := json.Unmarshal(preset.Config, &config); err != nil {
+			g.Log().Warningf(ctx, "解析Agent配置失败: %v", err)
+		} else {
+			if mid, ok := config["model_id"].(string); ok {
+				modelID = mid
+			}
+		}
 	}
 
 	// 创建会话记录
@@ -387,10 +391,10 @@ func (m *Manager) CreateAgentConversation(ctx context.Context, convID, presetID,
 		ConvID:           convID,
 		UserID:           userID,
 		Title:            title,
-		ModelName:        "", // Agent会话不直接关联模型
+		ModelID:          modelID, // 存储Agent绑定的模型ID
 		ConversationType: "agent",
 		Status:           "active",
-		Metadata:         metadataJSON,
+		AgentPresetID:    presetID, // 使用 agent_preset_id 列存储预设ID
 		CreateTime:       &now,
 		UpdateTime:       &now,
 	}
@@ -437,7 +441,7 @@ func (m *Manager) toConversationItem(ctx context.Context, conv *gormModel.Conver
 	return &ConversationItem{
 		ConvID:           conv.ConvID,
 		Title:            conv.Title,
-		ModelName:        conv.ModelName,
+		ModelID:          conv.ModelID,
 		ConversationType: conv.ConversationType,
 		Status:           conv.Status,
 		MessageCount:     messageCount,
@@ -454,7 +458,7 @@ func (m *Manager) toConversationItem(ctx context.Context, conv *gormModel.Conver
 type ConversationItem struct {
 	ConvID           string         `json:"conv_id"`
 	Title            string         `json:"title"`
-	ModelName        string         `json:"model_name"`
+	ModelID          string         `json:"model_id"`
 	ConversationType string         `json:"conversation_type"`
 	Status           string         `json:"status"`
 	MessageCount     int            `json:"message_count"`
@@ -471,7 +475,7 @@ type ConversationDetail struct {
 	ConvID           string         `json:"conv_id"`
 	UserID           string         `json:"user_id"`
 	Title            string         `json:"title"`
-	ModelName        string         `json:"model_name"`
+	ModelID          string         `json:"model_id"`
 	ConversationType string         `json:"conversation_type"`
 	Status           string         `json:"status"`
 	MessageCount     int            `json:"message_count"`
@@ -484,10 +488,11 @@ type ConversationDetail struct {
 
 // MessageItem 消息项
 type MessageItem struct {
-	Role             string `json:"role"`
-	Content          string `json:"content"`
-	ReasoningContent string `json:"reasoning_content,omitempty"`
-	CreateTime       string `json:"create_time"`
-	TokensUsed       int    `json:"tokens_used,omitempty"`
-	LatencyMs        int    `json:"latency_ms,omitempty"`
+	Role             string         `json:"role"`
+	Content          string         `json:"content"`
+	ReasoningContent string         `json:"reasoning_content,omitempty"`
+	CreateTime       string         `json:"create_time"`
+	TokensUsed       int            `json:"tokens_used,omitempty"`
+	LatencyMs        int            `json:"latency_ms,omitempty"`
+	Extra            map[string]any `json:"extra,omitempty"` // 包含 tool_results 等信息
 }

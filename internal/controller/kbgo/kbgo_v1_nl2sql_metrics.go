@@ -22,10 +22,10 @@ func (c *ControllerV1) NL2SQLCreateMetric(ctx context.Context, req *v1.NL2SQLCre
 		return nil, fmt.Errorf("数据源不存在")
 	}
 
-	// 2. 检查 MetricID 是否已存在
+	// 2. 检查 MetricCode 是否已存在
 	var existingMetric dbgorm.NL2SQLMetric
-	if err := db.Where("datasource_id = ? AND metric_id = ?", req.DatasourceID, req.MetricID).First(&existingMetric).Error; err == nil {
-		return nil, fmt.Errorf("指标ID已存在: %s", req.MetricID)
+	if err := db.Where("datasource_id = ? AND metric_id = ?", req.DatasourceID, req.MetricCode).First(&existingMetric).Error; err == nil {
+		return nil, fmt.Errorf("指标代码已存在: %s", req.MetricCode)
 	}
 
 	// 3. 序列化默认过滤条件
@@ -39,7 +39,7 @@ func (c *ControllerV1) NL2SQLCreateMetric(ctx context.Context, req *v1.NL2SQLCre
 	// 4. 创建 Metric 记录
 	metric := &dbgorm.NL2SQLMetric{
 		DatasourceID:   req.DatasourceID,
-		MetricID:       req.MetricID,
+		MetricCode:     req.MetricCode,
 		Name:           req.Name,
 		Description:    req.Description,
 		Formula:        req.Formula,
@@ -51,7 +51,7 @@ func (c *ControllerV1) NL2SQLCreateMetric(ctx context.Context, req *v1.NL2SQLCre
 		return nil, fmt.Errorf("创建指标失败: %w", err)
 	}
 
-	g.Log().Infof(ctx, "Metric created: %s (%s)", metric.Name, metric.MetricID)
+	g.Log().Infof(ctx, "Metric created: %s (%s)", metric.Name, metric.MetricCode)
 
 	return &v1.NL2SQLCreateMetricRes{
 		MetricID: metric.ID,
@@ -78,7 +78,7 @@ func (c *ControllerV1) NL2SQLListMetrics(ctx context.Context, req *v1.NL2SQLList
 
 		metricInfos = append(metricInfos, v1.NL2SQLMetricInfo{
 			ID:             m.ID,
-			MetricID:       m.MetricID,
+			MetricCode:     m.MetricCode,
 			Name:           m.Name,
 			Description:    m.Description,
 			Formula:        m.Formula,
@@ -111,7 +111,7 @@ func (c *ControllerV1) NL2SQLDeleteMetric(ctx context.Context, req *v1.NL2SQLDel
 		return nil, fmt.Errorf("删除指标失败: %w", err)
 	}
 
-	g.Log().Infof(ctx, "Metric deleted: %s (%s)", metric.Name, metric.MetricID)
+	g.Log().Infof(ctx, "Metric deleted: %s (%s)", metric.Name, metric.MetricCode)
 
 	return &v1.NL2SQLDeleteMetricRes{
 		Success: true,

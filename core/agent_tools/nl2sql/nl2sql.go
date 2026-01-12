@@ -9,9 +9,9 @@ import (
 	"github.com/Malowking/kbgo/core/agent_tools/file_export"
 	"github.com/Malowking/kbgo/core/cache"
 	"github.com/Malowking/kbgo/core/model"
+	"github.com/Malowking/kbgo/core/vector_store"
 	"github.com/Malowking/kbgo/internal/dao"
 	dbgorm "github.com/Malowking/kbgo/internal/model/gorm"
-	"github.com/Malowking/kbgo/internal/service"
 	"github.com/Malowking/kbgo/nl2sql/adapter"
 	nl2sqlservice "github.com/Malowking/kbgo/nl2sql/service"
 	"github.com/Malowking/kbgo/pkg/schema"
@@ -150,7 +150,7 @@ func (t *NL2SQLTool) DetectAndExecute(ctx context.Context, question string, data
 		if err != nil {
 			g.Log().Warningf(ctx, "NL2SQL Tool - Failed to get embedding model config: %v, will proceed without vector search", err)
 		} else {
-			vectorStore, err := service.GetVectorStore()
+			vectorStore, err := vector_store.GetVectorStore()
 			if err != nil {
 				g.Log().Warningf(ctx, "NL2SQL Tool - Failed to get vector store: %v, will proceed without vector search", err)
 			} else {
@@ -450,10 +450,6 @@ func (t *NL2SQLTool) AnalyzeUserIntent(ctx context.Context, question string, llm
 	if intent.DataLimit > 1000 {
 		intent.DataLimit = 1000
 	}
-
-	g.Log().Infof(ctx, "Intent analyzed: type=%s, need_explain=%v, data_limit=%d, focus=%v",
-		intent.IntentType, intent.NeedExplain, intent.DataLimit, intent.AnalysisFocus)
-
 	return &intent, nil
 }
 

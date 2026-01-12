@@ -3,12 +3,13 @@ package index
 import (
 	"fmt"
 
+	"github.com/gogf/gf/v2/os/gctx"
+
 	"github.com/Malowking/kbgo/core"
 	"github.com/Malowking/kbgo/core/config"
 	"github.com/Malowking/kbgo/core/indexer"
-	"github.com/Malowking/kbgo/internal/service"
+	"github.com/Malowking/kbgo/core/vector_store"
 	"github.com/gogf/gf/v2/frame/g"
-	"github.com/gogf/gf/v2/os/gctx"
 )
 
 var (
@@ -28,7 +29,7 @@ func InitDocumentIndexer() {
 	// 距离度量类型
 	MetricType := g.Cfg().MustGet(ctx, fmt.Sprintf("%s.metricType", vectorDBType), "COSINE").String()
 	// 初始化全局 IndexerConfig
-	vectorStore, err := service.GetVectorStore()
+	vectorStore, err := vector_store.GetVectorStore()
 	if err != nil {
 		g.Log().Fatalf(ctx, "Failed to get vector store: %v", err)
 		return

@@ -264,7 +264,7 @@ type NL2SQLAddTableRes struct {
 type NL2SQLCreateMetricReq struct {
 	g.Meta         `path:"/v1/nl2sql/metrics" method:"post" tags:"nl2sql" summary:"创建预定义指标"`
 	DatasourceID   string                 `json:"datasource_id" v:"required#数据源ID不能为空"`
-	MetricID       string                 `json:"metric_id" v:"required#指标ID不能为空"`
+	MetricCode     string                 `json:"metric_code" v:"required#指标代码不能为空"`
 	Name           string                 `json:"name" v:"required#指标名称不能为空"`
 	Description    string                 `json:"description"`
 	Formula        string                 `json:"formula" v:"required#计算公式不能为空"`
@@ -292,7 +292,7 @@ type NL2SQLListMetricsRes struct {
 // NL2SQLMetricInfo 指标详细信息
 type NL2SQLMetricInfo struct {
 	ID             string                 `json:"id"`
-	MetricID       string                 `json:"metric_id"`
+	MetricCode     string                 `json:"metric_code"`
 	Name           string                 `json:"name"`
 	Description    string                 `json:"description"`
 	Formula        string                 `json:"formula"`

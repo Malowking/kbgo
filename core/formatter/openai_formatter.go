@@ -1,11 +1,12 @@
 package formatter
 
 import (
-	"context"
 	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/gogf/gf/v2/os/gctx"
 
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
@@ -28,7 +29,7 @@ func (f *OpenAIFormatter) FormatMessages(messages []*schema.Message) ([]openai.C
 	for _, msg := range messages {
 		openaiMsg, err := f.formatSingleMessage(msg)
 		if err != nil {
-			g.Log().Errorf(context.Background(), "Failed to convert message: %v", err)
+			g.Log().Errorf(gctx.New(), "Failed to convert message: %v", err)
 			continue
 		}
 		result = append(result, openaiMsg)
@@ -140,7 +141,7 @@ func (f *OpenAIFormatter) buildImageURL(image *schema.MessageInputImage) string 
 func (f *OpenAIFormatter) filePathToDataURI(filePath, mimeType string) string {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		g.Log().Warningf(context.Background(), "Failed to read image file %s: %v, skipping", filePath, err)
+		g.Log().Warningf(gctx.New(), "Failed to read image file %s: %v, skipping", filePath, err)
 		return ""
 	}
 

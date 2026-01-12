@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gogf/gf/v2/os/gctx"
+
 	"github.com/Malowking/kbgo/core/errors"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
@@ -523,7 +525,7 @@ func (c *MCPClient) readSSEResponse(reader io.Reader) (*MCPResponse, error) {
 			if len(messageData) > 0 {
 				var mcpResp MCPResponse
 				if err := json.Unmarshal(messageData, &mcpResp); err != nil {
-					g.Log().Warningf(context.Background(), "Failed to parse SSE message: %v, data: %s", err, string(messageData))
+					g.Log().Warningf(gctx.New(), "Failed to parse SSE message: %v, data: %s", err, string(messageData))
 					messageData = nil
 					continue
 				}

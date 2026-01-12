@@ -10,6 +10,7 @@ import (
 	"github.com/Malowking/kbgo/core/cache"
 	"github.com/Malowking/kbgo/core/errors"
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/gctx"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -89,7 +90,7 @@ func RedisPipe[T any](ctx context.Context, streamID string) (*RedisStreamReader[
 	go func() {
 		time.Sleep(streamTTL)
 		if !writer.closed {
-			rdb.Del(context.Background(), streamKey, statusKey)
+			rdb.Del(gctx.New(), streamKey, statusKey)
 		}
 	}()
 
@@ -104,7 +105,7 @@ func SetRedisStreamConfig(ttl time.Duration, maxLen int64) {
 	if maxLen > 0 {
 		maxStreamLength = maxLen
 	}
-	g.Log().Infof(context.Background(), "Redis Stream config updated: TTL=%v, MaxLength=%d", streamTTL, maxStreamLength)
+	g.Log().Infof(gctx.New(), "Redis Stream config updated: TTL=%v, MaxLength=%d", streamTTL, maxStreamLength)
 }
 
 // Recv 从 Redis Stream 读取下一个元素
@@ -267,7 +268,7 @@ func (w *RedisStreamWriter[T]) Close() error {
 	if !w.closed {
 		w.closed = true
 		// 设置流状态为已完成
-		w.rdb.Set(context.Background(), w.statusKey, streamStatusCompleted, streamTTL)
+		w.rdb.Set(gctx.New(), w.statusKey, streamStatusCompleted, streamTTL)
 	}
 	return nil
 }
@@ -279,7 +280,7 @@ func IsRedisAvailable() bool {
 		return false
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(gctx.New(), 1*time.Second)
 	defer cancel()
 
 	return rdb.Ping(ctx).Err() == nil

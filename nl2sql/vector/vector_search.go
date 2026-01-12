@@ -6,7 +6,6 @@ import (
 
 	"github.com/Malowking/kbgo/core/vector_store"
 	dbgorm "github.com/Malowking/kbgo/internal/model/gorm"
-	"github.com/Malowking/kbgo/internal/service"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"gorm.io/gorm"
@@ -20,7 +19,7 @@ type NL2SQLVectorSearcher struct {
 
 // NewNL2SQLVectorSearcher 创建NL2SQL向量搜索器
 func NewNL2SQLVectorSearcher(db *gorm.DB) (*NL2SQLVectorSearcher, error) {
-	vectorStore, err := service.GetVectorStore()
+	vectorStore, err := vector_store.GetVectorStore()
 	if err != nil {
 		return nil, fmt.Errorf("获取向量存储失败: %w", err)
 	}
@@ -65,7 +64,7 @@ func (s *NL2SQLVectorSearcher) SearchSchema(ctx context.Context, req *SearchSche
 		req.MinScore = 0.3
 	}
 
-	// 从数据库查询数据源信息，获取vector_database字段
+	// 从数据库查询数据源信息
 	var ds dbgorm.NL2SQLDataSource
 	if err := s.db.First(&ds, "id = ?", req.SchemaID).Error; err != nil {
 		return nil, fmt.Errorf("数据源不存在: %w", err)
@@ -76,8 +75,20 @@ func (s *NL2SQLVectorSearcher) SearchSchema(ctx context.Context, req *SearchSche
 		return nil, fmt.Errorf("数据源的vector_database字段为空")
 	}
 
-	g.Log().Infof(ctx, "NL2SQL向量搜索 - Collection: %s, Query: %s, TopK: %d, MinScore: %.2f",
-		collectionName, req.Query, req.TopK, req.MinScore)
+	// 获取embedding模型ID
+	embeddingModelID := ds.EmbeddingModelID
+	if embeddingModelID == "" {
+		return nil, fmt.Errorf("数据源的embedding_model_id字段为空")
+	}
+
+	// 查询embedding模型配置
+	var modelEntity dbgorm.AIModel
+	if err := s.db.First(&modelEntity, "model_id = ?", embeddingModelID).Error; err != nil {
+		return nil, fmt.Errorf("获取embedding模型配置失败: %w", err)
+	}
+
+	g.Log().Infof(ctx, "NL2SQL向量搜索 - Collection: %s, EmbeddingModel: %s, Query: %s, TopK: %d, MinScore: %.2f",
+		collectionName, embeddingModelID, req.Query, req.TopK, req.MinScore)
 
 	// 检查collection是否存在
 	exists, err := s.vectorStore.CollectionExists(ctx, collectionName)
@@ -89,15 +100,19 @@ func (s *NL2SQLVectorSearcher) SearchSchema(ctx context.Context, req *SearchSche
 		return &SearchSchemaResponse{Results: []*SchemaSearchResult{}}, nil
 	}
 
-	// 执行向量搜索
-	docs, err := s.vectorStore.VectorSearchOnly(
+	// 执行向量搜索（使用NL2SQL专用方法）
+	docs, err := s.vectorStore.VectorSearchOnlyNL2SQL(
 		ctx,
 		&nl2sqlRetrieverConfig{
-			topK:  req.TopK,
-			score: req.MinScore,
+			topK:           req.TopK,
+			score:          req.MinScore,
+			apiKey:         modelEntity.APIKey,
+			baseURL:        modelEntity.BaseURL,
+			embeddingModel: modelEntity.ModelID,
 		},
 		req.Query,
-		req.SchemaID, // 使用SchemaID作为knowledge_id进行过滤
+		collectionName,
+		req.SchemaID, // datasourceID
 		req.TopK,
 		req.MinScore,
 	)
@@ -164,8 +179,11 @@ func (s *NL2SQLVectorSearcher) SearchSchemaSimple(ctx context.Context, schemaID,
 
 // nl2sqlRetrieverConfig 实现GeneralRetrieverConfig接口
 type nl2sqlRetrieverConfig struct {
-	topK  int
-	score float64
+	topK           int
+	score          float64
+	apiKey         string
+	baseURL        string
+	embeddingModel string
 }
 
 func (c *nl2sqlRetrieverConfig) GetTopK() int {
@@ -177,7 +195,7 @@ func (c *nl2sqlRetrieverConfig) GetScore() float64 {
 }
 
 func (c *nl2sqlRetrieverConfig) GetEnableRewrite() bool {
-	return false // NL2SQL不需要query重写
+	return false
 }
 
 func (c *nl2sqlRetrieverConfig) GetRewriteAttempts() int {
@@ -186,6 +204,18 @@ func (c *nl2sqlRetrieverConfig) GetRewriteAttempts() int {
 
 func (c *nl2sqlRetrieverConfig) GetRetrieveMode() string {
 	return "simple" // NL2SQL使用简单向量检索，不需要Rerank
+}
+
+func (c *nl2sqlRetrieverConfig) GetAPIKey() string {
+	return c.apiKey
+}
+
+func (c *nl2sqlRetrieverConfig) GetBaseURL() string {
+	return c.baseURL
+}
+
+func (c *nl2sqlRetrieverConfig) GetEmbeddingModel() string {
+	return c.embeddingModel
 }
 
 // ConvertDocsToVectorResults 将schema.Document转换为VectorSearchResult

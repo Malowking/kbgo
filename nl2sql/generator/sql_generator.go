@@ -54,7 +54,7 @@ type ColumnContext struct {
 
 // MetricContext 指标上下文
 type MetricContext struct {
-	MetricID    string `json:"metric_id"`
+	MetricCode  string `json:"metric_code"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Formula     string `json:"formula"`

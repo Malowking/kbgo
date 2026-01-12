@@ -13,8 +13,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/gogf/gf/v2/os/gctx"
+
 	"github.com/Malowking/kbgo/core/errors"
-	internalCache "github.com/Malowking/kbgo/internal/cache"
 	"github.com/Malowking/kbgo/internal/dao"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/Malowking/kbgo/pkg/schema"
@@ -55,7 +56,7 @@ func (h *Manager) SaveMessage(message *schema.Message, convID string) error {
 	return h.SaveMessageWithMetadata(message, convID, nil)
 }
 
-// SaveMessageWithMetrics 保存带指标的消息（异步）
+// SaveMessageWithMetrics 保存带指标的消息
 func (h *Manager) SaveMessageWithMetrics(message *MessageWithMetrics, convID string) error {
 	// 使用全局异步保存器
 	asyncSaver := GetGlobalAsyncSaver()
@@ -66,62 +67,53 @@ func (h *Manager) SaveMessageWithMetrics(message *MessageWithMetrics, convID str
 	return nil
 }
 
-// SaveMessageWithMetricsSync 保存带指标的消息（同步）
-func (h *Manager) SaveMessageWithMetricsSync(message *MessageWithMetrics, convID string) error {
-	// 确保对话存在
-	if err := h.ensureConversationExists(convID); err != nil {
-		return err
-	}
-
-	now := time.Now()
-
-	// 处理工具调用
-	var toolCallsJSON gormModel.JSON
-	if message.ToolCalls != nil {
-		data, err := json.Marshal(message.ToolCalls)
-		if err != nil {
-			return errors.Newf(errors.ErrInternalError, "failed to marshal tool calls: %v", err)
-		}
-		toolCallsJSON = gormModel.JSON(data)
-	}
-
-	// 创建消息记录
-	msg := &gormModel.Message{
-		MsgID:      generateMessageID(),
-		ConvID:     convID,
-		Role:       string(message.Role),
-		CreateTime: &now,
-		TokensUsed: message.TokensUsed,
-		LatencyMs:  message.LatencyMs,
-		TraceID:    message.TraceID,
-		ToolCalls:  toolCallsJSON,
-	}
-
-	// 处理内容块
-	var contents []*gormModel.MessageContent
-	content := &gormModel.MessageContent{
-		ContentType: "text",
-		TextContent: message.Content,
-		SortOrder:   0,
-		CreateTime:  &now,
-	}
-	contents = append(contents, content)
-
-	return dao.Message.CreateWithContents(nil, msg, contents)
-}
-
 // SaveMessageWithMetadata 保存带元数据的消息
 func (h *Manager) SaveMessageWithMetadata(message *schema.Message, convID string, metadata map[string]interface{}) error {
+	return h.SaveMessageWithMetadataAsync(message, convID, metadata, nil)
+}
+
+// SaveMessageWithMetadataAsync 异步保存带元数据的消息，支持自定义时间戳
+func (h *Manager) SaveMessageWithMetadataAsync(message *schema.Message, convID string, metadata map[string]interface{}, createTime *time.Time) error {
+	// 使用全局异步保存器
+	asyncSaver := GetGlobalAsyncSaver()
+
+	// 如果没有提供时间戳，使用当前时间
+	if createTime == nil {
+		now := time.Now()
+		createTime = &now
+	}
+
+	// 构建保存任务
+	task := &SaveMetadataTask{
+		Message:    message,
+		ConvID:     convID,
+		Metadata:   metadata,
+		CreateTime: createTime,
+		Result:     nil, // 不等待结果
+	}
+
+	// 异步保存
+	asyncSaver.SaveMessageWithMetadataAsync(task)
+
+	return nil
+}
+
+// SaveMessageWithMetadataSync 同步保存带元数据的消息（内部使用）
+func (h *Manager) SaveMessageWithMetadataSync(message *schema.Message, convID string, metadata map[string]interface{}, createTime *time.Time) error {
 	// 确保对话存在
 	if err := h.ensureConversationExists(convID); err != nil {
 		return err
 	}
 
-	now := time.Now()
+	// 如果没有提供时间戳，使用当前时间
+	if createTime == nil {
+		now := time.Now()
+		createTime = &now
+	}
 
 	// 如果是 tool role 的消息，将其附加到对应的 assistant 消息中
 	if message.Role == schema.Tool && message.ToolCallID != "" {
-		return h.attachToolResultToAssistantMessage(convID, message, metadata, &now)
+		return h.attachToolResultToAssistantMessage(convID, message, metadata, createTime)
 	}
 
 	// 处理元数据
@@ -149,10 +141,9 @@ func (h *Manager) SaveMessageWithMetadata(message *schema.Message, convID string
 		MsgID:      generateMessageID(),
 		ConvID:     convID,
 		Role:       string(message.Role),
-		CreateTime: &now,
+		CreateTime: createTime,
 		Metadata:   metadataJSON,
 		ToolCalls:  toolCallsJSON,
-		ToolCallID: message.ToolCallID,
 	}
 
 	// 处理内容块 - 支持多模态内容
@@ -163,7 +154,7 @@ func (h *Manager) SaveMessageWithMetadata(message *schema.Message, convID string
 		for i, part := range message.UserInputMultiContent {
 			content := &gormModel.MessageContent{
 				SortOrder:  i,
-				CreateTime: &now,
+				CreateTime: createTime,
 			}
 
 			switch part.Type {
@@ -201,7 +192,7 @@ func (h *Manager) SaveMessageWithMetadata(message *schema.Message, convID string
 			ContentType: "text",
 			TextContent: message.Content,
 			SortOrder:   0,
-			CreateTime:  &now,
+			CreateTime:  createTime,
 		}
 		contents = append(contents, content)
 	}
@@ -212,26 +203,12 @@ func (h *Manager) SaveMessageWithMetadata(message *schema.Message, convID string
 			ContentType: "text",
 			TextContent: "",
 			SortOrder:   0,
-			CreateTime:  &now,
+			CreateTime:  createTime,
 		}
 		contents = append(contents, content)
 	}
 
-	// 对于用户消息，使用同步保存确保消息立即写入数据库
-	// 对于其他消息（assistant、system等），可以使用缓存层异步保存
-	if message.Role == schema.User {
-		// 用户消息同步保存，确保在 LLM 调用前已写入数据库
-		return dao.Message.CreateWithContents(nil, msg, contents)
-	}
-
-	// 使用缓存层保存消息（异步）
-	messageCache := internalCache.GetMessageCache()
-	if messageCache != nil {
-		// 使用缓存层（异步刷盘到数据库）
-		return messageCache.SaveMessage(context.Background(), msg, contents)
-	}
-
-	// 缓存层不可用，直接写数据库
+	// 直接写数据库
 	return dao.Message.CreateWithContents(nil, msg, contents)
 }
 
@@ -245,7 +222,7 @@ func (h *Manager) attachToolResultToAssistantMessage(convID string, toolMessage 
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			g.Log().Warningf(context.Background(), "未找到对应的 assistant 消息，tool_call_id: %s", toolMessage.ToolCallID)
+			g.Log().Warningf(gctx.New(), "未找到对应的 assistant 消息，tool_call_id: %s", toolMessage.ToolCallID)
 			// 降级：仍然保存为独立消息（兼容旧逻辑）
 			return h.saveToolMessageAsStandalone(toolMessage, convID, metadata, now)
 		}
@@ -285,7 +262,7 @@ func (h *Manager) attachToolResultToAssistantMessage(convID string, toolMessage 
 
 	toolContent := &gormModel.MessageContent{
 		MsgID:       assistantMsg.MsgID,
-		ContentType: "tool_result",
+		ContentType: "tool",
 		TextContent: toolMessage.Content,
 		Metadata:    gormModel.JSON(metadataJSON),
 		SortOrder:   maxSortOrder + 1,
@@ -294,10 +271,10 @@ func (h *Manager) attachToolResultToAssistantMessage(convID string, toolMessage 
 
 	// 4. 保存 tool_result 到数据库
 	if err := h.db.Create(toolContent).Error; err != nil {
-		return errors.Newf(errors.ErrDatabaseInsert, "保存 tool_result 失败: %v", err)
+		return errors.Newf(errors.ErrDatabaseInsert, "保存 tool 失败: %v", err)
 	}
 
-	g.Log().Infof(context.Background(), "成功将 tool_result 附加到 assistant 消息: msg_id=%s, tool_call_id=%s",
+	g.Log().Infof(gctx.New(), "成功将 tool 附加到 assistant 消息: msg_id=%s, tool_call_id=%s",
 		assistantMsg.MsgID, toolMessage.ToolCallID)
 
 	return nil
@@ -305,7 +282,7 @@ func (h *Manager) attachToolResultToAssistantMessage(convID string, toolMessage 
 
 // saveToolMessageAsStandalone 将 tool 消息保存为独立消息（降级方案）
 func (h *Manager) saveToolMessageAsStandalone(message *schema.Message, convID string, metadata map[string]interface{}, now *time.Time) error {
-	g.Log().Warningf(context.Background(), "降级：将 tool 消息保存为独立消息")
+	g.Log().Warningf(gctx.New(), "降级：将 tool 消息保存为独立消息")
 
 	// 处理元数据
 	var metadataJSON gormModel.JSON
@@ -324,7 +301,6 @@ func (h *Manager) saveToolMessageAsStandalone(message *schema.Message, convID st
 		Role:       string(message.Role),
 		CreateTime: now,
 		Metadata:   metadataJSON,
-		ToolCallID: message.ToolCallID,
 	}
 
 	// 创建内容块
@@ -389,9 +365,8 @@ func (h *Manager) GetHistory(convID string, limit int) ([]*schema.Message, error
 		msgContents := contentMap[msg.MsgID]
 
 		schemaMsg := &schema.Message{
-			Role:       schema.RoleType(msg.Role),
-			Extra:      make(map[string]any),
-			ToolCallID: msg.ToolCallID,
+			Role:  schema.RoleType(msg.Role),
+			Extra: make(map[string]any),
 		}
 
 		// 如果消息有 tool_calls，也需要加载
@@ -423,6 +398,13 @@ func (h *Manager) GetHistory(convID string, limit int) ([]*schema.Message, error
 						toolResult["tool_call_id"] = metadata["tool_call_id"]
 						toolResult["tool_name"] = metadata["tool_name"]
 						toolResult["tool_args"] = metadata["tool_args"]
+
+						// 如果是第一个 tool_result，设置 ToolCallID 到消息中（用于 LLM 交互）
+						if schemaMsg.ToolCallID == "" {
+							if toolCallID, ok := metadata["tool_call_id"].(string); ok {
+								schemaMsg.ToolCallID = toolCallID
+							}
+						}
 					}
 				}
 				toolResults = append(toolResults, toolResult)
@@ -453,7 +435,7 @@ func (h *Manager) GetHistory(convID string, limit int) ([]*schema.Message, error
 					// 处理图片：检查文件是否存在，读取并转换为base64
 					imagePart, err := h.processImageContent(content.MediaURL)
 					if err != nil {
-						g.Log().Errorf(context.Background(), "Failed to process image %s: %v", content.MediaURL, err)
+						g.Log().Errorf(gctx.New(), "Failed to process image %s: %v", content.MediaURL, err)
 						// 图片处理失败，跳过该图片
 						continue
 					}
@@ -463,7 +445,7 @@ func (h *Manager) GetHistory(convID string, limit int) ([]*schema.Message, error
 					// 处理音频：检查文件是否存在，读取并转换为base64
 					audioPart, err := h.processAudioContent(content.MediaURL)
 					if err != nil {
-						g.Log().Errorf(context.Background(), "Failed to process audio %s: %v", content.MediaURL, err)
+						g.Log().Errorf(gctx.New(), "Failed to process audio %s: %v", content.MediaURL, err)
 						// 音频处理失败，跳过该音频
 						continue
 					}
@@ -473,7 +455,7 @@ func (h *Manager) GetHistory(convID string, limit int) ([]*schema.Message, error
 					// 处理视频：检查文件是否存在，读取并转换为base64
 					videoPart, err := h.processVideoContent(content.MediaURL)
 					if err != nil {
-						g.Log().Errorf(context.Background(), "Failed to process video %s: %v", content.MediaURL, err)
+						g.Log().Errorf(gctx.New(), "Failed to process video %s: %v", content.MediaURL, err)
 						// 视频处理失败，跳过该视频
 						continue
 					}
@@ -529,12 +511,12 @@ func (h *Manager) processImageContent(mediaURL string) (schema.MessageInputPart,
 			Text: fmt.Sprintf("[图片不可用: %s]", filepath.Base(mediaURL)),
 		}, nil
 	}
-	g.Log().Debugf(context.Background(), "[processImageContent] File found, size=%d bytes", fileInfo.Size())
+	g.Log().Debugf(gctx.New(), "[processImageContent] File found, size=%d bytes", fileInfo.Size())
 
 	// 读取文件（使用处理后的绝对路径）
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		g.Log().Errorf(context.Background(), "[processImageContent] Failed to read file: %v", err)
+		g.Log().Errorf(gctx.New(), "[processImageContent] Failed to read file: %v", err)
 		return schema.MessageInputPart{}, errors.Newf(errors.ErrFileReadFailed, "failed to read image file: %v", err)
 	}
 
@@ -745,14 +727,24 @@ func (h *Manager) BuildLLMMessages(history []MessageWithContents) []map[string]i
 	var llmMsgs []map[string]interface{}
 
 	for _, m := range history {
-		// 处理 tool 消息
 		if m.Role == "tool" {
-			// tool 消息：content 是 JSON 字符串，需解析为文本描述或保留原样
 			content := fmt.Sprintf("[Tool Result: %s]", m.Contents[0].TextContent)
+
+			// 从 message_contents 的 metadata 中提取 tool_call_id
+			var toolCallID string
+			if len(m.Contents) > 0 && len(m.Contents[0].Metadata) > 0 {
+				var metadata map[string]interface{}
+				if err := json.Unmarshal(m.Contents[0].Metadata, &metadata); err == nil {
+					if tcID, ok := metadata["id"].(string); ok {
+						toolCallID = tcID
+					}
+				}
+			}
+
 			llmMsgs = append(llmMsgs, map[string]interface{}{
 				"role":         "tool",
 				"content":      content,
-				"tool_call_id": m.ToolCallID,
+				"tool_call_id": toolCallID,
 			})
 			continue
 		}
@@ -766,8 +758,6 @@ func (h *Manager) BuildLLMMessages(history []MessageWithContents) []map[string]i
 			case "image_url", "audio_url", "file_url":
 				// 当前仅 LLM，无法理解媒体，转为文本描述
 				parts = append(parts, fmt.Sprintf("[Uploaded file: %s]", extractFileName(c.MediaURL)))
-			case "file_binary_ref":
-				parts = append(parts, fmt.Sprintf("[File uploaded: %s]", c.StorageKey))
 			}
 		}
 		content := strings.Join(parts, "\n")
@@ -847,7 +837,7 @@ func (h *Manager) ensureConversationExists(convID string) error {
 			ConvID:           convID,
 			UserID:           "default_user", // 默认用户ID，实际使用时应从上下文获取
 			Title:            "New Conversation",
-			ModelName:        "default_model", // 默认模型名
+			ModelID:          "default_model", // 默认模型名
 			ConversationType: "text",
 			Status:           "active",
 			CreateTime:       &now,
@@ -893,14 +883,24 @@ type SaveTask struct {
 	Result  chan error
 }
 
+// SaveMetadataTask 带元数据的消息保存任务
+type SaveMetadataTask struct {
+	Message    *schema.Message
+	ConvID     string
+	Metadata   map[string]interface{}
+	CreateTime *time.Time
+	Result     chan error
+}
+
 // AsyncMessageSaver 异步消息保存器
 type AsyncMessageSaver struct {
-	db         *gorm.DB
-	taskQueue  chan *SaveTask
-	workerPool int
-	wg         sync.WaitGroup
-	ctx        context.Context
-	cancel     context.CancelFunc
+	db                *gorm.DB
+	taskQueue         chan *SaveTask
+	metadataTaskQueue chan *SaveMetadataTask
+	workerPool        int
+	wg                sync.WaitGroup
+	ctx               context.Context
+	cancel            context.CancelFunc
 }
 
 // NewAsyncMessageSaver 创建异步消息保存器
@@ -909,13 +909,14 @@ func NewAsyncMessageSaver(workerPool int) *AsyncMessageSaver {
 		workerPool = 5 // 默认5个worker
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(gctx.New())
 	saver := &AsyncMessageSaver{
-		db:         dao.GetDB(),
-		taskQueue:  make(chan *SaveTask, 200), // 缓冲队列
-		workerPool: workerPool,
-		ctx:        ctx,
-		cancel:     cancel,
+		db:                dao.GetDB(),
+		taskQueue:         make(chan *SaveTask, 200),         // 缓冲队列
+		metadataTaskQueue: make(chan *SaveMetadataTask, 200), // 元数据任务队列
+		workerPool:        workerPool,
+		ctx:               ctx,
+		cancel:            cancel,
 	}
 
 	// 启动worker pool
@@ -926,9 +927,16 @@ func NewAsyncMessageSaver(workerPool int) *AsyncMessageSaver {
 
 // start 启动worker pool
 func (s *AsyncMessageSaver) start() {
+	// 启动处理 SaveTask 的 worker
 	for i := 0; i < s.workerPool; i++ {
 		s.wg.Add(1)
 		go s.worker()
+	}
+
+	// 启动处理 SaveMetadataTask 的 worker
+	for i := 0; i < s.workerPool; i++ {
+		s.wg.Add(1)
+		go s.metadataWorker()
 	}
 }
 
@@ -954,6 +962,30 @@ func (s *AsyncMessageSaver) worker() {
 	}
 }
 
+// metadataWorker 处理带元数据的消息保存任务
+func (s *AsyncMessageSaver) metadataWorker() {
+	defer s.wg.Done()
+
+	historyManager := &Manager{db: s.db}
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case task, ok := <-s.metadataTaskQueue:
+			if !ok {
+				return
+			}
+			// 处理带元数据的消息保存
+			err := historyManager.SaveMessageWithMetadataSync(task.Message, task.ConvID, task.Metadata, task.CreateTime)
+			if task.Result != nil {
+				task.Result <- err
+				close(task.Result)
+			}
+		}
+	}
+}
+
 // saveMessageSync 同步保存消息（worker使用）
 func (s *AsyncMessageSaver) saveMessageSync(message *MessageWithMetrics, convID string) error {
 	// 确保对话存在
@@ -968,7 +1000,7 @@ func (s *AsyncMessageSaver) saveMessageSync(message *MessageWithMetrics, convID 
 	if message.ToolCalls != nil {
 		data, err := json.Marshal(message.ToolCalls)
 		if err != nil {
-			g.Log().Errorf(context.Background(), "failed to marshal tool calls: %v", err)
+			g.Log().Errorf(gctx.New(), "failed to marshal tool calls: %v", err)
 		} else {
 			toolCallsJSON = gormModel.JSON(data)
 		}
@@ -1012,7 +1044,18 @@ func (s *AsyncMessageSaver) SaveMessageAsync(message *MessageWithMetrics, convID
 		// 任务提交成功
 	default:
 		// 队列满了，记录警告但不阻塞
-		g.Log().Warning(context.Background(), "Message save queue is full, message may be lost")
+		g.Log().Warning(gctx.New(), "Message save queue is full, message may be lost")
+	}
+}
+
+// SaveMessageWithMetadataAsync 异步保存带元数据的消息（不等待结果）
+func (s *AsyncMessageSaver) SaveMessageWithMetadataAsync(task *SaveMetadataTask) {
+	select {
+	case s.metadataTaskQueue <- task:
+		// 任务提交成功
+	default:
+		// 队列满了，记录警告但不阻塞
+		g.Log().Warning(gctx.New(), "Metadata message save queue is full, message may be lost")
 	}
 }
 
@@ -1055,7 +1098,7 @@ func (s *AsyncMessageSaver) ensureConversationExists(convID string) error {
 			ConvID:           convID,
 			UserID:           "default_user",
 			Title:            "New Conversation",
-			ModelName:        "default_model",
+			ModelID:          "default_model",
 			ConversationType: "text",
 			Status:           "active",
 			CreateTime:       &now,

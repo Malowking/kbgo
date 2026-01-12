@@ -14,6 +14,7 @@ import AgentTools from '@/pages/AgentTools';
 import NL2SQLDataSource from '@/pages/NL2SQLDataSource';
 import NL2SQLDataSourceDetail from '@/pages/NL2SQLDataSource/Detail';
 import ClaudeSkills from '@/pages/ClaudeSkills';
+import SkillForm from '@/pages/ClaudeSkills/SkillForm';
 
 function App() {
   return (
@@ -64,6 +65,8 @@ function App() {
           <Route path="agent-builder" element={<AgentBuilder />} />
           <Route path="agent-tools/:presetId" element={<AgentTools />} />
           <Route path="claude-skills" element={<ClaudeSkills />} />
+          <Route path="claude-skills/create" element={<SkillForm />} />
+          <Route path="claude-skills/edit/:id" element={<SkillForm />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -3,6 +3,8 @@ package chat
 import (
 	"context"
 
+	"github.com/gogf/gf/v2/os/gctx"
+
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -460,7 +462,7 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 	// 保留原始 context 用于取消控制
 	originalCtx := ctx
 	// 使用 Background context 避免父 context 取消影响流式处理的完整性
-	ctx = context.Background()
+	ctx = gctx.New()
 
 	// 启动goroutine处理流式响应
 	go func() {

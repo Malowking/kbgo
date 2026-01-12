@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gogf/gf/v2/os/gctx"
+
 	"github.com/Malowking/kbgo/core/cache"
 	"github.com/Malowking/kbgo/internal/dao"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
@@ -172,7 +174,7 @@ func (mc *MCPCallLogCache) GetMCPCallLog(ctx context.Context, id string) (*gormM
 	}
 
 	// 3. 回写缓存
-	go mc.saveToCache(context.Background(), log)
+	go mc.saveToCache(gctx.New(), log)
 
 	return log, nil
 }
@@ -226,7 +228,7 @@ func (mc *MCPCallLogCache) GetMCPCallLogsByConvID(ctx context.Context, convID st
 	// 3. 回写缓存
 	go func() {
 		for _, log := range logs {
-			mc.saveToCache(context.Background(), log)
+			mc.saveToCache(gctx.New(), log)
 		}
 	}()
 
@@ -282,7 +284,7 @@ func (mc *MCPCallLogCache) GetMCPCallLogsByRegistryID(ctx context.Context, regis
 	// 3. 回写缓存
 	go func() {
 		for _, log := range logs {
-			mc.saveToCache(context.Background(), log)
+			mc.saveToCache(gctx.New(), log)
 		}
 	}()
 
@@ -302,8 +304,8 @@ func (mc *MCPCallLogCache) flushWorker() {
 			mc.flushBatch(batch)
 			for len(mc.pendingQueue) > 0 {
 				log := <-mc.pendingQueue
-				if err := mc.saveToDatabase(context.Background(), log); err != nil {
-					g.Log().Errorf(context.Background(), "刷盘MCP日志失败: %v", err)
+				if err := mc.saveToDatabase(gctx.New(), log); err != nil {
+					g.Log().Errorf(gctx.New(), "刷盘MCP日志失败: %v", err)
 				}
 			}
 			return
@@ -332,7 +334,7 @@ func (mc *MCPCallLogCache) flushBatch(batch []*gormModel.MCPCallLog) {
 		return
 	}
 
-	ctx := context.Background()
+	ctx := gctx.New()
 	successCount := 0
 	failCount := 0
 

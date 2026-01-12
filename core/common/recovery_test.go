@@ -4,10 +4,12 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/gogf/gf/v2/os/gctx"
 )
 
 func TestRecoverPanic(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 
 	t.Run("正常执行不会panic", func(t *testing.T) {
 		defer RecoverPanic(ctx, "test-normal")
@@ -41,7 +43,7 @@ func TestRecoverPanic(t *testing.T) {
 }
 
 func TestSafeGo(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 
 	t.Run("正常goroutine执行", func(t *testing.T) {
 		done := make(chan bool, 1)
@@ -78,7 +80,7 @@ func TestSafeGo(t *testing.T) {
 }
 
 func TestSafeGoWithError(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 
 	t.Run("正常返回nil错误", func(t *testing.T) {
 		errChan := make(chan error, 1)
@@ -131,7 +133,7 @@ func TestSafeGoWithError(t *testing.T) {
 
 // Benchmark性能测试
 func BenchmarkSafeGo(b *testing.B) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		done := make(chan bool, 1)

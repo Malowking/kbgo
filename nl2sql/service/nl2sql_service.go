@@ -7,10 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gogf/gf/v2/os/gctx"
+
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/core/vector_store"
-	internalService "github.com/Malowking/kbgo/internal/service"
 	"github.com/Malowking/kbgo/nl2sql/adapter"
 	"github.com/Malowking/kbgo/nl2sql/cache"
 	nl2sqlCommon "github.com/Malowking/kbgo/nl2sql/common"
@@ -204,7 +205,7 @@ func (s *NL2SQLService) ParseDataSourceSchemaWithModels(ctx context.Context, dat
 	}
 
 	// 4. 启动后台任务（使用goroutine），传递模型参数
-	go s.executeSchemaParseTaskWithModels(context.Background(), taskID, datasourceID, llmModelID, embeddingModelID)
+	go s.executeSchemaParseTaskWithModels(gctx.New(), taskID, datasourceID, llmModelID, embeddingModelID)
 
 	return taskID, nil
 }
@@ -386,7 +387,7 @@ func (s *NL2SQLService) Query(ctx context.Context, req *QueryRequest) (*QueryRes
 	if ds.EmbeddingModelID != "" && ds.VectorDatabase != "" {
 		embeddingModelConfig := model.Registry.Get(ds.EmbeddingModelID)
 		if embeddingModelConfig != nil {
-			vectorStore, err := internalService.GetVectorStore()
+			vectorStore, err := vector_store.GetVectorStore()
 			if err != nil {
 				g.Log().Warningf(ctx, "获取向量存储失败: %v，将不使用向量搜索", err)
 			} else {
@@ -478,7 +479,7 @@ func (s *NL2SQLService) vectorizeSchema(ctx context.Context, datasourceID, embed
 	}
 
 	// 3. 使用全局单例向量存储
-	vectorStore, err := internalService.GetVectorStore()
+	vectorStore, err := vector_store.GetVectorStore()
 	if err != nil {
 		return fmt.Errorf("获取向量存储失败: %w", err)
 	}
@@ -632,7 +633,7 @@ func (s *NL2SQLService) createVectorCollection(ctx context.Context, datasourceID
 	}
 
 	// 2. 使用全局单例向量存储
-	vectorStore, err := internalService.GetVectorStore()
+	vectorStore, err := vector_store.GetVectorStore()
 	if err != nil {
 		return "", fmt.Errorf("获取向量存储失败: %w", err)
 	}
@@ -675,7 +676,7 @@ func (s *NL2SQLService) DeleteVectorCollection(ctx context.Context, collectionNa
 	g.Log().Infof(ctx, "删除向量集合 - Collection: %s", collectionName)
 
 	// 1. 使用全局单例向量存储
-	vectorStore, err := internalService.GetVectorStore()
+	vectorStore, err := vector_store.GetVectorStore()
 	if err != nil {
 		g.Log().Errorf(ctx, "获取向量存储失败: %v", err)
 		return fmt.Errorf("获取向量存储失败: %w", err)

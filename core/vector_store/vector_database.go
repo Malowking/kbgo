@@ -1,23 +1,23 @@
-package service
+package vector_store
 
 import (
 	"context"
 	"sync"
 
-	"github.com/Malowking/kbgo/core/errors"
-	"github.com/Malowking/kbgo/core/vector_store"
-	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gctx"
+
+	"github.com/Malowking/kbgo/core/errors"
+	"github.com/gogf/gf/v2/frame/g"
 )
 
 var (
 	once         sync.Once
-	vectorClient vector_store.VectorStore
+	vectorClient VectorStore
 	initError    error
 )
 
 // GetVectorStore returns the singleton vector database client
-func GetVectorStore() (vector_store.VectorStore, error) {
+func GetVectorStore() (VectorStore, error) {
 	once.Do(func() {
 		ctx := gctx.New()
 		vectorClient, initError = initializeVectorStore(ctx)
@@ -26,7 +26,7 @@ func GetVectorStore() (vector_store.VectorStore, error) {
 }
 
 // initializeVectorStore determines which client to use based on configuration
-func initializeVectorStore(ctx context.Context) (vector_store.VectorStore, error) {
+func initializeVectorStore(ctx context.Context) (VectorStore, error) {
 	// Read the vector database type from configuration
 	dbType := g.Cfg().MustGet(ctx, "vectorStore.type", "milvus").String()
 
@@ -34,14 +34,14 @@ func initializeVectorStore(ctx context.Context) (vector_store.VectorStore, error
 
 	switch dbType {
 	case "milvus":
-		store, err := vector_store.InitializeMilvusStore(ctx)
+		store, err := InitializeMilvusStore(ctx)
 		if err != nil {
 			return nil, errors.Newf(errors.ErrVectorStoreInit, "failed to initialize Milvus vector store: %v", err)
 		}
 		g.Log().Info(ctx, "Milvus vector store initialized successfully")
 		return store, nil
 	case "pgvector":
-		store, err := vector_store.InitializePostgresStore(ctx)
+		store, err := InitializePostgresStore(ctx)
 		if err != nil {
 			return nil, errors.Newf(errors.ErrVectorStoreInit, "failed to initialize PostgreSQL vector store: %v", err)
 		}

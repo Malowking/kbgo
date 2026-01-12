@@ -1,8 +1,9 @@
 package file_store
 
 import (
-	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gctx"
+
+	"github.com/gogf/gf/v2/frame/g"
 )
 
 // InitStorage 初始化存储系统

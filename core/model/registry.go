@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gogf/gf/v2/os/gctx"
+
 	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
@@ -234,7 +236,7 @@ func (r *ModelRegistry) SetRewriteModel(modelID string) error {
 
 	// 设置重写模型
 	r.rewriteModel = mc
-	g.Log().Infof(context.Background(), "Rewrite model set to: %s (%s)", mc.Name, mc.ModelID)
+	g.Log().Infof(gctx.New(), "Rewrite model set to: %s (%s)", mc.Name, mc.ModelID)
 	return nil
 }
 

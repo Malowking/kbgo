@@ -29,7 +29,7 @@ type ConversationListRes struct {
 type ConversationItem struct {
 	ConvID           string         `json:"conv_id"`
 	Title            string         `json:"title"`
-	ModelName        string         `json:"model_name"`
+	ModelID          string         `json:"model_id"`
 	ConversationType string         `json:"conversation_type"`
 	Status           string         `json:"status"`
 	MessageCount     int            `json:"message_count"`     // 消息数量
@@ -53,7 +53,7 @@ type ConversationDetailRes struct {
 	ConvID           string         `json:"conv_id"`
 	UserID           string         `json:"user_id"`
 	Title            string         `json:"title"`
-	ModelName        string         `json:"model_name"`
+	ModelID          string         `json:"model_id"`
 	ConversationType string         `json:"conversation_type"`
 	Status           string         `json:"status"`
 	MessageCount     int            `json:"message_count"`

@@ -6,6 +6,8 @@ import (
 	"io"
 	"time"
 
+	"github.com/gogf/gf/v2/os/gctx"
+
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/bytedance/sonic"
 	"github.com/gogf/gf/v2/frame/g"
@@ -84,7 +86,7 @@ func writeSSEData(resp *ghttp.Response, data string) {
 	if len(data) == 0 {
 		return
 	}
-	// g.Log().Infof(context.Background(), "data: %s", data)
+	// g.Log().Infof(gctx.New(), "data: %s", data)
 	resp.Writeln(fmt.Sprintf("data:%s\n", data))
 	resp.Flush()
 }
@@ -101,7 +103,7 @@ func writeSSEDocuments(resp *ghttp.Response, data string) {
 
 // writeSSEError 写入SSE错误
 func writeSSEError(resp *ghttp.Response, err error) {
-	g.Log().Error(context.Background(), err)
+	g.Log().Error(gctx.New(), err)
 	resp.Writeln(fmt.Sprintf("event: error\ndata: %s\n\n", err.Error()))
 	resp.Flush()
 }

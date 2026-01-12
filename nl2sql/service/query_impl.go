@@ -214,7 +214,7 @@ func buildSchemaContextFromRetrieval(retrieveResult *vector.RetrieveResult) *gen
 	// 转换指标信息
 	for _, metric := range retrieveResult.Metrics {
 		schemaContext.Metrics = append(schemaContext.Metrics, generator.MetricContext{
-			MetricID:    metric.MetricID,
+			MetricCode:  metric.MetricCode,
 			Name:        metric.Name,
 			Description: metric.Description,
 			Formula:     metric.Formula,

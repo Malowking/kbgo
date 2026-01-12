@@ -69,18 +69,14 @@ export default function AgentChat() {
 
       // 过滤出属于当前Agent的对话
       const agentConversations = response.conversations.filter((conv: any) => {
-        // 从metadata中提取preset_id
-        if (conv.metadata && conv.metadata.preset_id === presetId) {
-          return true;
-        }
-        return false;
+        return conv.agent_preset_id === presetId;
       });
 
       // 转换为前端格式
       const formattedConvs: Conversation[] = agentConversations.map((conv: any) => ({
         conv_id: conv.conv_id,
         preset_id: presetId,
-        preset_name: conv.metadata?.preset_name || 'Agent',
+        preset_name: conv.title || 'Agent',
         title: conv.title,
         last_message: conv.last_message,
         last_message_time: conv.last_message_time || conv.create_time,

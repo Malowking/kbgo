@@ -165,12 +165,3 @@ type ParameterInfo struct {
 	// Required 是否必需
 	Required bool
 }
-
-// DataType 数据类型常量
-const (
-	DataTypeString  = "string"
-	DataTypeNumber  = "number"
-	DataTypeBoolean = "boolean"
-	DataTypeObject  = "object"
-	DataTypeArray   = "array"
-)

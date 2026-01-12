@@ -57,7 +57,7 @@ export interface Chunk {
 export interface Conversation {
   conv_id: string;
   title: string;
-  model_name: string;
+  model_id: string;
   conversation_type: string;
   status: string;
   message_count: number;
@@ -195,7 +195,7 @@ export interface ConversationDetailRes {
   conv_id: string;
   user_id: string;
   title: string;
-  model_name: string;
+  model_id: string;
   conversation_type: string;
   status: string;
   message_count: number;

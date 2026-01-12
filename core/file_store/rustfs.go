@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/gogf/gf/v2/os/gctx"
+
 	"github.com/Malowking/kbgo/core/errors"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/minio/minio-go/v7"
@@ -149,7 +151,7 @@ func SaveFileToRustFS(ctx context.Context, client *minio.Client, bucketName stri
 
 // SaveFileToRustFSNL2SQL 保存NL2SQL文件到RustFS存储
 func SaveFileToRustFSNL2SQL(client *minio.Client, bucketName string, fileName string, file io.ReadSeeker) (localPath string, rustfsKey string, err error) {
-	ctx := context.Background()
+	ctx := gctx.New()
 
 	// 第一步：保存到本地 upload/nl2sql/文件名
 	targetDir := filepath.Join("upload", "nl2sql")

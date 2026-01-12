@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Malowking/kbgo/pkg/schema"
 )
@@ -103,11 +104,14 @@ func (x *Chat) docsMessages(ctx context.Context, convID string, docs []*schema.D
 	if err != nil {
 		return
 	}
-	// 插入一条用户数据
-	err = x.eh.SaveMessage(&schema.Message{
+
+	// 捕获用户消息接收时间
+	userMessageTime := time.Now()
+
+	err = x.eh.SaveMessageWithMetadataAsync(&schema.Message{
 		Role:    schema.User,
 		Content: question,
-	}, convID)
+	}, convID, nil, &userMessageTime)
 	if err != nil {
 		return
 	}

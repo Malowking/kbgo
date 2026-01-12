@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gogf/gf/v2/os/gctx"
+
 	"encoding/json"
 	"sort"
 
@@ -13,19 +15,18 @@ import (
 	"github.com/Malowking/kbgo/core/config"
 	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/core/retriever"
+	"github.com/Malowking/kbgo/core/vector_store"
 	"github.com/Malowking/kbgo/internal/dao"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
-	"github.com/Malowking/kbgo/internal/service"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
-	"github.com/gogf/gf/v2/os/gctx"
 )
 
 var retrieverConfig *config.RetrieverConfig
 
 func InitRetrieverConfig() {
 	ctx := gctx.New()
-	vectorStore, err := service.GetVectorStore()
+	vectorStore, err := vector_store.GetVectorStore()
 	if err != nil {
 		g.Log().Fatalf(ctx, "Failed to get vector store: %v", err)
 		return

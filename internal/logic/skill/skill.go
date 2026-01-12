@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gogf/gf/v2/os/gctx"
+
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/agent_tools/claude_skills"
 	"github.com/Malowking/kbgo/core/errors"
@@ -292,14 +294,14 @@ func ExecuteSkill(ctx context.Context, req *v1.SkillExecuteReq, ownerID string, 
 
 	// 异步保存日志
 	go func() {
-		if logErr := dao.ClaudeSkillCallLog.Create(context.Background(), callLog); logErr != nil {
+		if logErr := dao.ClaudeSkillCallLog.Create(gctx.New(), callLog); logErr != nil {
 			g.Log().Errorf(ctx, "保存 Skill 调用日志失败: %v", logErr)
 		}
 	}()
 
 	// 7. 更新统计信息
 	go func() {
-		if statsErr := dao.ClaudeSkill.UpdateStats(context.Background(), req.Id, callLog.Success, duration); statsErr != nil {
+		if statsErr := dao.ClaudeSkill.UpdateStats(gctx.New(), req.Id, callLog.Success, duration); statsErr != nil {
 			g.Log().Errorf(ctx, "更新 Skill 统计失败: %v", statsErr)
 		}
 	}()

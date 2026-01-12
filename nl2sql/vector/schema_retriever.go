@@ -57,7 +57,7 @@ type ColumnResult struct {
 
 // MetricResult 指标检索结果
 type MetricResult struct {
-	MetricID    string  `json:"metric_id"`
+	MetricCode  string  `json:"metric_code"`
 	Name        string  `json:"name"`
 	Description string  `json:"description"`
 	Formula     string  `json:"formula"`
@@ -201,7 +201,7 @@ func (r *SchemaRetriever) retrieveMetric(ctx context.Context, metricID string, s
 	}
 
 	return &MetricResult{
-		MetricID:    metric.ID,
+		MetricCode:  metric.MetricCode,
 		Name:        metric.Name,
 		Description: metric.Description,
 		Formula:     metric.Formula,

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/gogf/gf/v2/os/gctx"
 	"github.com/google/uuid"
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
 	"github.com/stretchr/testify/assert"
@@ -26,7 +27,7 @@ func convertToFloat32(vectors [][]float64) [][]float32 {
 // TestMilvusStoreCreation 测试 Milvus 存储实例创建
 func TestMilvusStoreCreation(t *testing.T) {
 	t.Run("创建成功", func(t *testing.T) {
-		ctx := context.Background()
+		ctx := gctx.New()
 		client, err := milvusclient.New(ctx, &milvusclient.ClientConfig{
 			Address: "localhost:19530",
 			DBName:  "test",
@@ -67,7 +68,7 @@ func TestMilvusStoreCreation(t *testing.T) {
 	})
 
 	t.Run("数据库名为空", func(t *testing.T) {
-		ctx := context.Background()
+		ctx := gctx.New()
 		client, err := milvusclient.New(ctx, &milvusclient.ClientConfig{
 			Address: "localhost:19530",
 		})
@@ -90,7 +91,7 @@ func TestMilvusStoreCreation(t *testing.T) {
 
 // TestMilvusCollectionOperations 测试 Milvus 集合操作
 func TestMilvusCollectionOperations(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	client, err := milvusclient.New(ctx, &milvusclient.ClientConfig{
 		Address: "localhost:19530",
 		DBName:  "test",
@@ -140,7 +141,7 @@ func TestMilvusCollectionOperations(t *testing.T) {
 
 // TestMilvusVectorOperations 测试 Milvus 向量操作
 func TestMilvusVectorOperations(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	client, err := milvusclient.New(ctx, &milvusclient.ClientConfig{
 		Address: "localhost:19530",
 		DBName:  "test",
@@ -302,7 +303,7 @@ func TestMilvusHelperFunctions(t *testing.T) {
 
 // TestMilvusGetClient 测试获取客户端
 func TestMilvusGetClient(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	client, err := milvusclient.New(ctx, &milvusclient.ClientConfig{
 		Address: "localhost:19530",
 		DBName:  "test",
@@ -337,7 +338,7 @@ func TestMilvusGetClient(t *testing.T) {
 
 // BenchmarkMilvusInsertVectors 性能测试：插入向量
 func BenchmarkMilvusInsertVectors(b *testing.B) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	client, err := milvusclient.New(ctx, &milvusclient.ClientConfig{
 		Address: "localhost:19530",
 		DBName:  "test",

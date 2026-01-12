@@ -2,6 +2,7 @@ package file_store
 
 import (
 	"context"
+	"github.com/gogf/gf/v2/os/gctx"
 	"io"
 	"mime/multipart"
 	"os"
@@ -49,7 +50,7 @@ func SaveFileToLocal(ctx context.Context, knowledgeId string, fileName string, f
 
 // SaveFileToLocalNL2SQL 保存NL2SQL文件到本地存储
 func SaveFileToLocalNL2SQL(fileName string, uploadFile *ghttp.UploadFile) (finalPath string, err error) {
-	ctx := context.Background()
+	ctx := gctx.New()
 
 	// 构建目标目录路径: upload/nl2sql/
 	targetDir := filepath.Join("upload", "nl2sql")

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/gogf/gf/v2/os/gctx"
 	"sync"
 	"time"
 
@@ -185,7 +186,7 @@ func (mc *MessageCache) GetMessage(ctx context.Context, msgID string) (*gormMode
 	}
 
 	// 3. 回写缓存
-	go mc.saveToCache(context.Background(), message, contents)
+	go mc.saveToCache(gctx.New(), message, contents)
 
 	return message, contents, nil
 }
@@ -258,8 +259,8 @@ func (mc *MessageCache) GetMessagesByConvID(ctx context.Context, convID string, 
 	// 3. 回写缓存
 	go func() {
 		for _, msg := range messages {
-			contents, _ := dao.MessageContent.ListByMsgID(context.Background(), msg.MsgID)
-			mc.saveToCache(context.Background(), msg, contents)
+			contents, _ := dao.MessageContent.ListByMsgID(gctx.New(), msg.MsgID)
+			mc.saveToCache(gctx.New(), msg, contents)
 		}
 	}()
 
@@ -279,8 +280,8 @@ func (mc *MessageCache) flushWorker() {
 			mc.flushBatch(batch)
 			for len(mc.pendingQueue) > 0 {
 				msg := <-mc.pendingQueue
-				if err := mc.saveToDatabase(context.Background(), msg.Message, msg.Contents); err != nil {
-					g.Log().Errorf(context.Background(), "刷盘消息失败: %v", err)
+				if err := mc.saveToDatabase(gctx.New(), msg.Message, msg.Contents); err != nil {
+					g.Log().Errorf(gctx.New(), "刷盘消息失败: %v", err)
 				}
 			}
 			return
@@ -309,7 +310,7 @@ func (mc *MessageCache) flushBatch(batch []*PendingMessage) {
 		return
 	}
 
-	ctx := context.Background()
+	ctx := gctx.New()
 	successCount := 0
 	failCount := 0
 

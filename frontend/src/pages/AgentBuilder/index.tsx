@@ -401,11 +401,9 @@ export default function AgentBuilder() {
         page_size: 1000, // 假设最多1000条对话
       });
 
-      // 2. 从元数据中筛选出属于该 Agent 的对话
+      // 2. 从 agent_preset_id 字段筛选出属于该 Agent 的对话
       const agentConvs = listResponse.conversations.filter((conv: any) => {
-        // 检查元数据中是否有 agent_preset_id
-        return conv.metadata?.agent_preset_id === presetId ||
-               conv.agent_preset_id === presetId; // 兼容直接字段和元数据字段
+        return conv.agent_preset_id === presetId;
       });
 
       if (agentConvs.length === 0) {

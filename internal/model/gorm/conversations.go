@@ -15,7 +15,7 @@ type Conversation struct {
 	ConvID           string     `gorm:"primaryKey;column:conv_id;type:varchar(64)"`               // 会话ID（主键，格式：conv_uuid）
 	UserID           string     `gorm:"column:user_id;type:varchar(64);not null;index"`           // 用户ID
 	Title            string     `gorm:"column:title;type:varchar(255)"`                           // 会话标题
-	ModelName        string     `gorm:"column:model_name;type:varchar(64);not null"`              // 模型名称
+	ModelID          string     `gorm:"column:model_id;type:varchar(64)"`                         // 模型ID
 	ConversationType string     `gorm:"column:conversation_type;type:varchar(32);default:'text'"` // 会话类型
 	Status           string     `gorm:"column:status;type:varchar(20);default:'active'"`          // 状态
 	AgentPresetID    string     `gorm:"column:agent_preset_id;type:varchar(64);index"`            // 关联的Agent预设ID

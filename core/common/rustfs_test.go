@@ -18,7 +18,6 @@ func TestRustFSUploadDownload(t *testing.T) {
 		t.Skip("Skipping RustFS test. Set RUSTFS_TEST=1 to enable.")
 	}
 
-	// Load configuration from config file
 	ctx := gctx.New()
 
 	// Check if rustfs storage is configured

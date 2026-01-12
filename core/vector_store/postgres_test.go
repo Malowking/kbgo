@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/gogf/gf/v2/os/gctx"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
@@ -14,7 +15,7 @@ import (
 // TestPostgresStoreCreation 测试 PostgreSQL 存储实例创建
 func TestPostgresStoreCreation(t *testing.T) {
 	t.Run("创建成功", func(t *testing.T) {
-		ctx := context.Background()
+		ctx := gctx.New()
 		connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 		pool, err := pgxpool.New(ctx, connStr)
 		if err != nil {
@@ -54,7 +55,7 @@ func TestPostgresStoreCreation(t *testing.T) {
 	})
 
 	t.Run("数据库名为空", func(t *testing.T) {
-		ctx := context.Background()
+		ctx := gctx.New()
 		connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 		pool, err := pgxpool.New(ctx, connStr)
 		if err != nil {
@@ -77,7 +78,7 @@ func TestPostgresStoreCreation(t *testing.T) {
 
 // TestPostgresCreateDatabaseIfNotExists 测试创建数据库和扩展
 func TestPostgresCreateDatabaseIfNotExists(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
@@ -105,7 +106,7 @@ func TestPostgresCreateDatabaseIfNotExists(t *testing.T) {
 
 // TestPostgresCollectionOperations 测试 PostgreSQL 集合（表）操作
 func TestPostgresCollectionOperations(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
@@ -166,7 +167,7 @@ func TestPostgresCollectionOperations(t *testing.T) {
 
 // TestPostgresVectorOperations 测试 PostgreSQL 向量操作
 func TestPostgresVectorOperations(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
@@ -290,7 +291,7 @@ func TestPostgresVectorOperations(t *testing.T) {
 
 // TestPostgresHelperFunctions 测试 PostgreSQL 辅助函数
 func TestPostgresHelperFunctions(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
@@ -365,7 +366,7 @@ func TestPostgresHelperFunctions(t *testing.T) {
 
 // TestPostgresGetClient 测试获取客户端
 func TestPostgresGetClient(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
@@ -397,7 +398,7 @@ func TestPostgresGetClient(t *testing.T) {
 
 // TestPostgresTransactionRollback 测试事务回滚
 func TestPostgresTransactionRollback(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
@@ -458,7 +459,7 @@ func TestPostgresTransactionRollback(t *testing.T) {
 
 // BenchmarkPostgresInsertVectors 性能测试：插入向量
 func BenchmarkPostgresInsertVectors(b *testing.B) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
@@ -513,7 +514,7 @@ func BenchmarkPostgresInsertVectors(b *testing.B) {
 
 // BenchmarkPostgresVectorSearch 性能测试：向量搜索
 func BenchmarkPostgresVectorSearch(b *testing.B) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {

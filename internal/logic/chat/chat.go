@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gogf/gf/v2/os/gctx"
+
 	coreErrors "github.com/Malowking/kbgo/core/errors"
 
 	"github.com/Malowking/kbgo/core/formatter"
@@ -16,7 +18,6 @@ import (
 	"github.com/Malowking/kbgo/internal/logic/rewriter"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
-	"github.com/gogf/gf/v2/os/gctx"
 	"github.com/sashabaranov/go-openai"
 )
 
@@ -126,12 +127,15 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 	}
 	_ = rewrittenQuestion
 
-	// 保存用户消息（使用原始问题）
+	// 捕获用户消息接收时间
+	userMessageTime := time.Now()
+
+	// 保存用户消息
 	userMessage := &schema.Message{
 		Role:    schema.User,
 		Content: question,
 	}
-	err = x.eh.SaveMessage(userMessage, convID)
+	err = x.eh.SaveMessageWithMetadataAsync(userMessage, convID, nil, &userMessageTime)
 	if err != nil {
 		return "", "", err
 	}
@@ -301,12 +305,15 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 	}
 	_ = rewrittenQuestion
 
-	// 保存用户消息（使用原始问题）
+	// 捕获用户消息接收时间
+	userMessageTime := time.Now()
+
+	// 保存用户消息
 	userMessage := &schema.Message{
 		Role:    schema.User,
 		Content: question,
 	}
-	err = x.eh.SaveMessage(userMessage, convID)
+	err = x.eh.SaveMessageWithMetadataAsync(userMessage, convID, nil, &userMessageTime)
 	if err != nil {
 		return nil, err
 	}
@@ -392,7 +399,7 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 	// 保留原始 context 用于取消控制
 	originalCtx := ctx
 	// 使用 Background context 避免父 context 取消影响流式处理的完整性
-	ctx = context.Background()
+	ctx = gctx.New()
 
 	// 启动goroutine处理流式响应
 	go func() {
