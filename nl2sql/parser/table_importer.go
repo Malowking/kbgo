@@ -55,8 +55,6 @@ func (t *TableImporter) createTable(ctx context.Context, table *ParsedTable) err
 		return fmt.Errorf("unsupported database type: %s", t.dbType)
 	}
 
-	g.Log().Debugf(ctx, "Create table SQL: %s", createSQL)
-
 	// 执行创建表SQL
 	if err := t.db.Exec(createSQL).Error; err != nil {
 		return fmt.Errorf("failed to execute create table: %w", err)

@@ -12,6 +12,8 @@ export interface ToolCallInfo {
   tool_id: string;
   /** 工具名称 */
   tool_name: string;
+  /** 工具类型: local(本地工具), mcp(MCP工具), skill(Claude Skill) */
+  tool_type?: 'local' | 'mcp' | 'skill';
   /** 工具状态 */
   status: 'pending' | 'running' | 'success' | 'error';
   /** 工具参数 */
@@ -183,6 +185,7 @@ export async function handleSSEStream(
                   const toolCall: ToolCallInfo = {
                     tool_id: parsed.metadata.tool_id,
                     tool_name: parsed.metadata.tool_name,
+                    tool_type: parsed.metadata.tool_type,
                     status: parsed.metadata.error ? 'error' : 'success',
                     result: parsed.metadata.result,
                     error: parsed.metadata.error,
@@ -366,6 +369,7 @@ export async function handleSSEStreamWithFormData(
                   const toolCall: ToolCallInfo = {
                     tool_id: parsed.metadata.tool_id,
                     tool_name: parsed.metadata.tool_name,
+                    tool_type: parsed.metadata.tool_type,
                     status: parsed.metadata.error ? 'error' : 'success',
                     result: parsed.metadata.result,
                     error: parsed.metadata.error,

@@ -69,17 +69,25 @@ export interface Conversation {
   metadata?: Record<string, any>;
 }
 
+// 工具消息的 metadata 结构
+export interface ToolMessageMetadata {
+  tool_name: string;
+  tool_args?: any;
+  tool_call_id: string;
+}
+
 export interface Message {
   id: number;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   reasoning_content?: string;
   references?: Document[];
+  metadata?: ToolMessageMetadata | Record<string, any>;
   create_time: string;
   tokens_used?: number;
   latency_ms?: number;
   extra?: {
-    tool_results?: Array<{
+    tool?: Array<{
       content: string;
       tool_call_id?: string;
       tool_name?: string;

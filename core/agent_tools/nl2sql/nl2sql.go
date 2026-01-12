@@ -402,8 +402,6 @@ func (t *NL2SQLTool) AnalyzeUserIntent(ctx context.Context, question string, llm
 		}, nil
 	}
 
-	g.Log().Debugf(ctx, "LLM intent response: %s", response)
-
 	// 解析JSON（尝试提取JSON部分）
 	var intent UserIntent
 	// 尝试找到JSON部分

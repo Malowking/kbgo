@@ -2,12 +2,12 @@ package indexer
 
 import (
 	"context"
-	"encoding/json"
 	"sync"
 	"time"
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/errors"
+	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/core/vector_store"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
@@ -109,10 +109,6 @@ func (v *VectorStoreEmbedder) EmbedAndStore(ctx context.Context, collectionName 
 				Vector:  vector,
 				Error:   nil,
 			}
-
-			if (index+1)%10 == 0 || index == len(chunks)-1 {
-				g.Log().Infof(ctx, "Progress: %d/%d chunks completed", index+1, len(chunks))
-			}
 		}(i, chunk)
 	}
 
@@ -137,7 +133,6 @@ func (v *VectorStoreEmbedder) EmbedAndStore(ctx context.Context, collectionName 
 		allChunkIds[i] = result.ChunkID
 	}
 
-	g.Log().Infof(ctx, "Single-chunk concurrent vectorization completed, total chunks: %d", len(allChunkIds))
 	return allChunkIds, nil
 }
 
@@ -190,27 +185,14 @@ func (v *VectorStoreEmbedder) embedSingleChunkWithRetry(ctx context.Context, tex
 func (v *VectorStoreEmbedder) getDimension(ctx context.Context) int {
 	// 尝试从模型配置的extra字段中提取dimension
 	if v.modelConfig != nil {
-		// 尝试将modelConfig转换为map类型
-		if configMap, ok := v.modelConfig.(map[string]any); ok {
-			if extra, exists := configMap["Extra"]; exists {
-				if extraMap, ok := extra.(map[string]any); ok {
-					if dim, exists := extraMap["dimension"]; exists {
-						if dimInt, ok := dim.(int); ok {
-							return dimInt
-						}
-						if dimFloat, ok := dim.(float64); ok {
-							return int(dimFloat)
-						}
+		if mc, ok := v.modelConfig.(*model.ModelConfig); ok {
+			if mc.Extra != nil {
+				if dim, exists := mc.Extra["dimension"]; exists {
+					if dimInt, ok := dim.(int); ok {
+						return dimInt
 					}
-				} else if extraStr, ok := extra.(string); ok && extraStr != "" {
-					// 尝试解析字符串形式的JSON
-					var extraMap map[string]any
-					if err := json.Unmarshal([]byte(extraStr), &extraMap); err == nil {
-						if dim, exists := extraMap["dimension"]; exists {
-							if dimFloat, ok := dim.(float64); ok {
-								return int(dimFloat)
-							}
-						}
+					if dimFloat, ok := dim.(float64); ok {
+						return int(dimFloat)
 					}
 				}
 			}

@@ -50,6 +50,7 @@ type ToolCallResult struct {
 	NL2SQLResult *v1.NL2SQLChatResult // NL2SQL结果
 	MCPResults   []*v1.MCPResult      // MCP结果
 	FileURL      string               // 文件下载URL（用于文件导出等工具）
+	ToolType     string               // 工具类型: local, mcp, skill
 	Error        error                // 错误信息
 }
 
@@ -448,6 +449,7 @@ func (e *ToolExecutor) executeKnowledgeRetrieval(
 	return &ToolCallResult{
 		Content:   contentBuilder.String(),
 		Documents: krResult.Documents,
+		ToolType:  "local",
 	}, nil
 }
 
@@ -538,6 +540,7 @@ func (e *ToolExecutor) executeNL2SQL(
 		Content:      contentBuilder.String(),
 		Documents:    nl2sqlResult.Documents,
 		NL2SQLResult: nl2sqlChatResult,
+		ToolType:     "local",
 	}, nil
 }
 
@@ -646,8 +649,9 @@ func (e *ToolExecutor) executeFileExport(
 	contentBuilder.WriteString(fmt.Sprintf("- 下载链接: %s\n", result.FileURL))
 
 	return &ToolCallResult{
-		Content: contentBuilder.String(),
-		FileURL: result.FileURL,
+		Content:  contentBuilder.String(),
+		FileURL:  result.FileURL,
+		ToolType: "local",
 	}, nil
 }
 
@@ -675,6 +679,7 @@ func (e *ToolExecutor) executeMCPTool(
 		Content:    mcpResult.Content,
 		Documents:  []*schema.Document{doc},
 		MCPResults: []*v1.MCPResult{mcpResult},
+		ToolType:   "mcp",
 	}, nil
 }
 
@@ -727,11 +732,25 @@ func (e *ToolExecutor) executeWithLLM(
 			Role:    schema.System,
 			Content: systemPrompt,
 		},
-		{
-			Role:    schema.User,
-			Content: e.buildFullQuestion(question, documents),
-		},
 	}
+
+	// 2. 加载历史消息（如果有 convID）
+	if convID != "" {
+		historyManager := history.NewManager()
+		chatHistory, err := historyManager.GetHistory(convID, 100)
+		if err != nil {
+			g.Log().Warningf(ctx, "加载历史消息失败: %v，继续执行", err)
+		} else if len(chatHistory) > 0 {
+			g.Log().Infof(ctx, "[统一工具调用] 加载了 %d 条历史消息", len(chatHistory))
+			messages = append(messages, chatHistory...)
+		}
+	}
+
+	// 3. 添加当前用户消息
+	messages = append(messages, &schema.Message{
+		Role:    schema.User,
+		Content: e.buildFullQuestion(question, documents),
+	})
 
 	// 2. 多轮工具调用（最多 5 轮）
 	chatInstance := chat.GetChat()
@@ -820,17 +839,19 @@ func (e *ToolExecutor) executeWithLLM(
 			if httpResp != nil {
 				var resultSummary string
 				var fileURL string
+				var toolType string = "local" // 默认为 local
 				if err != nil {
 					resultSummary = fmt.Sprintf("工具执行失败: %v", err)
 				} else if toolResult != nil {
 					resultSummary = toolResult.Content
 					fileURL = toolResult.FileURL
+					toolType = toolResult.ToolType
 					// 限制结果长度
 					if len(resultSummary) > 200 {
 						resultSummary = resultSummary[:200] + "..."
 					}
 				}
-				common.WriteToolCallEnd(httpResp, messageID, toolCall.ID, toolName, resultSummary, err, duration, fileURL)
+				common.WriteToolCallEnd(httpResp, messageID, toolCall.ID, toolName, toolType, resultSummary, err, duration, fileURL)
 			}
 
 			if err != nil {
@@ -1026,6 +1047,7 @@ func (e *ToolExecutor) executeSkillTool(
 	g.Log().Infof(ctx, "[Claude Skill] 执行成功: %s (耗时: %dms)", skillToolName, result.Duration)
 
 	return &ToolCallResult{
-		Content: result.Output,
+		Content:  result.Output,
+		ToolType: "skill",
 	}, nil
 }

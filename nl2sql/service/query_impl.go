@@ -54,7 +54,6 @@ func (s *NL2SQLService) QueryWithAdapters(
 	g.Log().Infof(ctx, "Query log created: %s", queryLog.ID)
 
 	// 4. Schema向量召回
-	g.Log().Debug(ctx, "Starting schema retrieval...")
 	retriever := vector.NewSchemaRetriever(s.db)
 
 	retrieveReq := &vector.RetrieveRequest{
@@ -116,7 +115,6 @@ func (s *NL2SQLService) QueryWithAdapters(
 	}
 
 	// 6. 使用LLM生成SQL
-	g.Log().Debug(ctx, "Generating SQL with LLM...")
 	generateReq := &generator.GenerateRequest{
 		Question:      req.Question,
 		SchemaContext: schemaContext,
@@ -138,7 +136,6 @@ func (s *NL2SQLService) QueryWithAdapters(
 	g.Log().Infof(ctx, "Generated SQL: %s", generatedSQL)
 
 	// 7. SQL校验
-	g.Log().Debug(ctx, "Validating SQL...")
 	if err := s.sqlValidator.Validate(generatedSQL); err != nil {
 		s.updateQueryLogStatus(queryLog.ID, nl2sqlCommon.ExecutionStatusFailed, generatedSQL, fmt.Sprintf("SQL校验失败: %v", err))
 		return &QueryResponse{
@@ -150,7 +147,6 @@ func (s *NL2SQLService) QueryWithAdapters(
 	}
 
 	// 8. 执行SQL
-	g.Log().Debug(ctx, "Executing SQL...")
 	queryResult, err := s.executeSQL(ctx, &ds, generatedSQL)
 	if err != nil {
 		s.updateQueryLogStatus(queryLog.ID, nl2sqlCommon.ExecutionStatusFailed, generatedSQL, fmt.Sprintf("SQL执行失败: %v", err))

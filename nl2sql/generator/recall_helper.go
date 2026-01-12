@@ -21,6 +21,7 @@ func (gen *SQLGenerator) recallSchemaWithVector(ctx context.Context, schemaID, q
 
 	// 执行向量搜索
 	vectorResults, err := vectorSearcher.SearchSchemaSimple(ctx, schemaID, question, 20)
+	fmt.Println(vectorResults, "------------------")
 	if err != nil {
 		return nil, fmt.Errorf("向量搜索失败: %w", err)
 	}

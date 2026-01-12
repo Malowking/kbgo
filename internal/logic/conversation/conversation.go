@@ -91,7 +91,7 @@ func (m *Manager) GetConversationDetail(ctx context.Context, convID string) (*Co
 
 	// 转换消息格式
 	messageItems := make([]*MessageItem, 0, len(messages))
-	for _, msg := range messages {
+	for i, msg := range messages {
 		createTime := time.Now().Format(time.RFC3339) // 默认使用当前时间
 
 		// 从Extra字段中获取实际的创建时间
@@ -101,12 +101,42 @@ func (m *Manager) GetConversationDetail(ctx context.Context, convID string) (*Co
 			}
 		}
 
+		// 提取 metadata（用于 tool 角色的工具调用信息）
+		var metadata map[string]interface{}
+		if msg.Role == schema.Tool {
+			// 对于 tool 角色，从 Extra 中提取 tool_name, tool_args, tool_call_id
+			metadata = make(map[string]interface{})
+
+			if msg.Extra != nil {
+				if toolName, ok := msg.Extra["tool_name"]; ok {
+					metadata["tool_name"] = toolName
+				}
+				if toolArgs, ok := msg.Extra["tool_args"]; ok {
+					metadata["tool_args"] = toolArgs
+				}
+				if toolCallID, ok := msg.Extra["tool_call_id"]; ok {
+					metadata["tool_call_id"] = toolCallID
+				}
+			}
+
+			// 如果 Extra 中没有 tool_call_id，但 ToolCallID 字段有值，使用它
+			if metadata["tool_call_id"] == nil && msg.ToolCallID != "" {
+				metadata["tool_call_id"] = msg.ToolCallID
+			}
+		}
+
+		// 生成唯一的数字ID（使用索引 + 时间戳的哈希）
+		// 前端使用 Date.now() * 1000 + random，我们使用类似的方式
+		msgID := uint64(time.Now().Unix()*1000000 + int64(i))
+
 		messageItems = append(messageItems, &MessageItem{
+			ID:               msgID,
 			Role:             string(msg.Role),
 			Content:          msg.Content,
 			ReasoningContent: msg.ReasoningContent,
+			Metadata:         metadata,
 			CreateTime:       createTime,
-			Extra:            msg.Extra, // 包含 tool_results 等信息
+			Extra:            msg.Extra,
 		})
 	}
 
@@ -449,6 +479,7 @@ func (m *Manager) toConversationItem(ctx context.Context, conv *gormModel.Conver
 		LastMessageTime:  lastMessageTime,
 		CreateTime:       conv.CreateTime.Format(time.RFC3339),
 		UpdateTime:       conv.UpdateTime.Format(time.RFC3339),
+		AgentPresetID:    conv.AgentPresetID,
 		Tags:             tags,
 		Metadata:         metadata,
 	}, nil
@@ -466,6 +497,7 @@ type ConversationItem struct {
 	LastMessageTime  string         `json:"last_message_time"`
 	CreateTime       string         `json:"create_time"`
 	UpdateTime       string         `json:"update_time"`
+	AgentPresetID    string         `json:"agent_preset_id"` // 移除 omitempty，始终返回
 	Tags             []string       `json:"tags,omitempty"`
 	Metadata         map[string]any `json:"metadata,omitempty"`
 }
@@ -488,11 +520,13 @@ type ConversationDetail struct {
 
 // MessageItem 消息项
 type MessageItem struct {
-	Role             string         `json:"role"`
-	Content          string         `json:"content"`
-	ReasoningContent string         `json:"reasoning_content,omitempty"`
-	CreateTime       string         `json:"create_time"`
-	TokensUsed       int            `json:"tokens_used,omitempty"`
-	LatencyMs        int            `json:"latency_ms,omitempty"`
-	Extra            map[string]any `json:"extra,omitempty"` // 包含 tool_results 等信息
+	ID               uint64                 `json:"id"`
+	Role             string                 `json:"role"`
+	Content          string                 `json:"content"`
+	ReasoningContent string                 `json:"reasoning_content,omitempty"`
+	Metadata         map[string]interface{} `json:"metadata,omitempty"` // 元数据（用于tool角色的工具调用信息）
+	CreateTime       string                 `json:"create_time"`
+	TokensUsed       int                    `json:"tokens_used,omitempty"`
+	LatencyMs        int                    `json:"latency_ms,omitempty"`
+	Extra            map[string]any         `json:"extra,omitempty"`
 }

@@ -214,22 +214,48 @@ func (h *Manager) SaveMessageWithMetadataSync(message *schema.Message, convID st
 
 // attachToolResultToAssistantMessage 将工具调用结果附加到对应的 assistant 消息中
 func (h *Manager) attachToolResultToAssistantMessage(convID string, toolMessage *schema.Message, metadata map[string]interface{}, now *time.Time) error {
-	// 1. 查找对应的 assistant 消息（通过 tool_call_id）
-	var assistantMsg gormModel.Message
+	// 1. 查找包含该 tool_call_id 的 assistant 消息
+	var messages []gormModel.Message
 	err := h.db.Where("conv_id = ? AND role = ? AND tool_calls IS NOT NULL", convID, "assistant").
-		Order("msg_id DESC"). // 最新的 assistant 消息
-		First(&assistantMsg).Error
+		Order("create_time DESC"). // 按时间倒序
+		Find(&messages).Error
 
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			g.Log().Warningf(gctx.New(), "未找到对应的 assistant 消息，tool_call_id: %s", toolMessage.ToolCallID)
-			// 降级：仍然保存为独立消息（兼容旧逻辑）
-			return h.saveToolMessageAsStandalone(toolMessage, convID, metadata, now)
-		}
 		return errors.Newf(errors.ErrDatabaseQuery, "查询 assistant 消息失败: %v", err)
 	}
 
-	// 2. 获取该 assistant 消息的最大 sort_order
+	// 2. 遍历消息，找到包含该 tool_call_id 的消息
+	var assistantMsg *gormModel.Message
+	targetToolCallID := toolMessage.ToolCallID
+
+	for i := range messages {
+		if len(messages[i].ToolCalls) > 0 {
+			var toolCalls []schema.ToolCall
+			if err := json.Unmarshal(messages[i].ToolCalls, &toolCalls); err == nil {
+				// 检查是否包含目标 tool_call_id
+				for _, tc := range toolCalls {
+					if tc.ID == targetToolCallID {
+						assistantMsg = &messages[i]
+						break
+					}
+				}
+				if assistantMsg != nil {
+					break
+				}
+			}
+		}
+	}
+
+	if assistantMsg == nil {
+		g.Log().Warningf(gctx.New(), "未找到包含 tool_call_id=%s 的 assistant 消息", targetToolCallID)
+		// 降级：仍然保存为独立消息（兼容旧逻辑）
+		return h.saveToolMessageAsStandalone(toolMessage, convID, metadata, now)
+	}
+
+	g.Log().Infof(gctx.New(), "找到对应的 assistant 消息: msg_id=%s, tool_call_id=%s",
+		assistantMsg.MsgID, targetToolCallID)
+
+	// 3. 获取该 assistant 消息的最大 sort_order
 	var maxSortOrder int
 	err = h.db.Model(&gormModel.MessageContent{}).
 		Where("msg_id = ?", assistantMsg.MsgID).
@@ -240,7 +266,7 @@ func (h *Manager) attachToolResultToAssistantMessage(convID string, toolMessage 
 		return errors.Newf(errors.ErrDatabaseQuery, "查询最大 sort_order 失败: %v", err)
 	}
 
-	// 3. 创建 tool_result 类型的 message_content
+	// 4. 创建 tool 类型的 message_content
 	toolMetadata := map[string]interface{}{
 		"tool_call_id": toolMessage.ToolCallID,
 	}
@@ -269,7 +295,7 @@ func (h *Manager) attachToolResultToAssistantMessage(convID string, toolMessage 
 		CreateTime:  now,
 	}
 
-	// 4. 保存 tool_result 到数据库
+	// 4. 保存 tool 到数据库
 	if err := h.db.Create(toolContent).Error; err != nil {
 		return errors.Newf(errors.ErrDatabaseInsert, "保存 tool 失败: %v", err)
 	}
@@ -359,8 +385,8 @@ func (h *Manager) GetHistory(convID string, limit int) ([]*schema.Message, error
 	}
 
 	// 转换为 schema.Message
-	result := make([]*schema.Message, len(messages))
-	for i, msg := range messages {
+	result := make([]*schema.Message, 0, len(messages))
+	for _, msg := range messages {
 		// 获取该消息的内容块
 		msgContents := contentMap[msg.MsgID]
 
@@ -382,43 +408,19 @@ func (h *Manager) GetHistory(convID string, limit int) ([]*schema.Message, error
 			schemaMsg.Extra["create_time"] = msg.CreateTime.Format(time.RFC3339)
 		}
 
-		// 分离 tool_result 和其他内容
+		// 分离 tool 和其他内容
 		var normalContents []*gormModel.MessageContent
-		var toolResults []map[string]interface{}
+		var toolContents []*gormModel.MessageContent
 
 		for _, content := range msgContents {
-			if content.ContentType == "tool_result" {
-				// 解析 tool_result 的 metadata
-				toolResult := map[string]interface{}{
-					"content": content.TextContent,
-				}
-				if len(content.Metadata) > 0 {
-					var metadata map[string]interface{}
-					if err := json.Unmarshal(content.Metadata, &metadata); err == nil {
-						toolResult["tool_call_id"] = metadata["tool_call_id"]
-						toolResult["tool_name"] = metadata["tool_name"]
-						toolResult["tool_args"] = metadata["tool_args"]
-
-						// 如果是第一个 tool_result，设置 ToolCallID 到消息中（用于 LLM 交互）
-						if schemaMsg.ToolCallID == "" {
-							if toolCallID, ok := metadata["tool_call_id"].(string); ok {
-								schemaMsg.ToolCallID = toolCallID
-							}
-						}
-					}
-				}
-				toolResults = append(toolResults, toolResult)
+			if content.ContentType == "tool" {
+				toolContents = append(toolContents, content)
 			} else {
 				normalContents = append(normalContents, content)
 			}
 		}
 
-		// 如果有 tool_results，添加到 Extra 字段
-		if len(toolResults) > 0 {
-			schemaMsg.Extra["tool_results"] = toolResults
-		}
-
-		// 处理正常内容（非 tool_result）
+		// 处理正常内容
 		// 如果有多个内容块或包含非文本内容，构建MultiContent
 		if len(normalContents) > 1 || (len(normalContents) == 1 && normalContents[0].ContentType != "text") {
 			var multiContent []schema.MessageInputPart
@@ -469,7 +471,39 @@ func (h *Manager) GetHistory(convID string, limit int) ([]*schema.Message, error
 			schemaMsg.Content = normalContents[0].TextContent
 		}
 
-		result[i] = schemaMsg
+		// 处理 tool 内容：将其添加到 Extra.tool 数组中
+		if len(toolContents) > 0 {
+			toolResults := make([]map[string]interface{}, 0, len(toolContents))
+
+			for _, toolContent := range toolContents {
+				toolResult := map[string]interface{}{
+					"content": toolContent.TextContent,
+				}
+
+				// 从 metadata 中提取工具信息
+				if len(toolContent.Metadata) > 0 {
+					var metadata map[string]interface{}
+					if err := json.Unmarshal(toolContent.Metadata, &metadata); err == nil {
+						if toolCallID, ok := metadata["tool_call_id"].(string); ok {
+							toolResult["tool_call_id"] = toolCallID
+						}
+						if toolName, ok := metadata["tool_name"].(string); ok {
+							toolResult["tool_name"] = toolName
+						}
+						if toolArgs, ok := metadata["tool_args"]; ok {
+							toolResult["tool_args"] = toolArgs
+						}
+					}
+				}
+
+				toolResults = append(toolResults, toolResult)
+			}
+
+			schemaMsg.Extra["tool"] = toolResults
+		}
+
+		// 添加消息到结果
+		result = append(result, schemaMsg)
 	}
 
 	return result, nil
@@ -503,7 +537,7 @@ func (h *Manager) processImageContent(mediaURL string) (schema.MessageInputPart,
 	}
 
 	// 检查文件是否存在
-	fileInfo, err := os.Stat(filePath)
+	_, err := os.Stat(filePath)
 	if os.IsNotExist(err) {
 		// 返回一个占位符表示图片不可用,而不是返回错误,避免影响整个对话加载
 		return schema.MessageInputPart{
@@ -511,8 +545,6 @@ func (h *Manager) processImageContent(mediaURL string) (schema.MessageInputPart,
 			Text: fmt.Sprintf("[图片不可用: %s]", filepath.Base(mediaURL)),
 		}, nil
 	}
-	g.Log().Debugf(gctx.New(), "[processImageContent] File found, size=%d bytes", fileInfo.Size())
-
 	// 读取文件（使用处理后的绝对路径）
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -539,13 +571,6 @@ func (h *Manager) processImageContent(mediaURL string) (schema.MessageInputPart,
 			Detail: schema.ImageDetailAuto,
 		},
 	}, nil
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 // processAudioContent 处理音频内容，将文件路径转换为base64 data URI
@@ -753,7 +778,7 @@ func (h *Manager) BuildLLMMessages(history []MessageWithContents) []map[string]i
 		var parts []string
 		for _, c := range m.Contents {
 			switch c.ContentType {
-			case "text", "json_data", "tool_result":
+			case "text", "json_data", "tool":
 				parts = append(parts, c.TextContent)
 			case "image_url", "audio_url", "file_url":
 				// 当前仅 LLM，无法理解媒体，转为文本描述

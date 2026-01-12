@@ -26,11 +26,12 @@ type StreamData struct {
 	Type             string                 `json:"type,omitempty"`              // 事件类型: content, tool_call_start, tool_call_end, llm_iteration, thinking
 	Content          string                 `json:"content"`                     // 消息具体内容
 	ReasoningContent string                 `json:"reasoning_content,omitempty"` // 思考内容（用于思考模型）
-	Document         []*schema.Document     `json:"document"`
-	Metadata         map[string]interface{} `json:"metadata,omitempty"` // 元数据（用于工具调用、LLM迭代等信息）
+	Document         []*schema.Document     `json:"document,omitempty"`          // 知识库检索结果（用于知识检索）
+	Tool             []*schema.Document     `json:"tool,omitempty"`              // 工具调用结果（用于工具调用）
+	Metadata         map[string]interface{} `json:"metadata,omitempty"`          // 元数据（用于工具调用、LLM迭代等信息）
 }
 
-func SteamResponse(ctx context.Context, streamReader schema.StreamReaderInterface[*schema.Message], docs []*schema.Document) (err error) {
+func SteamResponse(ctx context.Context, streamReader schema.StreamReaderInterface[*schema.Message], retrievalDocs []*schema.Document, toolDocs []*schema.Document) (err error) {
 	// 获取HTTP响应对象
 	httpReq := ghttp.RequestFromCtx(ctx)
 	httpResp := httpReq.Response
@@ -67,9 +68,10 @@ func SteamResponse(ctx context.Context, streamReader schema.StreamReaderInterfac
 		writeSSEData(httpResp, string(marshal))
 	}
 
-	// 在流式响应结束后，发送知识库检索结果作为最后一条消息
-	if len(docs) > 0 {
-		sd.Document = docs
+	// 在流式响应结束后，发送知识库检索结果和工具调用结果作为最后一条消息
+	if len(retrievalDocs) > 0 || len(toolDocs) > 0 {
+		sd.Document = retrievalDocs
+		sd.Tool = toolDocs
 		sd.Content = ""
 		sd.ReasoningContent = ""
 		marshal, _ := sonic.Marshal(sd)
@@ -125,10 +127,11 @@ func WriteToolCallStart(resp *ghttp.Response, messageID string, toolID string, t
 }
 
 // WriteToolCallEnd 发送工具调用结束事件
-func WriteToolCallEnd(resp *ghttp.Response, messageID string, toolID string, toolName string, result string, err error, durationMs int64, fileURL ...string) {
+func WriteToolCallEnd(resp *ghttp.Response, messageID string, toolID string, toolName string, toolType string, result string, err error, durationMs int64, fileURL ...string) {
 	metadata := map[string]interface{}{
 		"tool_id":     toolID,
 		"tool_name":   toolName,
+		"tool_type":   toolType,
 		"result":      result,
 		"duration_ms": durationMs,
 	}

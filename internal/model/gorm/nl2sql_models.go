@@ -77,6 +77,11 @@ type NL2SQLTable struct {
 	UpdateTime       *time.Time     `gorm:"column:update_time;autoUpdateTime" json:"update_time"`
 }
 
+// TableName specifies table name
+func (NL2SQLTable) TableName() string {
+	return "nl2sql_tables"
+}
+
 // NL2SQLColumn 字段元数据（L3）
 type NL2SQLColumn struct {
 	ID            string         `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`

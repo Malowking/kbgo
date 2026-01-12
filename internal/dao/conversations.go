@@ -78,6 +78,13 @@ func (d *ConversationDAO) List(ctx context.Context, filters map[string]interface
 	if conversationType, ok := filters["conversation_type"].(string); ok && conversationType != "" {
 		query = query.Where("conversation_type = ?", conversationType)
 	}
+	// agent_preset_id 筛选只在 conversation_type 为 agent 时有效
+	if agentPresetID, ok := filters["agent_preset_id"].(string); ok && agentPresetID != "" {
+		// 确保 conversation_type 是 agent
+		if convType, ok := filters["conversation_type"].(string); ok && convType == "agent" {
+			query = query.Where("agent_preset_id = ?", agentPresetID)
+		}
+	}
 
 	// 统计总数
 	if err := query.Count(&total).Error; err != nil {

@@ -108,7 +108,7 @@ func (s *NL2SQLVectorSearcher) SearchSchema(ctx context.Context, req *SearchSche
 			score:          req.MinScore,
 			apiKey:         modelEntity.APIKey,
 			baseURL:        modelEntity.BaseURL,
-			embeddingModel: modelEntity.ModelID,
+			embeddingModel: modelEntity.ModelName,
 		},
 		req.Query,
 		collectionName,
@@ -126,11 +126,11 @@ func (s *NL2SQLVectorSearcher) SearchSchema(ctx context.Context, req *SearchSche
 	results := make([]*SchemaSearchResult, 0, len(docs))
 	for _, doc := range docs {
 		result := &SchemaSearchResult{
-			DocumentID: doc.ID, // 使用ID作为DocumentID
+			DocumentID: doc.ID,
 			ChunkID:    doc.ID,
-			Score:      float64(doc.Score), // 转换float32到float64
+			Score:      float64(doc.Score),
 			Content:    doc.Content,
-			Metadata:   doc.MetaData, // 使用MetaData字段
+			Metadata:   doc.MetaData,
 		}
 
 		// 从metadata中提取entity信息
@@ -162,7 +162,6 @@ func (s *NL2SQLVectorSearcher) SearchSchemaSimple(ctx context.Context, schemaID,
 	if err != nil {
 		return nil, err
 	}
-
 	// 转换为VectorSearchResult格式
 	results := make([]VectorSearchResult, 0, len(resp.Results))
 	for _, r := range resp.Results {

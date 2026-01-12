@@ -2,6 +2,7 @@ package kbgo
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
@@ -24,7 +25,13 @@ func getConversationManager() *conversation.Manager {
 
 // ConversationList 获取会话列表
 func (c *ControllerV1) ConversationList(ctx context.Context, req *v1.ConversationListReq) (res *v1.ConversationListRes, err error) {
-	g.Log().Infof(ctx, "ConversationList request - KnowledgeID: %s, ConversationType: %s, Page: %d, PageSize: %d", req.KnowledgeID, req.ConversationType, req.Page, req.PageSize)
+	g.Log().Infof(ctx, "ConversationList request - KnowledgeID: %s, ConversationType: %s, AgentPresetID: %s, Page: %d, PageSize: %d", req.KnowledgeID, req.ConversationType, req.AgentPresetID, req.Page, req.PageSize)
+
+	// 验证：agent_preset_id 只能在 conversation_type 为 agent 时使用
+	if req.AgentPresetID != "" && req.ConversationType != "agent" {
+		g.Log().Warningf(ctx, "agent_preset_id 参数只能在 conversation_type=agent 时使用，当前 conversation_type=%s", req.ConversationType)
+		return nil, errors.New("agent_preset_id 参数只能在 conversation_type 为 agent 时使用")
+	}
 
 	// 构建筛选条件
 	filters := make(map[string]interface{})
@@ -33,6 +40,9 @@ func (c *ControllerV1) ConversationList(ctx context.Context, req *v1.Conversatio
 	}
 	if req.ConversationType != "" {
 		filters["conversation_type"] = req.ConversationType
+	}
+	if req.AgentPresetID != "" {
+		filters["agent_preset_id"] = req.AgentPresetID
 	}
 	if req.Status != "" {
 		filters["status"] = req.Status
@@ -59,6 +69,7 @@ func (c *ControllerV1) ConversationList(ctx context.Context, req *v1.Conversatio
 			LastMessageTime:  item.LastMessageTime,
 			CreateTime:       item.CreateTime,
 			UpdateTime:       item.UpdateTime,
+			AgentPresetID:    item.AgentPresetID,
 			Tags:             item.Tags,
 			Metadata:         item.Metadata,
 		})
@@ -86,9 +97,11 @@ func (c *ControllerV1) ConversationDetail(ctx context.Context, req *v1.Conversat
 	messages := make([]*v1.MessageItem, 0, len(detail.Messages))
 	for _, msg := range detail.Messages {
 		messages = append(messages, &v1.MessageItem{
+			ID:               msg.ID,
 			Role:             msg.Role,
 			Content:          msg.Content,
 			ReasoningContent: msg.ReasoningContent,
+			Metadata:         msg.Metadata,
 			CreateTime:       msg.CreateTime,
 			TokensUsed:       msg.TokensUsed,
 			LatencyMs:        msg.LatencyMs,

@@ -43,6 +43,16 @@ export const ToolCallStatus: React.FC<ToolCallStatusProps> = ({
     return nameMap[toolName] || toolName;
   };
 
+  // 获取工具类型的显示文本
+  const getToolTypeDisplayName = (toolType?: string): string => {
+    const typeMap: Record<string, string> = {
+      local: '本地工具',
+      mcp: 'MCP工具',
+      skill: 'Claude Skill',
+    };
+    return toolType ? typeMap[toolType] || toolType : '';
+  };
+
   // 获取工具图标
   const getToolIcon = (toolName: string) => {
     const iconClass = "w-4 h-4";
@@ -65,7 +75,21 @@ export const ToolCallStatus: React.FC<ToolCallStatusProps> = ({
     return `${(ms / 1000).toFixed(2)}s`;
   };
 
-  if (toolCalls.length === 0) {
+  // 过滤工具调用：如果有 nl2sql 工具，则过滤掉相关的 knowledge_retrieval
+  const filteredToolCalls = React.useMemo(() => {
+    // 检查是否有 nl2sql 工具调用
+    const hasNL2SQL = toolCalls.some(tool => tool.tool_name === 'nl2sql');
+
+    if (hasNL2SQL) {
+      // 如果有 nl2sql，过滤掉 knowledge_retrieval（因为它是 nl2sql 内部使用的）
+      return toolCalls.filter(tool => tool.tool_name !== 'knowledge_retrieval');
+    }
+
+    // 否则返回所有工具调用
+    return toolCalls;
+  }, [toolCalls]);
+
+  if (filteredToolCalls.length === 0) {
     return null;
   }
 
@@ -73,7 +97,7 @@ export const ToolCallStatus: React.FC<ToolCallStatusProps> = ({
     <div className="space-y-2 my-3">
       {/* 工具调用列表 */}
       <div className="space-y-2">
-        {toolCalls.map((tool) => {
+        {filteredToolCalls.map((tool) => {
           const isExpanded = expandedTools.has(tool.tool_id);
           const hasDetails = tool.arguments || tool.result || tool.error;
 
@@ -82,7 +106,7 @@ export const ToolCallStatus: React.FC<ToolCallStatusProps> = ({
                 key={tool.tool_id}
                 className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden animate-fadeIn"
               >
-                {/* 工具头部 */}
+                {/* 工具头部 - 包含工具名称和状态 */}
                 <div
                   className={`flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-all duration-200 ${
                     tool.status === 'running'
@@ -119,9 +143,25 @@ export const ToolCallStatus: React.FC<ToolCallStatusProps> = ({
                   </div>
 
                   {/* 工具名称 */}
-                  <span className="flex-1 text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {getToolDisplayName(tool.tool_name)}
-                  </span>
+                  <div className="flex-1 flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {getToolDisplayName(tool.tool_name)}
+                    </span>
+                    {/* 工具类型标签 */}
+                    {tool.tool_type && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        tool.tool_type === 'local'
+                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                          : tool.tool_type === 'mcp'
+                          ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
+                          : tool.tool_type === 'skill'
+                          ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
+                          : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                      }`}>
+                        {getToolTypeDisplayName(tool.tool_type)}
+                      </span>
+                    )}
+                  </div>
 
                   {/* 执行时间 */}
                   {tool.duration && (
@@ -157,9 +197,9 @@ export const ToolCallStatus: React.FC<ToolCallStatusProps> = ({
                   )}
                 </div>
 
-                {/* 工具详情（展开时显示） */}
+                {/* 工具详情（展开时显示） - 嵌套在工具名称下方 */}
                 {isExpanded && hasDetails && (
-                  <div className="px-3 py-2 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 space-y-2 animate-fadeIn">
+                  <div className="px-3 py-2 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 space-y-3 animate-fadeIn">
                     {/* 参数 */}
                     {tool.arguments && (
                       <div>
@@ -172,19 +212,19 @@ export const ToolCallStatus: React.FC<ToolCallStatusProps> = ({
                       </div>
                     )}
 
-                    {/* 结果 */}
+                    {/* 工具返回结果 - 作为嵌套内容显示 */}
                     {tool.result && (
                       <div>
                         <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                          结果:
+                          工具返回:
                         </div>
-                        <div className="text-xs text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 p-2 rounded">
+                        <div className="text-xs text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 p-2 rounded max-h-60 overflow-y-auto">
                           {tool.result}
                         </div>
                       </div>
                     )}
 
-                    {/* 错误 */}
+                    {/* 错误信息 */}
                     {tool.error && (
                       <div>
                         <div className="text-xs font-medium text-red-500 mb-1">

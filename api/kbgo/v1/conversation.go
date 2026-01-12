@@ -9,6 +9,7 @@ type ConversationListReq struct {
 	g.Meta           `path:"/v1/conversations" method:"get" tags:"conversation"`
 	KnowledgeID      string `json:"knowledge_id" v:""`       // 知识库ID（可选，用于筛选）
 	ConversationType string `json:"conversation_type" v:""`  // 会话类型（可选，用于筛选）：text/agent
+	AgentPresetID    string `json:"agent_preset_id" v:""`    // Agent预设ID（可选，用于筛选Agent对话）
 	Page             int    `json:"page" d:"1"`              // 页码，默认1
 	PageSize         int    `json:"page_size" d:"20"`        // 每页数量，默认20
 	Status           string `json:"status" v:""`             // 状态筛选：active/archived
@@ -37,6 +38,7 @@ type ConversationItem struct {
 	LastMessageTime  string         `json:"last_message_time"` // 最后消息时间
 	CreateTime       string         `json:"create_time"`
 	UpdateTime       string         `json:"update_time"`
+	AgentPresetID    string         `json:"agent_preset_id"`    // Agent预设ID
 	Tags             []string       `json:"tags,omitempty"`     // 标签
 	Metadata         map[string]any `json:"metadata,omitempty"` // 元数据
 }
@@ -66,13 +68,15 @@ type ConversationDetailRes struct {
 
 // MessageItem 消息项
 type MessageItem struct {
-	ID               uint64 `json:"id"`
-	Role             string `json:"role"` // user/assistant/system
-	Content          string `json:"content"`
-	ReasoningContent string `json:"reasoning_content,omitempty"` // 思考内容
-	CreateTime       string `json:"create_time"`
-	TokensUsed       int    `json:"tokens_used,omitempty"`
-	LatencyMs        int    `json:"latency_ms,omitempty"`
+	ID               uint64                 `json:"id"`
+	Role             string                 `json:"role"` // user/assistant/system/tool
+	Content          string                 `json:"content"`
+	ReasoningContent string                 `json:"reasoning_content,omitempty"` // 思考内容
+	Metadata         map[string]interface{} `json:"metadata,omitempty"`          // 元数据（用于tool角色的工具调用信息）
+	CreateTime       string                 `json:"create_time"`
+	TokensUsed       int                    `json:"tokens_used,omitempty"`
+	LatencyMs        int                    `json:"latency_ms,omitempty"`
+	Extra            map[string]any         `json:"extra,omitempty"` // 扩展字段（包含tool调用结果等）
 }
 
 // ConversationDeleteReq 删除会话请求

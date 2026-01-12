@@ -28,8 +28,6 @@ func (a *LLMAdapter) Call(ctx context.Context, prompt string) (string, error) {
 		return "", fmt.Errorf("model config is nil")
 	}
 
-	g.Log().Debugf(ctx, "LLMAdapter calling model: %s", a.modelConfig.ModelID)
-
 	// 创建ModelService
 	modelService := model.NewModelService(
 		a.modelConfig.APIKey,
@@ -100,9 +98,6 @@ type VectorSearchResult struct {
 
 // Search 执行向量搜索
 func (a *VectorSearchAdapter) Search(ctx context.Context, query string, topK int) ([]VectorSearchResult, error) {
-	g.Log().Debugf(ctx, "VectorSearchAdapter searching: query=%s, topK=%d, kb=%s, datasourceID=%s",
-		query, topK, a.knowledgeBaseID, a.datasourceID)
-
 	// 构建检索配置，包含embedding模型配置
 	retrieverConfig := &SimpleRetrieverConfig{
 		topK:            topK,
@@ -117,7 +112,6 @@ func (a *VectorSearchAdapter) Search(ctx context.Context, query string, topK int
 		retrieverConfig.apiKey = a.embeddingModelConfig.APIKey
 		retrieverConfig.baseURL = a.embeddingModelConfig.BaseURL
 		retrieverConfig.embeddingModel = a.embeddingModelConfig.Name
-		g.Log().Debugf(ctx, "Using embedding model: %s", a.embeddingModelConfig.Name)
 	}
 
 	// 执行向量搜索
@@ -151,7 +145,6 @@ func (a *VectorSearchAdapter) Search(ctx context.Context, query string, topK int
 		})
 	}
 
-	g.Log().Debugf(ctx, "NL2SQL vector search found %d results", len(results))
 	return results, nil
 }
 

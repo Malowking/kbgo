@@ -136,9 +136,6 @@ func retrieveWithRerank(ctx context.Context, conf *config.RetrieverConfig, req *
 		// 加权融合：hybridScore = rerankWeight * rerankScore + bm25Weight * bm25Score
 		hybridScore := rerankWeight*rerankScore + bm25Weight*bm25Score
 		doc.Score = float32(hybridScore)
-
-		g.Log().Debugf(ctx, "Doc %s: rerank=%.4f, bm25=%.4f, hybrid=%.4f",
-			doc.ID[:8], rerankScore, bm25Score, hybridScore)
 	}
 
 	// 5. 按混合分数排序
@@ -195,15 +192,10 @@ func retrieveWithPureRerank(ctx context.Context, conf *config.RetrieverConfig, r
 	docs = convertFromRerankDocs(rerankResults, docs)
 
 	g.Log().Infof(ctx, "After rerank: %d documents with scores", len(docs))
-	for i, doc := range docs {
-		g.Log().Debugf(ctx, "Doc %d: ID=%s, Score=%.4f, Threshold=%.4f", i, doc.ID[:8], doc.Score, *req.Score)
-	}
-
 	// 过滤低分文档
 	var relatedDocs []*schema.Document
 	for _, doc := range docs {
 		if doc.Score < float32(*req.Score) {
-			g.Log().Debugf(ctx, "Filtered out doc %s with score %.4f < threshold %.4f", doc.ID[:8], doc.Score, *req.Score)
 			continue
 		}
 		relatedDocs = append(relatedDocs, doc)

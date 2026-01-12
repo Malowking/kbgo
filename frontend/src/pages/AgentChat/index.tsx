@@ -22,7 +22,6 @@ interface Message {
   references?: any[];
   mcp_results?: any[];
   timestamp: string;
-  // 新增：工具调用相关字段
   toolCalls?: ToolCallInfo[];
   iteration?: LLMIterationInfo;
   thinking?: string;
@@ -63,17 +62,13 @@ export default function AgentChat() {
     try {
       const response = await conversationApi.list({
         conversation_type: 'agent',
+        agent_preset_id: presetId, // 直接使用后端筛选
         page: 1,
         page_size: 100,
       });
 
-      // 过滤出属于当前Agent的对话
-      const agentConversations = response.conversations.filter((conv: any) => {
-        return conv.agent_preset_id === presetId;
-      });
-
       // 转换为前端格式
-      const formattedConvs: Conversation[] = agentConversations.map((conv: any) => ({
+      const formattedConvs: Conversation[] = response.conversations.map((conv: any) => ({
         conv_id: conv.conv_id,
         preset_id: presetId,
         preset_name: conv.title || 'Agent',
@@ -455,15 +450,32 @@ export default function AgentChat() {
                   // 从后端加载该对话的消息历史
                   try {
                     const detail = await conversationApi.get(conv.conv_id);
-                    // 转换消息格式
-                    const loadedMessages: Message[] = detail.messages.map((msg: any, index: number) => ({
-                      id: Date.now() + index,
-                      role: msg.role,
-                      content: msg.content,
-                      reasoning_content: msg.reasoning_content,
-                      references: msg.references,
-                      timestamp: msg.create_time || new Date().toISOString(),
-                    }));
+                    // 转换消息格式 - 过滤掉 tool 角色的消息，因为它们会被附加到 assistant 消息的 extra 字段中
+                    const loadedMessages: Message[] = detail.messages
+                      .filter((msg: any) => msg.role !== 'tool')
+                      .map((msg: any, index: number) => {
+                        // 解析 extra 字段中的工具调用信息
+                        let toolCalls: ToolCallInfo[] | undefined;
+                        if (msg.extra && msg.extra.tool && Array.isArray(msg.extra.tool)) {
+                          toolCalls = msg.extra.tool.map((tool: any) => ({
+                            tool_id: tool.tool_call_id || `tool_${index}`,
+                            tool_name: tool.tool_name || 'unknown',
+                            arguments: tool.tool_args,
+                            result: tool.content,
+                            status: 'success' as const,
+                          }));
+                        }
+
+                        return {
+                          id: Date.now() + index,
+                          role: msg.role,
+                          content: msg.content,
+                          reasoning_content: msg.reasoning_content,
+                          references: msg.references,
+                          timestamp: msg.create_time || new Date().toISOString(),
+                          toolCalls,
+                        };
+                      });
                     setMessages(loadedMessages);
                   } catch (error) {
                     logger.error('Failed to load conversation messages:', error);

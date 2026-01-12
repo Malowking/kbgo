@@ -142,12 +142,12 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 	}
 
 	// 获取检索文档
-	var documents []*schema.Document
-	documents = retrievalRes.documents
+	var retrievalDocuments []*schema.Document
+	retrievalDocuments = retrievalRes.documents
 
-	// 如果有解析的文档内容，添加到 documents 中
+	// 如果有解析的文档内容，添加到 retrievalDocuments 中
 	if fileParseRes.fileContent != "" {
-		documents = append(documents, &schema.Document{
+		retrievalDocuments = append(retrievalDocuments, &schema.Document{
 			ID:       "uploaded_document",
 			Content:  fileParseRes.fileContent,
 			MetaData: map[string]interface{}{"source": "user_upload", "type": "document"},
@@ -155,8 +155,13 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 		g.Log().Infof(ctx, "Added parsed document content to documents (%d chars)", len(fileParseRes.fileContent))
 	}
 
+	// 工具调用返回的文档（用于传递给 LLM）
+	var allDocumentsForLLM []*schema.Document
+	allDocumentsForLLM = append(allDocumentsForLLM, retrievalDocuments...)
+
 	// 2. 执行工具调用（使用统一的工具执行器）
 	var toolResult *agent_tools.ExecuteResult
+	var toolDocuments []*schema.Document // 工具调用返回的文档
 	if req.Tools != nil && len(req.Tools) > 0 {
 		g.Log().Infof(ctx, "Executing tools using unified executor with LLM selection")
 		executor := agent_tools.NewToolExecutor()
@@ -166,14 +171,16 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 
 		var err error
 		toolResult, err = executor.Execute(ctx, req.Tools, req.Question,
-			req.ModelID, req.EmbeddingModelID, documents, req.SystemPrompt, req.ConvID, messageID)
+			req.ModelID, req.EmbeddingModelID, allDocumentsForLLM, req.SystemPrompt, req.ConvID, messageID)
 
 		if err != nil {
 			g.Log().Errorf(ctx, "Tool execution failed: %v", err)
 		} else {
-			// 添加工具返回的文档
+			// 保存工具返回的文档（用于区分显示）
 			if len(toolResult.Documents) > 0 {
-				documents = append(documents, toolResult.Documents...)
+				toolDocuments = toolResult.Documents
+				// 同时也添加到 allDocumentsForLLM 中，供 LLM 使用
+				allDocumentsForLLM = append(allDocumentsForLLM, toolResult.Documents...)
 			}
 
 			// 如果工具返回了最终答案,处理流式返回
@@ -212,9 +219,9 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 	var err error
 	if len(multimodalFiles) > 0 {
 		g.Log().Infof(ctx, "Using multimodal stream chat with %d files", len(multimodalFiles))
-		streamReader, err = chatI.GetAnswerStreamWithFiles(ctx, req.ModelID, req.ConvID, documents, req.Question, multimodalFiles, req.JsonFormat)
+		streamReader, err = chatI.GetAnswerStreamWithFiles(ctx, req.ModelID, req.ConvID, allDocumentsForLLM, req.Question, multimodalFiles, req.JsonFormat)
 	} else {
-		streamReader, err = chatI.GetAnswerStream(ctx, req.ModelID, req.ConvID, documents, req.Question, req.SystemPrompt, req.JsonFormat)
+		streamReader, err = chatI.GetAnswerStream(ctx, req.ModelID, req.ConvID, allDocumentsForLLM, req.Question, req.SystemPrompt, req.JsonFormat)
 	}
 	if err != nil {
 		g.Log().Error(ctx, err)
@@ -222,39 +229,8 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 	}
 	defer streamReader.Close()
 
-	// 在流式响应中添加工具结果
-	var mcpResults []*v1.MCPResult
-	var mcpMetadata []map[string]interface{}
-	if toolResult != nil && toolResult.MCPResults != nil {
-		mcpResults = toolResult.MCPResults
-		mcpMetadata = make([]map[string]interface{}, len(toolResult.MCPResults))
-		for i, res := range toolResult.MCPResults {
-			mcpMetadata[i] = map[string]interface{}{
-				"type":         "mcp",
-				"service_name": res.ServiceName,
-				"tool_name":    res.ToolName,
-				"content":      res.Content,
-			}
-		}
-	}
-
-	allDocuments := h.buildAllDocuments(documents, mcpResults)
-
-	// 准备元数据
-	metadata := h.buildMetadata(retrievalRes.retrieverMetadata, mcpMetadata)
-
-	// 将元数据添加到所有文档中
-	if len(metadata) > 0 {
-		for _, doc := range allDocuments {
-			if doc.MetaData == nil {
-				doc.MetaData = make(map[string]interface{})
-			}
-			doc.MetaData["chat_metadata"] = metadata
-		}
-	}
-
 	// 处理流式响应和内容收集
-	err = h.handleStreamResponse(ctx, streamReader, allDocuments, start, req.ConvID, metadata, chatI)
+	err = h.handleStreamResponse(ctx, streamReader, retrievalDocuments, toolDocuments, start, req.ConvID, retrievalRes.retrieverMetadata, chatI)
 	if err != nil {
 		g.Log().Error(ctx, err)
 		return err
@@ -298,10 +274,10 @@ func (h *StreamHandler) buildMetadata(retrieverMetadata map[string]interface{}, 
 }
 
 // handleStreamResponse 处理流式响应
-func (h *StreamHandler) handleStreamResponse(ctx context.Context, streamReader schema.StreamReaderInterface[*schema.Message], allDocuments []*schema.Document, start time.Time, convID string, metadata map[string]interface{}, chatI interface{}) error {
+func (h *StreamHandler) handleStreamResponse(ctx context.Context, streamReader schema.StreamReaderInterface[*schema.Message], retrievalDocuments []*schema.Document, toolDocuments []*schema.Document, start time.Time, convID string, metadata map[string]interface{}, chatI interface{}) error {
 	// 直接发送流式响应到客户端
 	// 注意：完整消息已经在 chat.go 的 goroutine 中保存，这里不需要重复保存
-	err := common.SteamResponse(ctx, streamReader, allDocuments)
+	err := common.SteamResponse(ctx, streamReader, retrievalDocuments, toolDocuments)
 	if err != nil {
 		return err
 	}
