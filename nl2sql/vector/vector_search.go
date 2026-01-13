@@ -103,13 +103,6 @@ func (s *NL2SQLVectorSearcher) SearchSchema(ctx context.Context, req *SearchSche
 	// 执行向量搜索（使用NL2SQL专用方法）
 	docs, err := s.vectorStore.VectorSearchOnlyNL2SQL(
 		ctx,
-		&nl2sqlRetrieverConfig{
-			topK:           req.TopK,
-			score:          req.MinScore,
-			apiKey:         modelEntity.APIKey,
-			baseURL:        modelEntity.BaseURL,
-			embeddingModel: modelEntity.ModelName,
-		},
 		req.Query,
 		collectionName,
 		req.SchemaID, // datasourceID

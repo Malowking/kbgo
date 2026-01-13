@@ -31,7 +31,7 @@ func retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 	vectorStore := conf.VectorStore
 
 	// 使用通用的 NewRetriever 方法
-	r, err := vectorStore.NewRetriever(ctx, conf, collectionName)
+	r, err := vectorStore.NewRetriever(ctx, collectionName)
 	if err != nil {
 		g.Log().Errorf(ctx, "failed to create retriever for collection %s, err=%v", collectionName, err)
 		return nil, err

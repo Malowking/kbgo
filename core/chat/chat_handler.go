@@ -2,10 +2,12 @@ package chat
 
 import (
 	"context"
+	"time"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/agent_tools"
 	"github.com/Malowking/kbgo/core/common"
+	"github.com/Malowking/kbgo/internal/history"
 	"github.com/Malowking/kbgo/internal/logic/chat"
 	"github.com/Malowking/kbgo/internal/logic/retriever"
 	"github.com/Malowking/kbgo/pkg/schema"
@@ -22,6 +24,21 @@ func NewChatHandler() *ChatHandler {
 
 // Chat Handle basic chat request (non-streaming)
 func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles []*common.MultimodalFile) (*v1.ChatRes, error) {
+	// 保存用户消息
+	if req.ConvID != "" {
+		userMessageTime := time.Now()
+		userMessage := &schema.Message{
+			Role:    schema.User,
+			Content: req.Question,
+		}
+
+		historyManager := history.NewManager()
+		if err := historyManager.SaveMessage(userMessage, req.ConvID, nil, &userMessageTime); err != nil {
+			g.Log().Warningf(ctx, "保存用户消息失败: %v，继续执行", err)
+		} else {
+			g.Log().Infof(ctx, "成功保存用户消息")
+		}
+	}
 	// 验证：Tools和知识库检索不能同时启用
 	if req.Tools != nil && len(req.Tools) > 0 && req.EnableRetriever && req.KnowledgeId != "" {
 		g.Log().Warningf(ctx, "Chat handler - Both Tools and knowledge retrieval are enabled, knowledge retrieval will be treated as a tool")
@@ -71,16 +88,15 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 			rewriteAttempts := 3
 
 			retrieverRes, err := retriever.ProcessRetrieval(ctx, &v1.RetrieverReq{
-				Question:         req.Question,
-				EmbeddingModelID: req.EmbeddingModelID,
-				RerankModelID:    req.RerankModelID,
-				TopK:             req.TopK,
-				Score:            req.Score,
-				KnowledgeId:      req.KnowledgeId,
-				EnableRewrite:    true, // chat接口默认开启查询重写
-				RewriteAttempts:  rewriteAttempts,
-				RetrieveMode:     retrieveMode,
-				RerankWeight:     req.RerankWeight,
+				Question:        req.Question,
+				RerankModelID:   req.RerankModelID,
+				TopK:            req.TopK,
+				Score:           req.Score,
+				KnowledgeId:     req.KnowledgeId,
+				EnableRewrite:   true, // chat接口默认开启查询重写
+				RewriteAttempts: rewriteAttempts,
+				RetrieveMode:    retrieveMode,
+				RerankWeight:    req.RerankWeight,
 			})
 			if err != nil {
 				result.err = err
@@ -163,7 +179,7 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 		res.References = retrievalRes.documents
 	}
 
-	// 4. 执行工具调用 (使用统一的工具执行器)
+	// 4. 执行工具调用
 	if req.Tools != nil && len(req.Tools) > 0 {
 		g.Log().Infof(ctx, "Executing tools using unified executor with LLM selection")
 		executor := agent_tools.NewToolExecutor()
@@ -173,7 +189,7 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 
 		// 传入 SystemPrompt 和 ConvID，让工具选择阶段也能感知 Agent 的角色
 		toolResult, err := executor.Execute(ctx, req.Tools, req.Question,
-			req.ModelID, req.EmbeddingModelID, documents, req.SystemPrompt, req.ConvID, messageID)
+			req.ModelID, documents, req.SystemPrompt, req.ConvID, messageID)
 
 		if err != nil {
 			g.Log().Errorf(ctx, "Tool execution failed: %v", err)
@@ -230,7 +246,7 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 		res.Answer = answer
 		res.ReasoningContent = reasoningContent
 	} else {
-		// 无文件：普通对话模式
+		// 普通对话模式
 		g.Log().Infof(ctx, "Using standard chat without files")
 		answer, reasoningContent, err := chatI.GetAnswer(ctx, req.ModelID, req.ConvID, documents, req.Question, req.SystemPrompt, req.JsonFormat)
 		if err != nil {

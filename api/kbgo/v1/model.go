@@ -224,6 +224,6 @@ type GetRewriteModelReq struct {
 // GetRewriteModelRes 获取重写模型响应
 type GetRewriteModelRes struct {
 	g.Meta       `mime:"application/json"`
-	RewriteModel *model.ModelConfig `json:"rewrite_model"` // 重写模型配置，未配置时为null
-	Configured   bool               `json:"configured"`    // 是否已配置重写模型
+	RewriteModel *model.ChatModelConfig `json:"rewrite_model"` // 重写模型配置，未配置时为null
+	Configured   bool                   `json:"configured"`    // 是否已配置重写模型
 }

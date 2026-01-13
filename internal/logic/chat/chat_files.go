@@ -33,7 +33,7 @@ import (
 // GetAnswerWithParsedFiles 使用已解析的文件内容进行多模态对话
 func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, multimodalFiles []*common.MultimodalFile, fileContent string, fileImages []string, customSystemPrompt string, jsonFormat bool) (answer string, reasoningContent string, err error) {
 	// 获取模型配置
-	mc := coreModel.Registry.Get(modelID)
+	mc := coreModel.Registry.GetChatModel(modelID)
 	if mc == nil {
 		return "", "", coreErrors.Newf(coreErrors.ErrModelNotFound, "model not found: %s", modelID)
 	}
@@ -50,7 +50,7 @@ func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, con
 	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
 
 	// 获取聊天历史
-	chatHistory, err := x.eh.GetHistory(convID, 100)
+	chatHistory, err := x.eh.GetHistory(convID, 50)
 	if err != nil {
 		return "", "", err
 	}
@@ -62,7 +62,7 @@ func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, con
 	}
 
 	// 保存用户消息
-	err = x.eh.SaveMessage(userMessage, convID)
+	err = x.eh.SaveMessage(userMessage, convID, nil, nil)
 	if err != nil {
 		return "", "", err
 	}
@@ -98,29 +98,25 @@ func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, con
 	messages = append(messages, chatHistory...)
 	messages = append(messages, userMessage)
 
-	// 解析推理参数
-	params := parseModelParams(mc.Extra)
-
-	// 如果需要JSON格式化，设置ResponseFormat
+	// 准备响应格式
+	var responseFormat *openai.ChatCompletionResponseFormat
 	if jsonFormat {
-		params.ResponseFormat = &openai.ChatCompletionResponseFormat{
+		responseFormat = &openai.ChatCompletionResponseFormat{
 			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 		}
 	}
 
-	// 构建请求参数
+	// 构建请求参数，直接使用模型配置中的参数
 	chatParams := coreModel.ChatCompletionParams{
 		ModelName:           mc.Name,
 		Messages:            messages,
-		Temperature:         getFloat32OrDefault(params.Temperature, 0.7),
-		MaxCompletionTokens: getIntOrDefault(params.MaxCompletionTokens, 2000),
-		TopP:                getFloat32OrDefault(params.TopP, 0.9),
-		FrequencyPenalty:    getFloat32OrDefault(params.FrequencyPenalty, 0.0),
-		PresencePenalty:     getFloat32OrDefault(params.PresencePenalty, 0.0),
-		N:                   getIntOrDefault(params.N, 1),
-		Tools:               params.Tools,
-		ToolChoice:          params.ToolChoice,
-		ResponseFormat:      params.ResponseFormat,
+		Temperature:         getFloat32OrDefault(mc.Temperature, 0.7),
+		MaxCompletionTokens: getIntOrDefault(mc.MaxCompletionTokens, 2000),
+		TopP:                getFloat32OrDefault(mc.TopP, 0.9),
+		FrequencyPenalty:    getFloat32OrDefault(mc.FrequencyPenalty, 0.0),
+		PresencePenalty:     getFloat32OrDefault(mc.PresencePenalty, 0.0),
+		N:                   getIntOrDefault(mc.N, 1),
+		ResponseFormat:      responseFormat,
 	}
 
 	// 记录开始时间
@@ -182,7 +178,7 @@ func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, con
 // GetAnswerWithFiles 统一的多模态对话处理
 func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile) (answer string, reasoningContent string, err error) {
 	// 获取模型配置
-	mc := coreModel.Registry.Get(modelID)
+	mc := coreModel.Registry.GetChatModel(modelID)
 	if mc == nil {
 		return "", "", coreErrors.Newf(coreErrors.ErrModelNotFound, "model not found: %s", modelID)
 	}
@@ -199,7 +195,7 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
 
 	// 获取聊天历史
-	chatHistory, err := x.eh.GetHistory(convID, 100)
+	chatHistory, err := x.eh.GetHistory(convID, 50)
 	if err != nil {
 		return "", "", err
 	}
@@ -245,7 +241,7 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 	}
 
 	// 保存用户消息
-	err = x.eh.SaveMessage(userMessage, convID)
+	err = x.eh.SaveMessage(userMessage, convID, nil, nil)
 	if err != nil {
 		return "", "", err
 	}
@@ -263,22 +259,16 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 	messages = append(messages, chatHistory...)
 	messages = append(messages, userMessage)
 
-	// 解析推理参数
-	params := parseModelParams(mc.Extra)
-
-	// 构建请求参数
+	// 构建请求参数，直接使用模型配置中的参数
 	chatParams := coreModel.ChatCompletionParams{
 		ModelName:           mc.Name,
 		Messages:            messages,
-		Temperature:         getFloat32OrDefault(params.Temperature, 0.7),
-		MaxCompletionTokens: getIntOrDefault(params.MaxCompletionTokens, 2000),
-		TopP:                getFloat32OrDefault(params.TopP, 0.9),
-		FrequencyPenalty:    getFloat32OrDefault(params.FrequencyPenalty, 0.0),
-		PresencePenalty:     getFloat32OrDefault(params.PresencePenalty, 0.0),
-		N:                   getIntOrDefault(params.N, 1),
-		Tools:               params.Tools,
-		ToolChoice:          params.ToolChoice,
-		ResponseFormat:      params.ResponseFormat,
+		Temperature:         getFloat32OrDefault(mc.Temperature, 0.7),
+		MaxCompletionTokens: getIntOrDefault(mc.MaxCompletionTokens, 2000),
+		TopP:                getFloat32OrDefault(mc.TopP, 0.9),
+		FrequencyPenalty:    getFloat32OrDefault(mc.FrequencyPenalty, 0.0),
+		PresencePenalty:     getFloat32OrDefault(mc.PresencePenalty, 0.0),
+		N:                   getIntOrDefault(mc.N, 1),
 	}
 
 	// 记录开始时间
@@ -330,7 +320,7 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 // GetAnswerStreamWithFiles 统一的多模态流式对话处理
 func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile, jsonFormat bool) (answer schema.StreamReaderInterface[*schema.Message], err error) {
 	// 获取模型配置
-	mc := coreModel.Registry.Get(modelID)
+	mc := coreModel.Registry.GetChatModel(modelID)
 	if mc == nil {
 		return nil, coreErrors.Newf(coreErrors.ErrModelNotFound, "model not found: %s", modelID)
 	}
@@ -347,7 +337,7 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
 
 	// 获取聊天历史
-	chatHistory, err := x.eh.GetHistory(convID, 100)
+	chatHistory, err := x.eh.GetHistory(convID, 50)
 	if err != nil {
 		return nil, err
 	}
@@ -393,7 +383,7 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 	}
 
 	// 保存用户消息
-	err = x.eh.SaveMessage(userMessage, convID)
+	err = x.eh.SaveMessage(userMessage, convID, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -411,29 +401,25 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 	messages = append(messages, chatHistory...)
 	messages = append(messages, userMessage)
 
-	// 解析推理参数
-	params := parseModelParams(mc.Extra)
-
-	// 如果需要JSON格式化，设置ResponseFormat
+	// 准备响应格式
+	var responseFormat *openai.ChatCompletionResponseFormat
 	if jsonFormat {
-		params.ResponseFormat = &openai.ChatCompletionResponseFormat{
+		responseFormat = &openai.ChatCompletionResponseFormat{
 			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 		}
 	}
 
-	// 构建请求参数
+	// 构建请求参数，直接使用模型配置中的参数
 	chatParams := coreModel.ChatCompletionParams{
 		ModelName:           mc.Name,
 		Messages:            messages,
-		Temperature:         getFloat32OrDefault(params.Temperature, 0.7),
-		MaxCompletionTokens: getIntOrDefault(params.MaxCompletionTokens, 2000),
-		TopP:                getFloat32OrDefault(params.TopP, 0.9),
-		FrequencyPenalty:    getFloat32OrDefault(params.FrequencyPenalty, 0.0),
-		PresencePenalty:     getFloat32OrDefault(params.PresencePenalty, 0.0),
-		N:                   getIntOrDefault(params.N, 1),
-		Tools:               params.Tools,
-		ToolChoice:          params.ToolChoice,
-		ResponseFormat:      params.ResponseFormat,
+		Temperature:         getFloat32OrDefault(mc.Temperature, 0.7),
+		MaxCompletionTokens: getIntOrDefault(mc.MaxCompletionTokens, 2000),
+		TopP:                getFloat32OrDefault(mc.TopP, 0.9),
+		FrequencyPenalty:    getFloat32OrDefault(mc.FrequencyPenalty, 0.0),
+		PresencePenalty:     getFloat32OrDefault(mc.PresencePenalty, 0.0),
+		N:                   getIntOrDefault(mc.N, 1),
+		ResponseFormat:      responseFormat,
 	}
 
 	// 记录开始时间

@@ -38,7 +38,6 @@ export default function AgentBuilder() {
   const [kbList, setKbList] = useState<KnowledgeBase[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [rerankModels, setRerankModels] = useState<Model[]>([]);
-  const [_, setEmbeddingModels] = useState<Model[]>([]);
   const [mcpServices, setMcpServices] = useState<MCPRegistry[]>([]);
   const [nl2sqlDatasources, setNl2sqlDatasources] = useState<any[]>([]);
 
@@ -80,14 +79,8 @@ export default function AgentBuilder() {
       const llmAndMultimodalModels = getLLMModels(response.models || [], true);
       const rerankModelsList = getRerankModels(response.models || [], true);
 
-      // 获取 embedding 模型
-      const embeddingModelsList = (response.models || []).filter(
-        m => m.type === 'embedding' && m.enabled
-      );
-
       setModels(llmAndMultimodalModels);
       setRerankModels(rerankModelsList);
-      setEmbeddingModels(embeddingModelsList);
 
       // Set default model if available
       if (llmAndMultimodalModels.length > 0 && !config.model_id) {
@@ -151,7 +144,6 @@ export default function AgentBuilder() {
                 const kr = tool.config.knowledge_retrieval;
                 restoredConfig.enable_retriever = true;
                 restoredConfig.knowledge_id = kr.knowledge_id;
-                restoredConfig.embedding_model_id = kr.embedding_model_id;
                 restoredConfig.rerank_model_id = kr.rerank_model_id;
                 restoredConfig.top_k = kr.top_k || 5;
                 restoredConfig.score = kr.score || 0.3;
@@ -164,7 +156,6 @@ export default function AgentBuilder() {
                 const nl2sql = tool.config.nl2sql;
                 restoredConfig.enable_nl2sql = true;
                 restoredConfig.nl2sql_datasource_id = nl2sql.datasource;
-                restoredConfig.nl2sql_embedding_model_id = nl2sql.embedding_model_id;
               }
 
               // 恢复文件导出配置
@@ -246,7 +237,6 @@ export default function AgentBuilder() {
       if (config.enable_retriever && config.knowledge_id) {
         localToolsConfig.knowledge_retrieval = {
           knowledge_id: config.knowledge_id,
-          embedding_model_id: config.embedding_model_id,
           rerank_model_id: config.rerank_model_id,
           top_k: config.top_k,
           score: config.score,
@@ -259,7 +249,6 @@ export default function AgentBuilder() {
       if (config.enable_nl2sql && config.nl2sql_datasource_id) {
         localToolsConfig.nl2sql = {
           datasource: config.nl2sql_datasource_id,
-          embedding_model_id: config.nl2sql_embedding_model_id,
         };
       }
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/errors"
+	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/internal/dao"
 	pgvectorModel "github.com/Malowking/kbgo/internal/model/pgvector"
 	"github.com/Malowking/kbgo/pkg/schema"
@@ -34,6 +35,7 @@ func InitializePostgresStore(ctx context.Context) (VectorStore, error) {
 	password := g.Cfg().MustGet(ctx, "postgres.password", "").String()
 	database := g.Cfg().MustGet(ctx, "postgres.database", "").String()
 	sslMode := g.Cfg().MustGet(ctx, "postgres.sslmode", "disable").String()
+	timezone := g.Cfg().MustGet(ctx, "postgres.timezone", "UTC").String()
 
 	if host == "" || user == "" || database == "" {
 		return nil, errors.New(errors.ErrVectorStoreInit, "postgres configuration is incomplete. Required: host, user, database")
@@ -42,11 +44,11 @@ func InitializePostgresStore(ctx context.Context) (VectorStore, error) {
 	// 构建连接字符串
 	var connStr string
 	if password != "" {
-		connStr = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-			host, port, user, password, database, sslMode)
+		connStr = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s TimeZone=%s",
+			host, port, user, password, database, sslMode, timezone)
 	} else {
-		connStr = fmt.Sprintf("host=%s port=%s user=%s dbname=%s sslmode=%s",
-			host, port, user, database, sslMode)
+		connStr = fmt.Sprintf("host=%s port=%s user=%s dbname=%s sslmode=%s TimeZone=%s",
+			host, port, user, database, sslMode, timezone)
 	}
 
 	g.Log().Infof(ctx, "Connecting to PostgreSQL at: %s:%s, database: %s", host, port, database)
@@ -242,8 +244,6 @@ func (p *PostgresStore) InsertVectors(ctx context.Context, collectionName string
 		ids[idx] = chunk.ID
 
 		// 清理文本并截断
-		// 注意：这里不需要再次清洗，因为在stepSaveChunks中已经清洗过了
-		// 但为了防御性编程，仍然使用统一的清洗工具确保安全
 		sanitizedText, err := common.CleanString(chunk.Content, common.ProfileDatabase)
 		if err != nil {
 			// 如果清洗失败，记录警告但不中断
@@ -365,7 +365,7 @@ func (p *PostgresStore) GetClient() interface{} {
 }
 
 // NewRetriever 创建PostgreSQL检索器实例
-func (p *PostgresStore) NewRetriever(ctx context.Context, conf interface{}, collectionName string) (Retriever, error) {
+func (p *PostgresStore) NewRetriever(ctx context.Context, collectionName string) (Retriever, error) {
 	if p.pool == nil {
 		return nil, errors.New(errors.ErrInvalidParameter, "postgres pool not provided")
 	}
@@ -386,21 +386,42 @@ func (p *PostgresStore) NewRetriever(ctx context.Context, conf interface{}, coll
 		return nil, errors.Newf(errors.ErrVectorStoreNotFound, "table '%s' not found", fullTableName)
 	}
 
-	// 创建并返回检索器
+	// 从数据库查询知识库的 embedding 模型 ID
+	var embeddingModelID string
+	err = dao.GetDB().WithContext(ctx).
+		Table("knowledge_base").
+		Select("embedding_model_id").
+		Where("id = ?", collectionName).
+		Scan(&embeddingModelID).Error
+
+	if err != nil {
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to query embedding model ID for knowledge %s: %v", collectionName, err)
+	}
+
+	if embeddingModelID == "" {
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "embedding model ID not found for knowledge %s", collectionName)
+	}
+
+	// 从 Registry 获取 embedding 模型配置
+	embeddingModel := model.Registry.GetEmbeddingModel(embeddingModelID)
+	if embeddingModel == nil {
+		return nil, errors.Newf(errors.ErrModelNotFound, "embedding model not found: %s", embeddingModelID)
+	}
+
+	// 创建并返回检索器，直接传入 embedding 模型配置
 	return &postgresRetriever{
-		pool:      p.pool,
-		tableName: fullTableName, // 使用带 schema 的完整表名
-		config:    conf,
+		pool:           p.pool,
+		tableName:      fullTableName,  // 使用带 schema 的完整表名
+		embeddingModel: embeddingModel, // 直接传入 embedding 模型配置
 	}, nil
 }
 
 // VectorSearchOnly 仅使用向量检索的通用方法
 func (p *PostgresStore) VectorSearchOnly(ctx context.Context, conf GeneralRetrieverConfig, query string, knowledgeId string, topK int, score float64) ([]*schema.Document, error) {
-	// knowledge name == table name
 	tableName := p.sanitizeTableName(knowledgeId)
 
 	// 创建检索器
-	r, err := p.NewRetriever(ctx, conf, knowledgeId)
+	r, err := p.NewRetriever(ctx, knowledgeId)
 	if err != nil {
 		g.Log().Errorf(ctx, "failed to create retriever for table %s, err=%v", tableName, err)
 		return nil, err
@@ -450,11 +471,11 @@ func (p *PostgresStore) float64ToFloat32(f64 []float64) []float32 {
 	return f32
 }
 
-// postgresRetriever 实现了 retriever.Retriever 接口
+// 实现 Retriever 接口
 type postgresRetriever struct {
-	pool      *pgxpool.Pool
-	tableName string
-	config    interface{}
+	pool           *pgxpool.Pool
+	tableName      string
+	embeddingModel *model.EmbeddingModelConfig // 直接存储 embedding 模型配置
 }
 
 // Retrieve 实现检索功能
@@ -487,53 +508,19 @@ func (r *postgresRetriever) Retrieve(ctx context.Context, query string, opts ...
 
 // vectorSearchWithThreshold 带阈值的向量搜索
 func (r *postgresRetriever) vectorSearchWithThreshold(ctx context.Context, query string, topK int, threshold float64) ([]*schema.Document, error) {
-	// 获取embedding配置
-	var apiKey, baseURL, embeddingModel string
-	if r.config != nil {
-		// 尝试通过接口方法获取配置
-		type embeddingConfigGetter interface {
-			GetAPIKey() string
-			GetBaseURL() string
-			GetEmbeddingModel() string
-		}
-
-		if configGetter, ok := r.config.(embeddingConfigGetter); ok {
-			apiKey = configGetter.GetAPIKey()
-			baseURL = configGetter.GetBaseURL()
-			embeddingModel = configGetter.GetEmbeddingModel()
-		} else {
-			// Fallback: 尝试使用 map 获取配置字段
-			if configMap, ok := r.config.(map[string]interface{}); ok {
-				if key, exists := configMap["apiKey"]; exists {
-					apiKey = fmt.Sprintf("%v", key)
-				}
-				if url, exists := configMap["baseURL"]; exists {
-					baseURL = fmt.Sprintf("%v", url)
-				}
-				if model, exists := configMap["embeddingModel"]; exists {
-					embeddingModel = fmt.Sprintf("%v", model)
-				}
-			}
-		}
+	// 直接使用存储的 embedding 模型配置
+	if r.embeddingModel == nil {
+		return nil, errors.New(errors.ErrEmbeddingFailed, "embedding model not configured for this retriever")
 	}
 
-	// 创建embedding配置
-	embeddingConfig := &embeddingConfigWrapper{
-		apiKey:         apiKey,
-		baseURL:        baseURL,
-		embeddingModel: embeddingModel,
-	}
-
-	// 创建embedder
-	embedder, err := common.NewEmbedding(ctx, embeddingConfig)
+	// 创建 embedder
+	embedder, err := common.NewEmbedding(ctx, r.embeddingModel)
 	if err != nil {
 		return nil, errors.Newf(errors.ErrEmbeddingFailed, "failed to create embedder: %v", err)
 	}
 
 	// 生成查询向量
-	// 获取向量维度，优先从配置文件读取
-	dim := g.Cfg().MustGet(ctx, "postgres.dim", 1024).Int()
-	vectors, err := embedder.EmbedStrings(ctx, []string{query}, dim)
+	vectors, err := embedder.EmbedStrings(ctx, []string{query})
 	if err != nil {
 		return nil, errors.Newf(errors.ErrEmbeddingFailed, "embedding has error: %v", err)
 	}
@@ -858,7 +845,7 @@ func (p *PostgresStore) DeleteNL2SQLByDatasourceID(ctx context.Context, collecti
 }
 
 // NewNL2SQLRetriever 创建NL2SQL专用的PostgreSQL检索器实例
-func (p *PostgresStore) NewNL2SQLRetriever(ctx context.Context, conf interface{}, collectionName string, datasourceID string) (Retriever, error) {
+func (p *PostgresStore) NewNL2SQLRetriever(ctx context.Context, collectionName string, datasourceID string) (Retriever, error) {
 	if p.pool == nil {
 		return nil, errors.New(errors.ErrInvalidParameter, "postgres pool not provided")
 	}
@@ -879,21 +866,43 @@ func (p *PostgresStore) NewNL2SQLRetriever(ctx context.Context, conf interface{}
 		return nil, errors.Newf(errors.ErrVectorStoreNotFound, "table '%s' not found", fullTableName)
 	}
 
-	// 创建并返回NL2SQL检索器
+	// 获取 embedding 模型 ID
+	var embeddingModelID string
+	err = dao.GetDB().WithContext(ctx).
+		Table("nl2sql_datasources").
+		Select("embedding_model_id").
+		Where("id = ?", datasourceID).
+		Scan(&embeddingModelID).Error
+
+	if err != nil {
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to query embedding model ID for datasources %s: %v", datasourceID, err)
+	}
+
+	if embeddingModelID == "" {
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "embedding model ID not found for datasources %s", datasourceID)
+	}
+
+	// 从 Registry 获取 embedding 模型配置
+	embeddingModel := model.Registry.GetEmbeddingModel(embeddingModelID)
+	if embeddingModel == nil {
+		return nil, errors.Newf(errors.ErrModelNotFound, "embedding model not found: %s", embeddingModelID)
+	}
+
+	// 创建并返回NL2SQL检索器，直接传入 embedding 模型配置
 	return &nl2sqlRetriever{
-		pool:         p.pool,
-		tableName:    fullTableName,
-		datasourceID: datasourceID,
-		config:       conf,
+		pool:           p.pool,
+		tableName:      fullTableName,
+		datasourceID:   datasourceID,
+		embeddingModel: embeddingModel, // 直接传入 embedding 模型配置
 	}, nil
 }
 
 // nl2sqlRetriever NL2SQL专用检索器
 type nl2sqlRetriever struct {
-	pool         *pgxpool.Pool
-	tableName    string
-	datasourceID string
-	config       interface{}
+	pool           *pgxpool.Pool
+	tableName      string
+	datasourceID   string
+	embeddingModel *model.EmbeddingModelConfig // 直接存储 embedding 模型配置
 }
 
 // Retrieve 实现NL2SQL检索功能
@@ -926,48 +935,19 @@ func (r *nl2sqlRetriever) Retrieve(ctx context.Context, query string, opts ...Op
 
 // nl2sqlVectorSearchWithThreshold NL2SQL专用的向量搜索
 func (r *nl2sqlRetriever) nl2sqlVectorSearchWithThreshold(ctx context.Context, query string, topK int, threshold float64) ([]*schema.Document, error) {
-	// 获取embedding配置
-	var apiKey, baseURL, embeddingModel string
-	if r.config != nil {
-		type embeddingConfigGetter interface {
-			GetAPIKey() string
-			GetBaseURL() string
-			GetEmbeddingModel() string
-		}
-
-		if configGetter, ok := r.config.(embeddingConfigGetter); ok {
-			apiKey = configGetter.GetAPIKey()
-			baseURL = configGetter.GetBaseURL()
-			embeddingModel = configGetter.GetEmbeddingModel()
-		} else if configMap, ok := r.config.(map[string]interface{}); ok {
-			if key, exists := configMap["apiKey"]; exists {
-				apiKey = fmt.Sprintf("%v", key)
-			}
-			if url, exists := configMap["baseURL"]; exists {
-				baseURL = fmt.Sprintf("%v", url)
-			}
-			if model, exists := configMap["embeddingModel"]; exists {
-				embeddingModel = fmt.Sprintf("%v", model)
-			}
-		}
+	// 直接使用存储的 embedding 模型配置
+	if r.embeddingModel == nil {
+		return nil, errors.New(errors.ErrEmbeddingFailed, "embedding model not configured for this retriever")
 	}
 
-	// 创建embedding配置
-	embeddingConfig := &embeddingConfigWrapper{
-		apiKey:         apiKey,
-		baseURL:        baseURL,
-		embeddingModel: embeddingModel,
-	}
-
-	// 创建embedder
-	embedder, err := common.NewEmbedding(ctx, embeddingConfig)
+	// 创建 embedder
+	embedder, err := common.NewEmbedding(ctx, r.embeddingModel)
 	if err != nil {
 		return nil, errors.Newf(errors.ErrEmbeddingFailed, "failed to create embedder: %v", err)
 	}
 
 	// 生成查询向量
-	dim := g.Cfg().MustGet(ctx, "postgres.dim", 1024).Int()
-	vectors, err := embedder.EmbedStrings(ctx, []string{query}, dim)
+	vectors, err := embedder.EmbedStrings(ctx, []string{query})
 	if err != nil {
 		return nil, errors.Newf(errors.ErrEmbeddingFailed, "embedding has error: %v", err)
 	}
@@ -1080,9 +1060,9 @@ func (r *nl2sqlRetriever) IsCallbacksEnabled() bool {
 }
 
 // VectorSearchOnlyNL2SQL NL2SQL专用的向量检索方法
-func (p *PostgresStore) VectorSearchOnlyNL2SQL(ctx context.Context, conf GeneralRetrieverConfig, query string, collectionName string, datasourceID string, topK int, score float64) ([]*schema.Document, error) {
+func (p *PostgresStore) VectorSearchOnlyNL2SQL(ctx context.Context, query string, collectionName string, datasourceID string, topK int, score float64) ([]*schema.Document, error) {
 	// 创建NL2SQL检索器
-	r, err := p.NewNL2SQLRetriever(ctx, conf, collectionName, datasourceID)
+	r, err := p.NewNL2SQLRetriever(ctx, collectionName, datasourceID)
 	if err != nil {
 		g.Log().Errorf(ctx, "failed to create NL2SQL retriever for collection %s, err=%v", collectionName, err)
 		return nil, err

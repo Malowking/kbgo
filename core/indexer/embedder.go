@@ -7,7 +7,6 @@ import (
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/errors"
-	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/core/vector_store"
 	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
@@ -17,11 +16,11 @@ import (
 type VectorStoreEmbedder struct {
 	embedding   *common.CustomEmbedder
 	vectorStore vector_store.VectorStore
-	modelConfig interface{} // 保存模型配置，用于提取维度信息
+	dim         int
 }
 
 // NewVectorStoreEmbedder 创建向量存储嵌入器
-func NewVectorStoreEmbedder(ctx context.Context, conf common.EmbeddingConfig, vectorStore vector_store.VectorStore, modelConfig interface{}) (*VectorStoreEmbedder, error) {
+func NewVectorStoreEmbedder(ctx context.Context, conf common.EmbeddingConfig, vectorStore vector_store.VectorStore) (*VectorStoreEmbedder, error) {
 	// Create embedding instance
 	embeddingIns, err := common.NewEmbedding(ctx, conf)
 	if err != nil {
@@ -31,7 +30,7 @@ func NewVectorStoreEmbedder(ctx context.Context, conf common.EmbeddingConfig, ve
 	return &VectorStoreEmbedder{
 		embedding:   embeddingIns,
 		vectorStore: vectorStore,
-		modelConfig: modelConfig,
+		dim:         conf.GetDimension(),
 	}, nil
 }
 
@@ -141,9 +140,6 @@ func (v *VectorStoreEmbedder) embedSingleChunkWithRetry(ctx context.Context, tex
 	var lastErr error
 	delay := initialDelay
 
-	// 获取维度
-	dimensions := v.getDimension(ctx)
-
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
 			g.Log().Infof(ctx, "Retrying single chunk embedding attempt %d/%d after %v delay",
@@ -162,7 +158,7 @@ func (v *VectorStoreEmbedder) embedSingleChunkWithRetry(ctx context.Context, tex
 		}
 
 		// 单条调用embedding API
-		vectors, err := v.embedding.EmbedStrings(ctx, []string{text}, dimensions)
+		vectors, err := v.embedding.EmbedStrings(ctx, []string{text})
 		if err != nil {
 			lastErr = err
 			g.Log().Warningf(ctx, "Single chunk embedding attempt %d failed: %v", attempt+1, err)
@@ -179,26 +175,4 @@ func (v *VectorStoreEmbedder) embedSingleChunkWithRetry(ctx context.Context, tex
 	}
 
 	return nil, errors.Newf(errors.ErrEmbeddingFailed, "single chunk embedding failed after %d retries, last error: %v", maxRetries, lastErr)
-}
-
-// getDimension 获取embedding维度
-func (v *VectorStoreEmbedder) getDimension(ctx context.Context) int {
-	// 尝试从模型配置的extra字段中提取dimension
-	if v.modelConfig != nil {
-		if mc, ok := v.modelConfig.(*model.ModelConfig); ok {
-			if mc.Extra != nil {
-				if dim, exists := mc.Extra["dimension"]; exists {
-					if dimInt, ok := dim.(int); ok {
-						return dimInt
-					}
-					if dimFloat, ok := dim.(float64); ok {
-						return int(dimFloat)
-					}
-				}
-			}
-		}
-	}
-	// 默认值
-	g.Log().Warningf(ctx, "No dimension found in model config or config file, using default: 1024")
-	return 1024
 }

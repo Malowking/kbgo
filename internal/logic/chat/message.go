@@ -100,7 +100,7 @@ func buildSystemMessage(formattedDocs string) string {
 
 // docsMessages 将检索到的上下文和问题转换为消息列表
 func (x *Chat) docsMessages(ctx context.Context, convID string, docs []*schema.Document, question string) (messages []*schema.Message, err error) {
-	chatHistory, err := x.eh.GetHistory(convID, 100)
+	chatHistory, err := x.eh.GetHistory(convID, 50)
 	if err != nil {
 		return
 	}
@@ -108,7 +108,7 @@ func (x *Chat) docsMessages(ctx context.Context, convID string, docs []*schema.D
 	// 捕获用户消息接收时间
 	userMessageTime := time.Now()
 
-	err = x.eh.SaveMessageWithMetadataAsync(&schema.Message{
+	err = x.eh.SaveMessage(&schema.Message{
 		Role:    schema.User,
 		Content: question,
 	}, convID, nil, &userMessageTime)

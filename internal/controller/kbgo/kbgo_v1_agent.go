@@ -121,20 +121,19 @@ func (c *ControllerV1) AgentChat(ctx context.Context, req *v1.AgentChatReq) (res
 
 	// 构造ChatReq
 	chatReq := &v1.ChatReq{
-		ConvID:           convID,
-		Question:         req.Question,
-		ModelID:          preset.Config.ModelID,
-		SystemPrompt:     preset.Config.SystemPrompt,
-		EmbeddingModelID: preset.Config.EmbeddingModelID,
-		RerankModelID:    preset.Config.RerankModelID,
-		KnowledgeId:      preset.Config.KnowledgeId,
-		EnableRetriever:  preset.Config.EnableRetriever,
-		TopK:             preset.Config.TopK,
-		Score:            preset.Config.Score,
-		RetrieveMode:     preset.Config.RetrieveMode,
-		Stream:           req.Stream,
-		JsonFormat:       preset.Config.JsonFormat,
-		Tools:            preset.Tools,
+		ConvID:          convID,
+		Question:        req.Question,
+		ModelID:         preset.Config.ModelID,
+		SystemPrompt:    preset.Config.SystemPrompt,
+		RerankModelID:   preset.Config.RerankModelID,
+		KnowledgeId:     preset.Config.KnowledgeId,
+		EnableRetriever: preset.Config.EnableRetriever,
+		TopK:            preset.Config.TopK,
+		Score:           preset.Config.Score,
+		RetrieveMode:    preset.Config.RetrieveMode,
+		Stream:          req.Stream,
+		JsonFormat:      preset.Config.JsonFormat,
+		Tools:           preset.Tools,
 	}
 
 	// 调用Chat处理器
@@ -211,20 +210,19 @@ func (c *ControllerV1) handleAgentStreamChat(ctx context.Context, req *v1.AgentC
 
 	// 构造ChatReq
 	chatReq := &v1.ChatReq{
-		ConvID:           convID,
-		Question:         req.Question,
-		ModelID:          preset.Config.ModelID,
-		SystemPrompt:     preset.Config.SystemPrompt,
-		EmbeddingModelID: preset.Config.EmbeddingModelID,
-		RerankModelID:    preset.Config.RerankModelID,
-		KnowledgeId:      preset.Config.KnowledgeId,
-		EnableRetriever:  preset.Config.EnableRetriever,
-		TopK:             preset.Config.TopK,
-		Score:            preset.Config.Score,
-		RetrieveMode:     preset.Config.RetrieveMode,
-		Stream:           true,
-		JsonFormat:       preset.Config.JsonFormat,
-		Tools:            preset.Tools,
+		ConvID:          convID,
+		Question:        req.Question,
+		ModelID:         preset.Config.ModelID,
+		SystemPrompt:    preset.Config.SystemPrompt,
+		RerankModelID:   preset.Config.RerankModelID,
+		KnowledgeId:     preset.Config.KnowledgeId,
+		EnableRetriever: preset.Config.EnableRetriever,
+		TopK:            preset.Config.TopK,
+		Score:           preset.Config.Score,
+		RetrieveMode:    preset.Config.RetrieveMode,
+		Stream:          true,
+		JsonFormat:      preset.Config.JsonFormat,
+		Tools:           preset.Tools,
 	}
 
 	// 调用原有的流式Chat处理器，传递上传的文件

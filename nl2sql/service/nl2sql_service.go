@@ -75,13 +75,9 @@ func (s *NL2SQLService) CreateDataSource(ctx context.Context, req *CreateDataSou
 		return nil, fmt.Errorf("embedding模型ID不能为空")
 	}
 
-	modelConfig := model.Registry.Get(req.EmbeddingModelID)
+	modelConfig := model.Registry.GetEmbeddingModel(req.EmbeddingModelID)
 	if modelConfig == nil {
 		return nil, fmt.Errorf("embedding模型不存在: %s", req.EmbeddingModelID)
-	}
-
-	if modelConfig.Type != model.ModelTypeEmbedding {
-		return nil, fmt.Errorf("模型 %s 不是embedding模型，类型为: %s", req.EmbeddingModelID, modelConfig.Type)
 	}
 
 	// 2. 验证配置
@@ -368,7 +364,7 @@ func (s *NL2SQLService) Query(ctx context.Context, req *QueryRequest) (*QueryRes
 	}
 
 	// 2. 获取LLM模型配置
-	llmModelConfig := model.Registry.Get(req.LLMModelID)
+	llmModelConfig := model.Registry.GetChatModel(req.LLMModelID)
 	if llmModelConfig == nil {
 		return nil, fmt.Errorf("LLM模型不存在: %s", req.LLMModelID)
 	}
@@ -385,7 +381,7 @@ func (s *NL2SQLService) Query(ctx context.Context, req *QueryRequest) (*QueryRes
 	// 5. 创建向量搜索适配器（使用数据源的embedding模型和vector_database）
 	var vectorAdapter *adapter.VectorSearchAdapter
 	if ds.EmbeddingModelID != "" && ds.VectorDatabase != "" {
-		embeddingModelConfig := model.Registry.Get(ds.EmbeddingModelID)
+		embeddingModelConfig := model.Registry.GetEmbeddingModel(ds.EmbeddingModelID)
 		if embeddingModelConfig != nil {
 			vectorStore, err := vector_store.GetVectorStore()
 			if err != nil {
@@ -468,14 +464,9 @@ func (s *NL2SQLService) vectorizeSchema(ctx context.Context, datasourceID, embed
 	}
 
 	// 2. 获取embedding模型配置
-	modelConfig := model.Registry.Get(embeddingModelID)
+	modelConfig := model.Registry.GetEmbeddingModel(embeddingModelID)
 	if modelConfig == nil {
 		return fmt.Errorf("embedding模型不存在: %s", embeddingModelID)
-	}
-
-	// 验证模型类型
-	if modelConfig.Type != model.ModelTypeEmbedding {
-		return fmt.Errorf("模型 %s 不是embedding模型，类型为: %s", embeddingModelID, modelConfig.Type)
 	}
 
 	// 3. 使用全局单例向量存储
@@ -502,31 +493,24 @@ func (s *NL2SQLService) vectorizeSchema(ctx context.Context, datasourceID, embed
 
 	g.Log().Infof(ctx, "向量集合已存在，开始向量化: %s", collectionName)
 
-	// 6. 获取embedding维度（默认1024）
-	dimension := 1024
-	if dim, ok := modelConfig.Extra["dimension"].(float64); ok {
-		dimension = int(dim)
-	} else if dim, ok := modelConfig.Extra["dimension"].(int); ok {
-		dimension = dim
-	}
-
-	// 7. 创建embedding客户端
+	// 6. 创建embedding客户端
 	embedder, err := common.NewEmbedding(ctx, &embeddingConfigAdapter{
 		apiKey:  modelConfig.APIKey,
 		baseURL: modelConfig.BaseURL,
 		model:   modelConfig.Name,
+		dim:     modelConfig.Dimension,
 	})
 	if err != nil {
 		return fmt.Errorf("创建embedding客户端失败: %w", err)
 	}
 
-	// 8. 创建向量化器
+	// 7. 创建向量化器
 	vectorizer := vector.NewSchemaVectorizer(s.db)
 
-	// 9. 定义embedding函数
+	// 8. 定义embedding函数
 	embeddingFunc := func(text string) ([]float32, error) {
 		// 调用embedding API
-		vectors, err := embedder.EmbedStrings(ctx, []string{text}, dimension)
+		vectors, err := embedder.EmbedStrings(ctx, []string{text})
 		if err != nil {
 			return nil, fmt.Errorf("embedding失败: %w", err)
 		}
@@ -536,7 +520,7 @@ func (s *NL2SQLService) vectorizeSchema(ctx context.Context, datasourceID, embed
 		return vectors[0], nil
 	}
 
-	// 10. 定义存储函数
+	// 9. 定义存储函数
 	storeFunc := func(doc *vector.VectorDocument) error {
 		// 从metadata中提取NL2SQL特定字段
 		entityType := ""
@@ -564,7 +548,7 @@ func (s *NL2SQLService) vectorizeSchema(ctx context.Context, datasourceID, embed
 		return err
 	}
 
-	// 11. 执行向量化
+	// 10. 执行向量化
 	req := &vector.VectorizeSchemaRequest{
 		DatasourceID:    datasourceID,
 		KnowledgeBaseID: collectionName, // 使用collection名称作为知识库ID
@@ -585,6 +569,11 @@ type embeddingConfigAdapter struct {
 	apiKey  string
 	baseURL string
 	model   string
+	dim     int
+}
+
+func (e *embeddingConfigAdapter) GetDimension() int {
+	return e.dim
 }
 
 func (e *embeddingConfigAdapter) GetAPIKey() string {
@@ -627,7 +616,7 @@ func (s *NL2SQLService) createVectorCollection(ctx context.Context, datasourceID
 	g.Log().Infof(ctx, "创建向量集合 - DatasourceID: %s, EmbeddingModelID: %s", datasourceID, embeddingModelID)
 
 	// 1. 获取embedding模型配置
-	modelConfig := model.Registry.Get(embeddingModelID)
+	modelConfig := model.Registry.GetEmbeddingModel(embeddingModelID)
 	if modelConfig == nil {
 		return "", fmt.Errorf("embedding模型不存在: %s", embeddingModelID)
 	}
@@ -654,20 +643,12 @@ func (s *NL2SQLService) createVectorCollection(ctx context.Context, datasourceID
 		}
 	}
 
-	// 5. 获取embedding维度（默认1024）
-	dimension := 1024
-	if dim, ok := modelConfig.Extra["dimension"].(float64); ok {
-		dimension = int(dim)
-	} else if dim, ok := modelConfig.Extra["dimension"].(int); ok {
-		dimension = dim
-	}
-
-	// 6. 创建新集合
-	if err := vectorStore.CreateCollection(ctx, collectionName, dimension); err != nil {
+	// 5. 创建新集合
+	if err := vectorStore.CreateCollection(ctx, collectionName, modelConfig.Dimension); err != nil {
 		return "", fmt.Errorf("创建集合失败: %w", err)
 	}
 
-	g.Log().Infof(ctx, "向量集合创建成功 - Collection: %s (维度: %d)", collectionName, dimension)
+	g.Log().Infof(ctx, "向量集合创建成功 - Collection: %s (维度: %d)", collectionName, modelConfig.Dimension)
 	return collectionName, nil
 }
 

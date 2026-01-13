@@ -12,11 +12,11 @@ import (
 
 // LLMAdapter LLM适配器,将ModelService适配为NL2SQL所需的LLMFunc接口
 type LLMAdapter struct {
-	modelConfig *model.ModelConfig
+	modelConfig *model.ChatModelConfig
 }
 
 // NewLLMAdapter 创建LLM适配器
-func NewLLMAdapter(modelConfig *model.ModelConfig) *LLMAdapter {
+func NewLLMAdapter(modelConfig *model.ChatModelConfig) *LLMAdapter {
 	return &LLMAdapter{
 		modelConfig: modelConfig,
 	}
@@ -71,7 +71,7 @@ type VectorSearchAdapter struct {
 	vectorStore          vector_store.VectorStore
 	knowledgeBaseID      string
 	datasourceID         string
-	embeddingModelConfig *model.ModelConfig
+	embeddingModelConfig *model.EmbeddingModelConfig
 }
 
 // NewVectorSearchAdapter 创建向量搜索适配器
@@ -79,7 +79,7 @@ func NewVectorSearchAdapter(
 	vectorStore vector_store.VectorStore,
 	knowledgeBaseID string,
 	datasourceID string,
-	embeddingModelConfig *model.ModelConfig,
+	embeddingModelConfig *model.EmbeddingModelConfig,
 ) *VectorSearchAdapter {
 	return &VectorSearchAdapter{
 		vectorStore:          vectorStore,
@@ -117,7 +117,6 @@ func (a *VectorSearchAdapter) Search(ctx context.Context, query string, topK int
 	// 执行向量搜索
 	documents, err := a.vectorStore.VectorSearchOnlyNL2SQL(
 		ctx,
-		retrieverConfig,
 		query,
 		a.knowledgeBaseID,
 		a.datasourceID,

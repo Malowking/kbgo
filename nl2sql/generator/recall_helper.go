@@ -16,14 +16,15 @@ func (gen *SQLGenerator) recallSchemaWithVector(ctx context.Context, schemaID, q
 	// 创建向量搜索器（传入数据库连接）
 	vectorSearcher, err := vector.NewNL2SQLVectorSearcher(gen.db)
 	if err != nil {
-		return nil, fmt.Errorf("创建向量搜索器失败: %w", err)
+		g.Log().Error(ctx, "创建向量搜索器失败:", err)
+		return nil, err
 	}
 
 	// 执行向量搜索
 	vectorResults, err := vectorSearcher.SearchSchemaSimple(ctx, schemaID, question, 20)
-	fmt.Println(vectorResults, "------------------")
 	if err != nil {
-		return nil, fmt.Errorf("向量搜索失败: %w", err)
+		g.Log().Error(ctx, "向量搜索失败:", err)
+		return nil, err
 	}
 
 	if len(vectorResults) == 0 {
@@ -53,7 +54,8 @@ func (gen *SQLGenerator) recallSchemaWithVector(ctx context.Context, schemaID, q
 
 	retrieveResult, err := retriever.Retrieve(ctx, retrieveReq, vectorSearchFunc)
 	if err != nil {
-		return nil, fmt.Errorf("Schema检索失败: %w", err)
+		g.Log().Error(ctx, "Schema检索失败:", err)
+		return nil, err
 	}
 
 	g.Log().Infof(ctx, "Schema检索完成 - Tables: %d, Metrics: %d, Relations: %d",
@@ -69,6 +71,7 @@ func (gen *SQLGenerator) recallSchemaFallback(ctx context.Context, schemaID stri
 
 	var tables []dbgorm.NL2SQLTable
 	if err := gen.db.Where("datasource_id = ?", schemaID).Limit(5).Find(&tables).Error; err != nil {
+		g.Log().Error(ctx, "查询表信息失败:", err)
 		return nil, err
 	}
 
@@ -90,6 +93,7 @@ func (gen *SQLGenerator) recallSchemaFallback(ctx context.Context, schemaID stri
 		// 获取列信息
 		var columns []dbgorm.NL2SQLColumn
 		if err := gen.db.Where("table_id = ?", table.ID).Find(&columns).Error; err != nil {
+			g.Log().Error(ctx, "查询列信息失败:", err)
 			continue
 		}
 

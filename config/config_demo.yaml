@@ -24,6 +24,7 @@ database:
      name: "kbgo"
      type: "pgsql"
      maxLifeTime: 3600
+     extra: "TimeZone=UTC"  # 设置数据库连接时区为 UTC
 
 # 向量数据库配置
 # 支持的类型: "milvus" 或 "pgvector"
@@ -48,6 +49,7 @@ postgres:
   database: "kbgo"             # PostgreSQL 数据库名称
   metricType: "COSINE"         # 向量距离度量类型,COSINE(余弦相似度), L2(欧式距离), IP(内积), 默认 COSINE
   sslmode: "disable"           # SSL 模式: disable, require, verify-ca, verify-full
+  timezone: "UTC"              # 时区设置
 
 # 文件存储配置
 storage:

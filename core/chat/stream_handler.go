@@ -8,6 +8,7 @@ import (
 	"github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/agent_tools"
 	"github.com/Malowking/kbgo/core/common"
+	"github.com/Malowking/kbgo/internal/history"
 	"github.com/Malowking/kbgo/internal/logic/chat"
 	"github.com/Malowking/kbgo/internal/logic/retriever"
 	"github.com/Malowking/kbgo/pkg/schema"
@@ -24,6 +25,22 @@ func NewStreamHandler() *StreamHandler {
 
 // StreamChat 处理流式聊天请求
 func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploadedFiles []*common.MultimodalFile) error {
+	// 保存用户消息
+	if req.ConvID != "" {
+		userMessageTime := time.Now()
+		userMessage := &schema.Message{
+			Role:    schema.User,
+			Content: req.Question,
+		}
+
+		historyManager := history.NewManager()
+		if err := historyManager.SaveMessage(userMessage, req.ConvID, nil, &userMessageTime); err != nil {
+			g.Log().Warningf(ctx, "保存用户消息失败: %v，继续执行", err)
+		} else {
+			g.Log().Infof(ctx, "成功保存用户消息")
+		}
+	}
+
 	// 获取检索配置
 	cfg := retriever.GetRetrieverConfig()
 
@@ -58,15 +75,14 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 			rewriteAttempts := 3
 
 			retrieverRes, err := retriever.ProcessRetrieval(ctx, &v1.RetrieverReq{
-				Question:         req.Question,
-				EmbeddingModelID: req.EmbeddingModelID,
-				RerankModelID:    req.RerankModelID,
-				TopK:             req.TopK,
-				Score:            req.Score,
-				KnowledgeId:      req.KnowledgeId,
-				EnableRewrite:    true,
-				RewriteAttempts:  rewriteAttempts,
-				RetrieveMode:     retrieveMode,
+				Question:        req.Question,
+				RerankModelID:   req.RerankModelID,
+				TopK:            req.TopK,
+				Score:           req.Score,
+				KnowledgeId:     req.KnowledgeId,
+				EnableRewrite:   true,
+				RewriteAttempts: rewriteAttempts,
+				RetrieveMode:    retrieveMode,
 			})
 			if err != nil {
 				g.Log().Errorf(ctx, "知识检索失败: %v", err)
@@ -155,12 +171,11 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 		g.Log().Infof(ctx, "Added parsed document content to documents (%d chars)", len(fileParseRes.fileContent))
 	}
 
-	// 工具调用返回的文档（用于传递给 LLM）
+	// 工具调用返回的文档
 	var allDocumentsForLLM []*schema.Document
 	allDocumentsForLLM = append(allDocumentsForLLM, retrievalDocuments...)
 
-	// 2. 执行工具调用（使用统一的工具执行器）
-	var toolResult *agent_tools.ExecuteResult
+	// 2. 执行工具调用
 	var toolDocuments []*schema.Document // 工具调用返回的文档
 	if req.Tools != nil && len(req.Tools) > 0 {
 		g.Log().Infof(ctx, "Executing tools using unified executor with LLM selection")
@@ -169,14 +184,13 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 		// 生成消息ID（用于SSE事件关联）
 		messageID := common.GenerateMessageID()
 
-		var err error
-		toolResult, err = executor.Execute(ctx, req.Tools, req.Question,
-			req.ModelID, req.EmbeddingModelID, allDocumentsForLLM, req.SystemPrompt, req.ConvID, messageID)
+		toolResult, err := executor.Execute(ctx, req.Tools, req.Question,
+			req.ModelID, allDocumentsForLLM, req.SystemPrompt, req.ConvID, messageID)
 
 		if err != nil {
 			g.Log().Errorf(ctx, "Tool execution failed: %v", err)
 		} else {
-			// 保存工具返回的文档（用于区分显示）
+			// 保存工具返回的文档
 			if len(toolResult.Documents) > 0 {
 				toolDocuments = toolResult.Documents
 				// 同时也添加到 allDocumentsForLLM 中，供 LLM 使用
@@ -186,8 +200,6 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 			// 如果工具返回了最终答案,处理流式返回
 			if toolResult.FinalAnswer != "" {
 				g.Log().Infof(ctx, "Tool returned final answer, using it for stream response")
-				// 注意：对于流式响应，我们不能直接返回最终答案
-				// 需要将其注入到流式响应中，这里先忽略，由LLM处理工具结果
 			}
 		}
 	}

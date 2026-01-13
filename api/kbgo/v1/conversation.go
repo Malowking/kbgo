@@ -68,15 +68,27 @@ type ConversationDetailRes struct {
 
 // MessageItem 消息项
 type MessageItem struct {
-	ID               uint64                 `json:"id"`
-	Role             string                 `json:"role"` // user/assistant/system/tool
-	Content          string                 `json:"content"`
-	ReasoningContent string                 `json:"reasoning_content,omitempty"` // 思考内容
-	Metadata         map[string]interface{} `json:"metadata,omitempty"`          // 元数据（用于tool角色的工具调用信息）
-	CreateTime       string                 `json:"create_time"`
-	TokensUsed       int                    `json:"tokens_used,omitempty"`
-	LatencyMs        int                    `json:"latency_ms,omitempty"`
-	Extra            map[string]any         `json:"extra,omitempty"` // 扩展字段（包含tool调用结果等）
+	MsgID            string         `json:"msg_id"`                      // 消息ID
+	Role             string         `json:"role"`                        // 角色：user/assistant/system/tool
+	Content          *string        `json:"content"`                     // 文本内容（可为null）
+	ToolCalls        []ToolCall     `json:"tool_calls,omitempty"`        // 工具调用列表
+	ToolCallID       string         `json:"tool_call_id,omitempty"`      // 工具调用ID（tool角色使用）
+	ReasoningContent string         `json:"reasoning_content,omitempty"` // 思考内容
+	CreateTime       string         `json:"create_time"`                 // 创建时间
+	Extra            map[string]any `json:"extra,omitempty"`             // 扩展字段
+}
+
+// ToolCall 工具调用
+type ToolCall struct {
+	ID       string       `json:"id"`       // 工具调用ID
+	Type     string       `json:"type"`     // 类型，通常为 "function"
+	Function FunctionCall `json:"function"` // 函数调用信息
+}
+
+// FunctionCall 函数调用
+type FunctionCall struct {
+	Name      string `json:"name"`      // 函数名称
+	Arguments string `json:"arguments"` // 函数参数（JSON字符串）
 }
 
 // ConversationDeleteReq 删除会话请求

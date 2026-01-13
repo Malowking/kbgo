@@ -13,8 +13,8 @@ import (
 func (c *ControllerV1) Chat(ctx context.Context, req *v1.ChatReq) (res *v1.ChatRes, err error) {
 	// Log request parameters
 	hasTools := req.Tools != nil && len(req.Tools) > 0
-	g.Log().Infof(ctx, "Chat request received - ConvID: %s, Question: %s, ModelID: %s, EmbeddingModelID: %s, RerankModelID: %s, KnowledgeId: %s, EnableRetriever: %v, TopK: %d, Score: %f, HasTools: %v, Stream: %v",
-		req.ConvID, req.Question, req.ModelID, req.EmbeddingModelID, req.RerankModelID, req.KnowledgeId, req.EnableRetriever, req.TopK, req.Score, hasTools, req.Stream)
+	g.Log().Infof(ctx, "Chat request received - ConvID: %s, Question: %s, ModelID: %s, RerankModelID: %s, KnowledgeId: %s, EnableRetriever: %v, TopK: %d, Score: %f, HasTools: %v, Stream: %v",
+		req.ConvID, req.Question, req.ModelID, req.RerankModelID, req.KnowledgeId, req.EnableRetriever, req.TopK, req.Score, hasTools, req.Stream)
 
 	r := g.RequestFromCtx(ctx)
 	uploadFiles := r.GetUploadFiles("files")
@@ -70,8 +70,8 @@ func (c *ControllerV1) Chat(ctx context.Context, req *v1.ChatReq) (res *v1.ChatR
 func (c *ControllerV1) handleStreamChat(ctx context.Context, req *v1.ChatReq, uploadedFiles []*common.MultimodalFile) error {
 	// Log request parameters
 	hasTools := req.Tools != nil && len(req.Tools) > 0
-	g.Log().Infof(ctx, "Stream chat request received - ConvID: %s, Question: %s, ModelID: %s, EmbeddingModelID: %s, RerankModelID: %s, KnowledgeId: %s, EnableRetriever: %v, TopK: %d, Score: %f, HasTools: %v, Files: %d",
-		req.ConvID, req.Question, req.ModelID, req.EmbeddingModelID, req.RerankModelID, req.KnowledgeId, req.EnableRetriever, req.TopK, req.Score, hasTools, len(req.Files))
+	g.Log().Infof(ctx, "Stream chat request received - ConvID: %s, Question: %s, ModelID: %s, RerankModelID: %s, KnowledgeId: %s, EnableRetriever: %v, TopK: %d, Score: %f, HasTools: %v, Files: %d",
+		req.ConvID, req.Question, req.ModelID, req.RerankModelID, req.KnowledgeId, req.EnableRetriever, req.TopK, req.Score, hasTools, len(req.Files))
 
 	// 使用新的流式聊天处理器
 	streamHandler := chat.NewStreamHandler()

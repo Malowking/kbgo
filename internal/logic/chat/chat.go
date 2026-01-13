@@ -45,52 +45,10 @@ func InitHistory() {
 	g.Log().Info(ctx, "Chat history manager initialized successfully")
 }
 
-// parseModelParams 从 Extra 字段解析推理参数
-func parseModelParams(extra map[string]any) *ModelParams {
-	params := GetDefaultParams()
-
-	if extra == nil {
-		return &params
-	}
-
-	// 解析各个参数
-	if temp, ok := extra["temperature"].(float64); ok {
-		params.Temperature = ToPointer(float32(temp))
-	}
-	if topP, ok := extra["topP"].(float64); ok {
-		params.TopP = ToPointer(float32(topP))
-	}
-	if maxCompletionTokens, ok := extra["maxCompletionTokens"].(int); ok {
-		params.MaxCompletionTokens = ToPointer(maxCompletionTokens)
-	}
-	if freqPenalty, ok := extra["frequencyPenalty"].(float64); ok {
-		params.FrequencyPenalty = ToPointer(float32(freqPenalty))
-	}
-	if presPenalty, ok := extra["presencePenalty"].(float64); ok {
-		params.PresencePenalty = ToPointer(float32(presPenalty))
-	}
-	if n, ok := extra["n"].(int); ok {
-		params.N = ToPointer(n)
-	}
-	if stop, ok := extra["stop"].([]interface{}); ok {
-		stopWords := make([]string, 0, len(stop))
-		for _, s := range stop {
-			if str, ok := s.(string); ok {
-				stopWords = append(stopWords, str)
-			}
-		}
-		if len(stopWords) > 0 {
-			params.Stop = stopWords
-		}
-	}
-
-	return &params
-}
-
 // GetAnswer 使用指定模型生成答案（非流式）
 func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, systemPrompt string, jsonFormat bool) (answer string, reasoningContent string, err error) {
 	// 获取模型配置
-	mc := coreModel.Registry.Get(modelID)
+	mc := coreModel.Registry.GetChatModel(modelID)
 	if mc == nil {
 		return "", "", coreErrors.Newf(coreErrors.ErrModelNotFound, "model not found: %s", modelID)
 	}
@@ -112,7 +70,7 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
 
 	// 获取聊天历史
-	chatHistory, err := x.eh.GetHistory(convID, 100)
+	chatHistory, err := x.eh.GetHistory(convID, 50)
 	if err != nil {
 		return "", "", err
 	}
@@ -135,7 +93,7 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 		Role:    schema.User,
 		Content: question,
 	}
-	err = x.eh.SaveMessageWithMetadataAsync(userMessage, convID, nil, &userMessageTime)
+	err = x.eh.SaveMessage(userMessage, convID, nil, &userMessageTime)
 	if err != nil {
 		return "", "", err
 	}
@@ -169,30 +127,26 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 	messages = append(messages, chatHistory...)
 	messages = append(messages, userMessage)
 
-	// 解析推理参数
-	params := parseModelParams(mc.Extra)
-
-	// 如果需要JSON格式化，设置ResponseFormat
+	// 准备响应格式
+	var responseFormat *openai.ChatCompletionResponseFormat
 	if jsonFormat {
-		params.ResponseFormat = &openai.ChatCompletionResponseFormat{
+		responseFormat = &openai.ChatCompletionResponseFormat{
 			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 		}
 	}
 
-	// 构建请求参数
+	// 构建请求参数，直接使用模型配置中的参数
 	chatParams := coreModel.ChatCompletionParams{
 		ModelName:           mc.Name,
 		Messages:            messages,
-		Temperature:         getFloat32OrDefault(params.Temperature, 0.7),
-		MaxCompletionTokens: getIntOrDefault(params.MaxCompletionTokens, 2000),
-		TopP:                getFloat32OrDefault(params.TopP, 0.9),
-		FrequencyPenalty:    getFloat32OrDefault(params.FrequencyPenalty, 0.0),
-		PresencePenalty:     getFloat32OrDefault(params.PresencePenalty, 0.0),
-		N:                   getIntOrDefault(params.N, 1),
-		Stop:                params.Stop,
-		Tools:               params.Tools,
-		ToolChoice:          params.ToolChoice,
-		ResponseFormat:      params.ResponseFormat,
+		Temperature:         getFloat32OrDefault(mc.Temperature, 0.7),
+		MaxCompletionTokens: getIntOrDefault(mc.MaxCompletionTokens, 2000),
+		TopP:                getFloat32OrDefault(mc.TopP, 0.9),
+		FrequencyPenalty:    getFloat32OrDefault(mc.FrequencyPenalty, 0.0),
+		PresencePenalty:     getFloat32OrDefault(mc.PresencePenalty, 0.0),
+		N:                   getIntOrDefault(mc.N, 1),
+		Stop:                mc.Stop,
+		ResponseFormat:      responseFormat,
 	}
 
 	// 记录开始时间
@@ -254,7 +208,7 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 // GetAnswerStream 使用指定模型流式生成答案
 func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, systemPrompt string, jsonFormat bool) (answer schema.StreamReaderInterface[*schema.Message], err error) {
 	// 获取模型配置
-	mc := coreModel.Registry.Get(modelID)
+	mc := coreModel.Registry.GetChatModel(modelID)
 	if mc == nil {
 		return nil, coreErrors.Newf(coreErrors.ErrModelNotFound, "model not found: %s", modelID)
 	}
@@ -290,7 +244,7 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
 
 	// 获取聊天历史
-	chatHistory, err := x.eh.GetHistory(convID, 100)
+	chatHistory, err := x.eh.GetHistory(convID, 50)
 	if err != nil {
 		return nil, err
 	}
@@ -305,17 +259,10 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 	}
 	_ = rewrittenQuestion
 
-	// 捕获用户消息接收时间
-	userMessageTime := time.Now()
-
-	// 保存用户消息
+	// 创建用户消息
 	userMessage := &schema.Message{
 		Role:    schema.User,
 		Content: question,
-	}
-	err = x.eh.SaveMessageWithMetadataAsync(userMessage, convID, nil, &userMessageTime)
-	if err != nil {
-		return nil, err
 	}
 
 	// 格式化文档为系统提示
@@ -345,38 +292,48 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 		},
 	}
 	messages = append(messages, chatHistory...)
-	messages = append(messages, userMessage)
 
-	// 解析推理参数
-	params := parseModelParams(mc.Extra)
+	// 检查历史中最后一条消息是否和当前用户消息重复
+	// 如果重复，不添加；否则添加
+	shouldAddUserMessage := true
+	if len(chatHistory) > 0 {
+		lastMsg := chatHistory[len(chatHistory)-1]
+		if lastMsg.Role == schema.User && lastMsg.Content == question {
+			g.Log().Warningf(ctx, "检测到重复的用户消息，跳过添加: %s", question)
+			shouldAddUserMessage = false
+		}
+	}
 
-	// 如果需要JSON格式化，设置ResponseFormat
+	if shouldAddUserMessage {
+		messages = append(messages, userMessage)
+	}
+
+	// 准备响应格式
+	var responseFormat *openai.ChatCompletionResponseFormat
 	if jsonFormat {
-		params.ResponseFormat = &openai.ChatCompletionResponseFormat{
+		responseFormat = &openai.ChatCompletionResponseFormat{
 			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 		}
 	}
 
-	// 构建请求参数
+	// 构建请求参数，直接使用模型配置中的参数
 	chatParams := coreModel.ChatCompletionParams{
 		ModelName:           mc.Name,
 		Messages:            messages,
-		Temperature:         getFloat32OrDefault(params.Temperature, 0.7),
-		MaxCompletionTokens: getIntOrDefault(params.MaxCompletionTokens, 2000),
-		TopP:                getFloat32OrDefault(params.TopP, 0.9),
-		FrequencyPenalty:    getFloat32OrDefault(params.FrequencyPenalty, 0.0),
-		PresencePenalty:     getFloat32OrDefault(params.PresencePenalty, 0.0),
-		N:                   getIntOrDefault(params.N, 1),
-		Stop:                params.Stop,
-		Tools:               params.Tools,
-		ToolChoice:          params.ToolChoice,
-		ResponseFormat:      params.ResponseFormat,
+		Temperature:         getFloat32OrDefault(mc.Temperature, 0.7),
+		MaxCompletionTokens: getIntOrDefault(mc.MaxCompletionTokens, 2000),
+		TopP:                getFloat32OrDefault(mc.TopP, 0.9),
+		FrequencyPenalty:    getFloat32OrDefault(mc.FrequencyPenalty, 0.0),
+		PresencePenalty:     getFloat32OrDefault(mc.PresencePenalty, 0.0),
+		N:                   getIntOrDefault(mc.N, 1),
+		Stop:                mc.Stop,
+		ResponseFormat:      responseFormat,
 	}
 
 	// 记录开始时间
 	start := time.Now()
 
-	// 使用重试机制调用模型服务流式接口（仅在连接阶段重试）
+	// 使用重试机制调用模型服务流式接口
 	retryConfig := coreModel.DefaultSingleModelRetryConfig()
 	streamResult, err := coreModel.RetryWithSameModel(ctx, mc.Name, retryConfig, func(ctx context.Context) (interface{}, error) {
 		stream, err := modelService.ChatCompletionStream(ctx, chatParams)
@@ -506,7 +463,7 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 // GenerateWithTools 使用指定模型进行工具调用（支持 Function Calling）
 func (x *Chat) GenerateWithTools(ctx context.Context, modelID string, messages []*schema.Message, tools []*schema.ToolInfo) (*schema.Message, error) {
 	// 获取模型配置
-	mc := coreModel.Registry.Get(modelID)
+	mc := coreModel.Registry.GetChatModel(modelID)
 	if mc == nil {
 		return nil, coreErrors.Newf(coreErrors.ErrModelNotFound, "model not found: %s", modelID)
 	}
@@ -529,9 +486,6 @@ func (x *Chat) GenerateWithTools(ctx context.Context, modelID string, messages [
 
 	// 创建模型服务
 	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
-
-	// 解析推理参数
-	params := parseModelParams(mc.Extra)
 
 	// 转换 schema.ToolInfo 到 openai.Tool
 	var openaiTools []openai.Tool
@@ -559,19 +513,18 @@ func (x *Chat) GenerateWithTools(ctx context.Context, modelID string, messages [
 		}
 	}
 
-	// 构建请求参数
+	// 构建请求参数，直接使用模型配置中的参数
 	chatParams := coreModel.ChatCompletionParams{
 		ModelName:           mc.Name,
 		Messages:            messages,
-		Temperature:         getFloat32OrDefault(params.Temperature, 0.7),
-		MaxCompletionTokens: getIntOrDefault(params.MaxCompletionTokens, 2000),
-		TopP:                getFloat32OrDefault(params.TopP, 0.9),
-		FrequencyPenalty:    getFloat32OrDefault(params.FrequencyPenalty, 0.0),
-		PresencePenalty:     getFloat32OrDefault(params.PresencePenalty, 0.0),
-		N:                   getIntOrDefault(params.N, 1),
-		Stop:                params.Stop,
+		Temperature:         getFloat32OrDefault(mc.Temperature, 0.7),
+		MaxCompletionTokens: getIntOrDefault(mc.MaxCompletionTokens, 2000),
+		TopP:                getFloat32OrDefault(mc.TopP, 0.9),
+		FrequencyPenalty:    getFloat32OrDefault(mc.FrequencyPenalty, 0.0),
+		PresencePenalty:     getFloat32OrDefault(mc.PresencePenalty, 0.0),
+		N:                   getIntOrDefault(mc.N, 1),
+		Stop:                mc.Stop,
 		Tools:               openaiTools, // 添加工具列表
-		ResponseFormat:      params.ResponseFormat,
 	}
 
 	// 只有在有工具时才设置 ToolChoice
@@ -649,20 +602,6 @@ func (x *Chat) GenerateWithTools(ctx context.Context, modelID string, messages [
 	}
 
 	return result, nil
-}
-
-// SaveMessageWithMetadata 保存带元数据的消息
-func (x *Chat) SaveMessageWithMetadata(message *schema.Message, convID string, metadata map[string]interface{}) error {
-	return x.eh.SaveMessageWithMetadata(message, convID, metadata)
-}
-
-// SaveStreamingMessageWithMetadata 保存流式传输的完整消息和元数据
-func (x *Chat) SaveStreamingMessageWithMetadata(convID string, content string, metadata map[string]interface{}) error {
-	message := &schema.Message{
-		Role:    schema.Assistant,
-		Content: content,
-	}
-	return x.eh.SaveMessageWithMetadata(message, convID, metadata)
 }
 
 // formatDocumentsForChat 格式化文档为聊天上下文

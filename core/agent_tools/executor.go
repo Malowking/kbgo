@@ -55,7 +55,7 @@ type ToolCallResult struct {
 }
 
 // Execute 执行所有配置的工具（统一由 LLM 选择）
-func (e *ToolExecutor) Execute(ctx context.Context, tools []*v1.ToolConfig, question string, modelID string, embeddingModelID string, documents []*schema.Document, systemPrompt string, convID string, messageID string) (*ExecuteResult, error) {
+func (e *ToolExecutor) Execute(ctx context.Context, tools []*v1.ToolConfig, question string, modelID string, documents []*schema.Document, systemPrompt string, convID string, messageID string) (*ExecuteResult, error) {
 	result := &ExecuteResult{
 		Documents: make([]*schema.Document, 0),
 	}
@@ -158,7 +158,7 @@ func (e *ToolExecutor) Execute(ctx context.Context, tools []*v1.ToolConfig, ques
 	enhancedSystemPrompt := e.buildEnhancedSystemPrompt(systemPrompt, tools)
 
 	// 5. 调用 LLM 智能选择并执行工具
-	return e.executeWithLLM(ctx, question, modelID, embeddingModelID, documents,
+	return e.executeWithLLM(ctx, question, modelID, documents,
 		enhancedSystemPrompt, allLLMTools, localToolsConfig, mcpToolCaller, convID, messageID)
 }
 
@@ -371,9 +371,7 @@ func (e *ToolExecutor) dispatchToolCall(
 	args map[string]interface{},
 	localToolsConfig *v1.ToolConfig,
 	mcpToolCaller *mcp.MCPToolCaller,
-	question string,
 	modelID string,
-	embeddingModelID string,
 	convID string,
 ) (*ToolCallResult, error) {
 
@@ -391,10 +389,10 @@ func (e *ToolExecutor) dispatchToolCall(
 	// 本地工具
 	switch toolName {
 	case "knowledge_retrieval":
-		return e.executeKnowledgeRetrieval(ctx, args, localToolsConfig, question)
+		return e.executeKnowledgeRetrieval(ctx, args, localToolsConfig)
 
 	case "nl2sql":
-		return e.executeNL2SQL(ctx, args, localToolsConfig, modelID, embeddingModelID)
+		return e.executeNL2SQL(ctx, args, localToolsConfig, modelID)
 
 	case "file_export":
 		return e.executeFileExport(ctx, args, localToolsConfig)
@@ -409,7 +407,6 @@ func (e *ToolExecutor) executeKnowledgeRetrieval(
 	ctx context.Context,
 	args map[string]interface{},
 	config *v1.ToolConfig,
-	originalQuestion string,
 ) (*ToolCallResult, error) {
 
 	// 从参数中提取查询语句
@@ -459,7 +456,6 @@ func (e *ToolExecutor) executeNL2SQL(
 	args map[string]interface{},
 	config *v1.ToolConfig,
 	modelID string,
-	embeddingModelID string,
 ) (*ToolCallResult, error) {
 
 	// 从参数中提取问题
@@ -483,7 +479,7 @@ func (e *ToolExecutor) executeNL2SQL(
 
 	// 执行 NL2SQL
 	nl2sqlTool := nl2sql.NewNL2SQLTool()
-	nl2sqlResult, err := nl2sqlTool.DetectAndExecute(ctx, question, datasource, modelID, embeddingModelID)
+	nl2sqlResult, err := nl2sqlTool.DetectAndExecute(ctx, question, datasource, modelID)
 	if err != nil {
 		return nil, fmt.Errorf("NL2SQL执行失败: %w", err)
 	}
@@ -705,7 +701,6 @@ func (e *ToolExecutor) executeWithLLM(
 	ctx context.Context,
 	question string,
 	modelID string,
-	embeddingModelID string,
 	documents []*schema.Document,
 	systemPrompt string,
 	allTools []*schema.ToolInfo,
@@ -737,7 +732,7 @@ func (e *ToolExecutor) executeWithLLM(
 	// 2. 加载历史消息（如果有 convID）
 	if convID != "" {
 		historyManager := history.NewManager()
-		chatHistory, err := historyManager.GetHistory(convID, 100)
+		chatHistory, err := historyManager.GetHistory(convID, 50)
 		if err != nil {
 			g.Log().Warningf(ctx, "加载历史消息失败: %v，继续执行", err)
 		} else if len(chatHistory) > 0 {
@@ -747,10 +742,11 @@ func (e *ToolExecutor) executeWithLLM(
 	}
 
 	// 3. 添加当前用户消息
-	messages = append(messages, &schema.Message{
+	userMessage := &schema.Message{
 		Role:    schema.User,
 		Content: e.buildFullQuestion(question, documents),
-	})
+	}
+	messages = append(messages, userMessage)
 
 	// 2. 多轮工具调用（最多 5 轮）
 	chatInstance := chat.GetChat()
@@ -778,7 +774,7 @@ func (e *ToolExecutor) executeWithLLM(
 		// 保存assistant消息（如果有ToolCalls且convID不为空）
 		if len(response.ToolCalls) > 0 && convID != "" {
 			historyManager := history.NewManager()
-			if err := historyManager.SaveMessageWithMetadataAsync(response, convID, nil, &assistantMessageTime); err != nil {
+			if err := historyManager.SaveMessage(response, convID, nil, &assistantMessageTime); err != nil {
 				g.Log().Warningf(ctx, "保存assistant消息失败: %v", err)
 				// 不阻断流程，继续执行
 			} else {
@@ -830,7 +826,7 @@ func (e *ToolExecutor) executeWithLLM(
 
 			// 根据工具名称分发执行
 			toolResult, err := e.dispatchToolCall(ctx, toolName, args,
-				localToolsConfig, mcpToolCaller, question, modelID, embeddingModelID, convID)
+				localToolsConfig, mcpToolCaller, modelID, convID)
 
 			// 计算执行时间
 			duration := time.Since(startTime).Milliseconds()
@@ -900,7 +896,7 @@ func (e *ToolExecutor) executeWithLLM(
 					"tool_name": toolName,
 					"tool_args": args,
 				}
-				if err := historyManager.SaveMessageWithMetadataAsync(toolMessage, convID, metadata, &toolMessageTime); err != nil {
+				if err := historyManager.SaveMessage(toolMessage, convID, metadata, &toolMessageTime); err != nil {
 					g.Log().Warningf(ctx, "保存tool消息失败: %v", err)
 					// 不阻断流程，继续执行
 				} else {

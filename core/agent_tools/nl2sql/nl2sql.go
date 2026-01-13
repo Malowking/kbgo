@@ -64,7 +64,7 @@ type NL2SQLResult struct {
 
 // DetectAndExecute 检测问题并执行NL2SQL查询
 // 如果检测到是数据查询类问题，将执行NL2SQL流程并返回结果
-func (t *NL2SQLTool) DetectAndExecute(ctx context.Context, question string, datasourceID string, modelID string, embeddingModelID string) (*NL2SQLResult, error) {
+func (t *NL2SQLTool) DetectAndExecute(ctx context.Context, question string, datasourceID string, modelID string) (*NL2SQLResult, error) {
 	g.Log().Infof(ctx, "NL2SQL Tool - Starting detection and execution for datasource: %s", datasourceID)
 
 	result := &NL2SQLResult{
@@ -95,9 +95,9 @@ func (t *NL2SQLTool) DetectAndExecute(ctx context.Context, question string, data
 	g.Log().Infof(ctx, "NL2SQL Tool - Found %d parsed tables, proceeding with NL2SQL query", parsedTableCount)
 
 	// 3. 获取模型配置（用于LLM）
-	llmModelConfig, err := t.getModelConfig(ctx, modelID)
-	if err != nil {
-		return nil, fmt.Errorf("获取LLM模型配置失败: %w", err)
+	llmModelConfig := model.Registry.GetChatModel(modelID)
+	if llmModelConfig == nil {
+		return nil, fmt.Errorf("获取LLM模型配置失败")
 	}
 
 	// 4. 创建LLM适配器
@@ -138,16 +138,10 @@ func (t *NL2SQLTool) DetectAndExecute(ctx context.Context, question string, data
 		return result, nil
 	}
 
-	// 7. 创建向量搜索适配器（如果有embedding模型）
-	vectorModelID := embeddingModelID
-	if ds.EmbeddingModelID != "" {
-		vectorModelID = ds.EmbeddingModelID
-	}
-
 	var vectorAdapter *adapter.VectorSearchAdapter
-	if vectorModelID != "" && ds.VectorDatabase != "" {
-		embeddingModelConfig, err := t.getModelConfig(ctx, vectorModelID)
-		if err != nil {
+	if ds.EmbeddingModelID != "" && ds.VectorDatabase != "" {
+		embeddingModelConfig := model.Registry.GetEmbeddingModel(ds.EmbeddingModelID)
+		if embeddingModelConfig == nil {
 			g.Log().Warningf(ctx, "NL2SQL Tool - Failed to get embedding model config: %v, will proceed without vector search", err)
 		} else {
 			vectorStore, err := vector_store.GetVectorStore()
@@ -255,22 +249,6 @@ func (t *NL2SQLTool) DetectAndExecute(ctx context.Context, question string, data
 	}
 
 	return result, nil
-}
-
-// getModelConfig 获取模型配置
-func (t *NL2SQLTool) getModelConfig(ctx context.Context, modelID string) (*model.ModelConfig, error) {
-	db := dao.GetDB()
-	var modelEntity dbgorm.AIModel
-	if err := db.First(&modelEntity, "model_id = ?", modelID).Error; err != nil {
-		return nil, fmt.Errorf("模型不存在: %w", err)
-	}
-
-	return &model.ModelConfig{
-		ModelID: modelEntity.ModelID,
-		Name:    modelEntity.ModelName,
-		APIKey:  modelEntity.APIKey,
-		BaseURL: modelEntity.BaseURL,
-	}, nil
 }
 
 // convertToDocuments 将NL2SQL查询结果转换为Document格式

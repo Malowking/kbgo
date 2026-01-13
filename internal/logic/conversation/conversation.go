@@ -89,9 +89,9 @@ func (m *Manager) GetConversationDetail(ctx context.Context, convID string) (*Co
 		}
 	}
 
-	// 转换消息格式
+	// 转换消息格式为OpenAI格式
 	messageItems := make([]*MessageItem, 0, len(messages))
-	for i, msg := range messages {
+	for _, msg := range messages {
 		createTime := time.Now().Format(time.RFC3339) // 默认使用当前时间
 
 		// 从Extra字段中获取实际的创建时间
@@ -101,43 +101,91 @@ func (m *Manager) GetConversationDetail(ctx context.Context, convID string) (*Co
 			}
 		}
 
-		// 提取 metadata（用于 tool 角色的工具调用信息）
-		var metadata map[string]interface{}
-		if msg.Role == schema.Tool {
-			// 对于 tool 角色，从 Extra 中提取 tool_name, tool_args, tool_call_id
-			metadata = make(map[string]interface{})
-
-			if msg.Extra != nil {
-				if toolName, ok := msg.Extra["tool_name"]; ok {
-					metadata["tool_name"] = toolName
-				}
-				if toolArgs, ok := msg.Extra["tool_args"]; ok {
-					metadata["tool_args"] = toolArgs
-				}
-				if toolCallID, ok := msg.Extra["tool_call_id"]; ok {
-					metadata["tool_call_id"] = toolCallID
-				}
-			}
-
-			// 如果 Extra 中没有 tool_call_id，但 ToolCallID 字段有值，使用它
-			if metadata["tool_call_id"] == nil && msg.ToolCallID != "" {
-				metadata["tool_call_id"] = msg.ToolCallID
+		// 从Extra字段中获取msg_id
+		var msgID string
+		if msg.Extra != nil {
+			if id, ok := msg.Extra["msg_id"].(string); ok {
+				msgID = id
 			}
 		}
 
-		// 生成唯一的数字ID（使用索引 + 时间戳的哈希）
-		// 前端使用 Date.now() * 1000 + random，我们使用类似的方式
-		msgID := uint64(time.Now().Unix()*1000000 + int64(i))
+		// 根据角色构建不同的消息格式
+		switch msg.Role {
+		case schema.User, schema.System:
+			// user和system角色：直接使用content字段
+			content := msg.Content
+			messageItems = append(messageItems, &MessageItem{
+				MsgID:            msgID,
+				Role:             string(msg.Role),
+				Content:          &content,
+				ReasoningContent: msg.ReasoningContent,
+				CreateTime:       createTime,
+				Extra:            msg.Extra,
+			})
 
-		messageItems = append(messageItems, &MessageItem{
-			ID:               msgID,
-			Role:             string(msg.Role),
-			Content:          msg.Content,
-			ReasoningContent: msg.ReasoningContent,
-			Metadata:         metadata,
-			CreateTime:       createTime,
-			Extra:            msg.Extra,
-		})
+		case schema.Assistant:
+			// assistant角色：可能有content或tool_calls
+			var content *string
+			if msg.Content != "" {
+				content = &msg.Content
+			}
+
+			// 构建tool_calls
+			var toolCalls []ToolCall
+			if len(msg.ToolCalls) > 0 {
+				for _, tc := range msg.ToolCalls {
+					toolCalls = append(toolCalls, ToolCall{
+						ID:   tc.ID,
+						Type: "function",
+						Function: FunctionCall{
+							Name:      tc.Function.Name,
+							Arguments: tc.Function.Arguments,
+						},
+					})
+				}
+			}
+
+			messageItems = append(messageItems, &MessageItem{
+				MsgID:            msgID,
+				Role:             string(msg.Role),
+				Content:          content,
+				ToolCalls:        toolCalls,
+				ReasoningContent: msg.ReasoningContent,
+				CreateTime:       createTime,
+				Extra:            msg.Extra,
+			})
+
+		case schema.Tool:
+			// tool角色：需要tool_call_id和content
+			// 从Extra.tool中提取tool结果
+			if msg.Extra != nil {
+				if toolResults, ok := msg.Extra["tool"].([]interface{}); ok {
+					for _, toolResultRaw := range toolResults {
+						if toolResult, ok := toolResultRaw.(map[string]interface{}); ok {
+							content := ""
+							toolCallID := ""
+
+							if toolContent, ok := toolResult["content"].(string); ok {
+								content = toolContent
+							}
+							if tcID, ok := toolResult["tool_call_id"].(string); ok {
+								toolCallID = tcID
+							}
+
+							messageItems = append(messageItems, &MessageItem{
+								MsgID:            msgID,
+								Role:             "tool",
+								Content:          &content,
+								ToolCallID:       toolCallID,
+								ReasoningContent: msg.ReasoningContent,
+								CreateTime:       createTime,
+								Extra:            msg.Extra,
+							})
+						}
+					}
+				}
+			}
+		}
 	}
 
 	return &ConversationDetail{
@@ -252,7 +300,7 @@ func (m *Manager) BatchDeleteConversations(ctx context.Context, convIDs []string
 // GenerateSummary 生成会话摘要
 func (m *Manager) GenerateSummary(ctx context.Context, convID, modelID, length string) (string, error) {
 	// 查询会话消息
-	historyMessages, err := m.historyManager.GetHistory(convID, 100) // 最多取100条消息
+	historyMessages, err := m.historyManager.GetHistory(convID, 50)
 	if err != nil {
 		return "", errors.Newf(errors.ErrDatabaseQuery, "查询会话消息失败: %v", err)
 	}
@@ -282,7 +330,7 @@ func (m *Manager) GenerateSummary(ctx context.Context, convID, modelID, length s
 	conversationText.WriteString(lengthPrompt)
 
 	// 调用LLM生成摘要
-	mc := coreModel.Registry.Get(modelID)
+	mc := coreModel.Registry.GetChatModel(modelID)
 	if mc == nil {
 		return "", errors.Newf(errors.ErrModelNotFound, "模型不存在: %s", modelID)
 	}
@@ -359,7 +407,15 @@ func (m *Manager) ExportConversation(ctx context.Context, convID, format string)
 		md.WriteString("## 对话内容\n\n")
 		for _, msg := range detail.Messages {
 			md.WriteString(fmt.Sprintf("### %s\n\n", msg.Role))
-			md.WriteString(fmt.Sprintf("%s\n\n", msg.Content))
+			if msg.Content != nil {
+				md.WriteString(fmt.Sprintf("%s\n\n", *msg.Content))
+			}
+			if len(msg.ToolCalls) > 0 {
+				for _, tc := range msg.ToolCalls {
+					md.WriteString(fmt.Sprintf("**工具调用**: %s\n", tc.Function.Name))
+					md.WriteString(fmt.Sprintf("参数: %s\n\n", tc.Function.Arguments))
+				}
+			}
 			if msg.ReasoningContent != "" {
 				md.WriteString(fmt.Sprintf("**思考过程**:\n%s\n\n", msg.ReasoningContent))
 			}
@@ -377,7 +433,16 @@ func (m *Manager) ExportConversation(ctx context.Context, convID, format string)
 		txt.WriteString("========================================\n\n")
 
 		for _, msg := range detail.Messages {
-			txt.WriteString(fmt.Sprintf("[%s]\n%s\n\n", msg.Role, msg.Content))
+			txt.WriteString(fmt.Sprintf("[%s]\n", msg.Role))
+			if msg.Content != nil {
+				txt.WriteString(fmt.Sprintf("%s\n", *msg.Content))
+			}
+			if len(msg.ToolCalls) > 0 {
+				for _, tc := range msg.ToolCalls {
+					txt.WriteString(fmt.Sprintf("工具调用: %s(%s)\n", tc.Function.Name, tc.Function.Arguments))
+				}
+			}
+			txt.WriteString("\n")
 		}
 		return txt.String(), filename, nil
 
@@ -520,13 +585,25 @@ type ConversationDetail struct {
 
 // MessageItem 消息项
 type MessageItem struct {
-	ID               uint64                 `json:"id"`
-	Role             string                 `json:"role"`
-	Content          string                 `json:"content"`
-	ReasoningContent string                 `json:"reasoning_content,omitempty"`
-	Metadata         map[string]interface{} `json:"metadata,omitempty"` // 元数据（用于tool角色的工具调用信息）
-	CreateTime       string                 `json:"create_time"`
-	TokensUsed       int                    `json:"tokens_used,omitempty"`
-	LatencyMs        int                    `json:"latency_ms,omitempty"`
-	Extra            map[string]any         `json:"extra,omitempty"`
+	MsgID            string         `json:"msg_id"`                      // 消息ID
+	Role             string         `json:"role"`                        // 角色
+	Content          *string        `json:"content"`                     // 文本内容（可为null）
+	ToolCalls        []ToolCall     `json:"tool_calls,omitempty"`        // 工具调用列表
+	ToolCallID       string         `json:"tool_call_id,omitempty"`      // 工具调用ID（tool角色使用）
+	ReasoningContent string         `json:"reasoning_content,omitempty"` // 思考内容
+	CreateTime       string         `json:"create_time"`                 // 创建时间
+	Extra            map[string]any `json:"extra,omitempty"`             // 扩展字段
+}
+
+// ToolCall 工具调用
+type ToolCall struct {
+	ID       string       `json:"id"`       // 工具调用ID
+	Type     string       `json:"type"`     // 类型，通常为 "function"
+	Function FunctionCall `json:"function"` // 函数调用信息
+}
+
+// FunctionCall 函数调用
+type FunctionCall struct {
+	Name      string `json:"name"`      // 函数名称
+	Arguments string `json:"arguments"` // 函数参数（JSON字符串）
 }

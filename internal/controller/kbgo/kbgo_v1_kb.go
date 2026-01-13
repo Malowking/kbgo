@@ -26,26 +26,11 @@ func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *
 	res = &v1.KBCreateRes{}
 
 	// 验证 embedding 模型是否存在且类型为 embedding
-	modelConfig := model.Registry.Get(req.EmbeddingModelId)
+	modelConfig := model.Registry.GetEmbeddingModel(req.EmbeddingModelId)
 	if modelConfig == nil {
 		g.Log().Errorf(ctx, "Embedding model not found: %s", req.EmbeddingModelId)
 		return nil, errors.Newf(errors.ErrModelNotFound, "embedding model not found: %s", req.EmbeddingModelId)
 	}
-	if modelConfig.Type != model.ModelTypeEmbedding {
-		g.Log().Errorf(ctx, "Model %s is not an embedding model, type: %s", req.EmbeddingModelId, modelConfig.Type)
-		return nil, errors.Newf(errors.ErrInvalidParameter, "model %s is not an embedding model, type: %s", req.EmbeddingModelId, modelConfig.Type)
-	}
-
-	// 获取模型维度
-	dimension := 1024 // 默认维度
-	if modelConfig.Extra != nil {
-		if dim, ok := modelConfig.Extra["dimension"].(float64); ok {
-			dimension = int(dim)
-		} else if dim, ok := modelConfig.Extra["dimension"].(int); ok {
-			dimension = dim
-		}
-	}
-	g.Log().Infof(ctx, "Using embedding model: %s with dimension: %d", modelConfig.Name, dimension)
 
 	// 生成 UUID 作为知识库 ID
 	knowledgeId := "kb_" + strings.ReplaceAll(uuid.New().String(), "-", "")
@@ -68,14 +53,14 @@ func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *
 
 	// 创建向量库 collection，传入维度参数
 	docIndexSvr := index.GetDocIndexSvr()
-	err = docIndexSvr.GetVectorStore().CreateCollection(ctx, knowledgeId, dimension)
+	err = docIndexSvr.GetVectorStore().CreateCollection(ctx, knowledgeId, modelConfig.Dimension)
 	if err != nil {
 		// 如果创建向量库 collection 失败，删除已创建的数据库记录并返回错误
 		dao.GetDB().WithContext(ctx).Delete(&gormModel.KnowledgeBase{}, "id = ?", knowledgeId)
 		g.Log().Errorf(ctx, "创建向量库 collection 失败: %v", err)
 		return nil, errors.Newf(errors.ErrInternalError, "创建向量库 collection 失败: %w", err)
 	}
-	g.Log().Infof(ctx, "成功创建向量库 collection: %s with dimension: %d", knowledgeId, dimension)
+	g.Log().Infof(ctx, "成功创建向量库 collection: %s with dimension: %d", knowledgeId, modelConfig.Dimension)
 
 	// 如果使用本地存储，则创建对应的文件夹
 	storageType := file_store.GetStorageType()

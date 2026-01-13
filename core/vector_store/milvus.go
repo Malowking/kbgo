@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/errors"
+	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/internal/dao"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	milvusModel "github.com/Malowking/kbgo/internal/model/milvus"
@@ -27,17 +27,6 @@ type MilvusStore struct {
 	client   *milvusclient.Client
 	database string
 }
-
-// embeddingConfigWrapper 实现 EmbeddingConfig 接口的包装器
-type embeddingConfigWrapper struct {
-	apiKey         string
-	baseURL        string
-	embeddingModel string
-}
-
-func (e *embeddingConfigWrapper) GetAPIKey() string         { return e.apiKey }
-func (e *embeddingConfigWrapper) GetBaseURL() string        { return e.baseURL }
-func (e *embeddingConfigWrapper) GetEmbeddingModel() string { return e.embeddingModel }
 
 func InitializeMilvusStore(ctx context.Context) (VectorStore, error) {
 	address := g.Cfg().MustGet(ctx, "milvus.address", "").String()
@@ -344,23 +333,23 @@ func (m *MilvusStore) GetMilvusClient() *milvusclient.Client {
 }
 
 // NewRetriever 创建检索器实例
-func (m *MilvusStore) NewRetriever(ctx context.Context, conf interface{}, collectionName string) (Retriever, error) {
-	return m.NewMilvusRetriever(ctx, conf, collectionName)
+func (m *MilvusStore) NewRetriever(ctx context.Context, collectionName string) (Retriever, error) {
+	return m.NewMilvusRetriever(ctx, collectionName)
 }
 
-// milvusRetriever 实现了 Retriever 接口
+// 实现 Retriever 接口
 type milvusRetriever struct {
 	client         *milvusclient.Client
 	collectionName string
 	vectorField    string
-	config         interface{}
+	embeddingModel *model.EmbeddingModelConfig // 直接存储 embedding 模型配置
 	store          *MilvusStore
 }
 
 // Retrieve 实现检索功能
 func (r *milvusRetriever) Retrieve(ctx context.Context, query string, opts ...Option) ([]*schema.Document, error) {
-	// 使用反射获取配置字段值，避免循环导入
-	topK := 5 // 默认值
+	// 默认参数
+	topK := 5
 	var scoreThreshold *float64
 
 	// 解析选项
@@ -374,6 +363,12 @@ func (r *milvusRetriever) Retrieve(ctx context.Context, query string, opts ...Op
 	}
 	if options.ScoreThreshold != nil {
 		scoreThreshold = options.ScoreThreshold
+	}
+
+	// 如果没有设置阈值，使用默认值0.0
+	threshold := 0.0
+	if scoreThreshold != nil {
+		threshold = *scoreThreshold
 	}
 
 	// 获取 Milvus 特定选项
@@ -390,69 +385,28 @@ func (r *milvusRetriever) Retrieve(ctx context.Context, query string, opts ...Op
 		}
 	}
 
-	// 创建embedding实例
-	var apiKey, baseURL, embeddingModel string
-	if r.config != nil {
-		// 定义接口
-		type embeddingConfigGetter interface {
-			GetAPIKey() string
-			GetBaseURL() string
-			GetEmbeddingModel() string
-		}
+	return r.vectorSearchWithThreshold(ctx, query, topK, threshold, filter, partition)
+}
 
-		// 尝试通过接口方法获取配置
-		if configGetter, ok := r.config.(embeddingConfigGetter); ok {
-			apiKey = configGetter.GetAPIKey()
-			baseURL = configGetter.GetBaseURL()
-			embeddingModel = configGetter.GetEmbeddingModel()
-		} else {
-			// Fallback: 尝试使用反射获取配置字段
-			configValue := reflect.ValueOf(r.config)
-			if configValue.Kind() == reflect.Ptr {
-				configValue = configValue.Elem()
-			}
-			if configValue.Kind() == reflect.Struct {
-				// 获取 APIKey
-				if apiKeyField := configValue.FieldByName("APIKey"); apiKeyField.IsValid() && apiKeyField.CanInterface() {
-					if key, ok := apiKeyField.Interface().(string); ok {
-						apiKey = key
-					}
-				}
-				// 获取 BaseURL
-				if baseURLField := configValue.FieldByName("BaseURL"); baseURLField.IsValid() && baseURLField.CanInterface() {
-					if url, ok := baseURLField.Interface().(string); ok {
-						baseURL = url
-					}
-				}
-				// 获取 EmbeddingModel
-				if modelField := configValue.FieldByName("EmbeddingModel"); modelField.IsValid() && modelField.CanInterface() {
-					if model, ok := modelField.Interface().(string); ok {
-						embeddingModel = model
-					}
-				}
-			}
-		}
+// vectorSearchWithThreshold 带阈值的向量搜索
+func (r *milvusRetriever) vectorSearchWithThreshold(ctx context.Context, query string, topK int, threshold float64, filter string, partition string) ([]*schema.Document, error) {
+	// 直接使用存储的 embedding 模型配置
+	if r.embeddingModel == nil {
+		return nil, errors.New(errors.ErrEmbeddingFailed, "embedding model not configured for this retriever")
 	}
 
-	// 创建一个临时的配置结构来满足 EmbeddingConfig 接口
-	embeddingConfig := &embeddingConfigWrapper{
-		apiKey:         apiKey,
-		baseURL:        baseURL,
-		embeddingModel: embeddingModel,
-	}
-
-	embedder, err := common.NewEmbedding(ctx, embeddingConfig)
+	// 创建 embedder
+	embedder, err := common.NewEmbedding(ctx, r.embeddingModel)
 	if err != nil {
 		return nil, errors.Newf(errors.ErrEmbeddingFailed, "failed to create embedder: %v", err)
 	}
 
-	// embedding查询
-	// 获取向量维度，优先从配置文件读取
-	dim := g.Cfg().MustGet(ctx, "milvus.dim", 1024).Int()
-	vectors, err := embedder.EmbedStrings(ctx, []string{query}, dim)
+	// 生成查询向量
+	vectors, err := embedder.EmbedStrings(ctx, []string{query})
 	if err != nil {
 		return nil, errors.Newf(errors.ErrEmbeddingFailed, "embedding has error: %v", err)
 	}
+
 	// 检查 embedding result
 	if len(vectors) != 1 {
 		return nil, errors.Newf(errors.ErrEmbeddingFailed, "invalid return length of vector, got=%d, expected=1", len(vectors))
@@ -498,7 +452,23 @@ func (r *milvusRetriever) Retrieve(ctx context.Context, query string, opts ...Op
 	}
 
 	// 这个方法包含了查询文档名称和权限控制的完整逻辑
-	return r.store.ConvertSearchResultsToDocuments(ctx, results[0].Fields, results[0].Scores)
+	docs, err := r.store.ConvertSearchResultsToDocuments(ctx, results[0].Fields, results[0].Scores)
+	if err != nil {
+		return nil, err
+	}
+
+	// 如果设置了阈值，过滤低于阈值的结果
+	if threshold > 0 {
+		filtered := make([]*schema.Document, 0, len(docs))
+		for _, doc := range docs {
+			if doc.Score >= float32(threshold) {
+				filtered = append(filtered, doc)
+			}
+		}
+		return filtered, nil
+	}
+
+	return docs, nil
 }
 
 // GetType 返回检索器类型
@@ -512,7 +482,7 @@ func (r *milvusRetriever) IsCallbacksEnabled() bool {
 }
 
 // NewMilvusRetriever 创建Milvus检索器实例
-func (m *MilvusStore) NewMilvusRetriever(ctx context.Context, conf interface{}, collectionName string) (Retriever, error) {
+func (m *MilvusStore) NewMilvusRetriever(ctx context.Context, collectionName string) (Retriever, error) {
 	if m.client == nil {
 		return nil, errors.New(errors.ErrInvalidParameter, "milvus client not provided")
 	}
@@ -560,12 +530,35 @@ func (m *MilvusStore) NewMilvusRetriever(ctx context.Context, conf interface{}, 
 		}
 	}
 
-	// 创建并返回检索器
+	// 从数据库查询知识库的 embedding 模型 ID
+	// collectionName 就是 knowledgeID
+	var embeddingModelID string
+	err = dao.GetDB().WithContext(ctx).
+		Table("knowledge_base").
+		Select("embedding_model_id").
+		Where("id = ?", collectionName).
+		Scan(&embeddingModelID).Error
+
+	if err != nil {
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to query embedding model ID for knowledge %s: %v", collectionName, err)
+	}
+
+	if embeddingModelID == "" {
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "embedding model ID not found for knowledge %s", collectionName)
+	}
+
+	// 从 Registry 获取 embedding 模型配置
+	embeddingModel := model.Registry.GetEmbeddingModel(embeddingModelID)
+	if embeddingModel == nil {
+		return nil, errors.Newf(errors.ErrModelNotFound, "embedding model not found: %s", embeddingModelID)
+	}
+
+	// 创建并返回检索器，直接传入 embedding 模型配置
 	return &milvusRetriever{
 		client:         m.client,
 		collectionName: collectionName,
 		vectorField:    vectorField,
-		config:         conf,
+		embeddingModel: embeddingModel, // 直接传入 embedding 模型配置
 		store:          m,
 	}, nil
 }
@@ -741,11 +734,10 @@ func (m *MilvusStore) ConvertSearchResultsToDocuments(ctx context.Context, colum
 // VectorSearchOnly 仅使用向量检索的通用方法
 func (m *MilvusStore) VectorSearchOnly(ctx context.Context, conf GeneralRetrieverConfig, query string, knowledgeId string, topK int, score float64) ([]*schema.Document, error) {
 	var filter string
-	// knowledge name == collection name
 	collectionName := knowledgeId
 
-	// 直接传入配置接口，让 NewMilvusRetriever 内部处理
-	r, err := m.NewMilvusRetriever(ctx, conf, collectionName)
+	// 创建检索器
+	r, err := m.NewMilvusRetriever(ctx, collectionName)
 	if err != nil {
 		g.Log().Errorf(ctx, "failed to create retriever for collection %s, err=%v", collectionName, err)
 		return nil, err
@@ -909,7 +901,7 @@ func (m *MilvusStore) DeleteNL2SQLByDatasourceID(ctx context.Context, collection
 }
 
 // VectorSearchOnlyNL2SQL NL2SQL专用的向量检索方法
-func (m *MilvusStore) VectorSearchOnlyNL2SQL(ctx context.Context, conf GeneralRetrieverConfig, query string, collectionName string, datasourceID string, topK int, score float64) ([]*schema.Document, error) {
+func (m *MilvusStore) VectorSearchOnlyNL2SQL(ctx context.Context, query string, collectionName string, datasourceID string, topK int, score float64) ([]*schema.Document, error) {
 	// 对于 Milvus，暂时返回错误，提示不支持
 	// TODO: 实现 Milvus 的 NL2SQL 专用检索
 	return nil, errors.New(errors.ErrInvalidParameter, "NL2SQL vector search is not yet implemented for Milvus, please use PostgreSQL as vector store")

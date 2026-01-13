@@ -78,7 +78,6 @@ func (s *ModelService) ChatCompletionStream(ctx context.Context, params ChatComp
 	if err != nil {
 		return nil, errors.Newf(errors.ErrInvalidParameter, "failed to format messages: %v", err)
 	}
-
 	// 调用客户端
 	req := client.ChatCompletionRequest{
 		Model:               params.ModelName,

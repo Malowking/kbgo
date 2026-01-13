@@ -66,9 +66,6 @@ func LoadAgentPresetConfig(ctx context.Context, req *v1.ChatReq) *v1.ChatReq {
 	if req.ModelID == "" {
 		req.ModelID = config.ModelID
 	}
-	if req.EmbeddingModelID == "" {
-		req.EmbeddingModelID = config.EmbeddingModelID
-	}
 	if req.RerankModelID == "" {
 		req.RerankModelID = config.RerankModelID
 	}

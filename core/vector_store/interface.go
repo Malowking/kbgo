@@ -144,13 +144,13 @@ type VectorStore interface {
 	GetClient() interface{}
 
 	// NewRetriever 创建检索器实例
-	NewRetriever(ctx context.Context, conf interface{}, collectionName string) (Retriever, error)
+	NewRetriever(ctx context.Context, collectionName string) (Retriever, error)
 
 	// VectorSearchOnly 仅使用向量检索的通用方法
 	VectorSearchOnly(ctx context.Context, conf GeneralRetrieverConfig, query string, knowledgeId string, topK int, score float64) ([]*schema.Document, error)
 
 	// VectorSearchOnlyNL2SQL NL2SQL专用的向量检索方法
-	VectorSearchOnlyNL2SQL(ctx context.Context, conf GeneralRetrieverConfig, query string, collectionName string, datasourceID string, topK int, score float64) ([]*schema.Document, error)
+	VectorSearchOnlyNL2SQL(ctx context.Context, query string, collectionName string, datasourceID string, topK int, score float64) ([]*schema.Document, error)
 
 	// CreateNL2SQLCollection 创建NL2SQL专用的集合
 	CreateNL2SQLCollection(ctx context.Context, collectionName string, dimension int) error

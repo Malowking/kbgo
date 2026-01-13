@@ -110,7 +110,6 @@ export interface ChatRequest {
   question: string;
   model_id: string;
   system_prompt?: string;
-  embedding_model_id?: string;
   rerank_model_id?: string;
   knowledge_id?: string;
   enable_retriever?: boolean;
@@ -278,7 +277,6 @@ export interface MCPStats {
 export interface AgentConfig {
   model_id: string;
   system_prompt?: string;
-  embedding_model_id?: string;
   rerank_model_id?: string;
   knowledge_id?: string;
   enable_retriever?: boolean;
@@ -292,7 +290,6 @@ export interface AgentConfig {
   // NL2SQL相关配置
   enable_nl2sql?: boolean;
   nl2sql_datasource_id?: string;
-  nl2sql_embedding_model_id?: string; // NL2SQL Schema向量化使用的embedding模型
   // 文件导出相关配置
   enable_file_export?: boolean;
   // Claude Skills 相关配置

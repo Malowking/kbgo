@@ -49,7 +49,7 @@ type ModelConfig struct {
 type ModelRegistry struct {
 	mu           sync.RWMutex
 	models       map[string]*ModelConfig // key = model_id (UUID)
-	rewriteModel *ModelConfig            // 重写模型（单例）
+	rewriteModel *ChatModelConfig        // 重写模型（单例）
 }
 
 // Registry 全局单例
@@ -115,7 +115,7 @@ func (r *ModelRegistry) Reload(ctx context.Context, db *gormdb.DB) error {
 
 	// 构建新的模型映射
 	newMap := make(map[string]*ModelConfig)
-	var newRewriteModel *ModelConfig // 临时存储重写模型
+	var newRewriteModel *ChatModelConfig // 临时存储重写模型
 
 	for _, m := range models {
 		mc := &ModelConfig{
@@ -139,7 +139,8 @@ func (r *ModelRegistry) Reload(ctx context.Context, db *gormdb.DB) error {
 				if isRewrite, ok := extra["is_rewrite"].(bool); ok && isRewrite {
 					// 验证重写模型必须是启用的 LLM 类型
 					if m.Enabled && mc.Type == ModelTypeLLM {
-						newRewriteModel = mc
+						// 将 ModelConfig 转换为 LLMModelConfig
+						newRewriteModel = convertToLLMModelConfig(mc)
 						g.Log().Infof(ctx, "Found rewrite model in database: %s (%s)", mc.Name, mc.ModelID)
 					} else {
 						g.Log().Warningf(ctx, "Invalid rewrite model config: %s (%s), type=%s, enabled=%v",
@@ -201,7 +202,7 @@ func (r *ModelRegistry) Count() int {
 }
 
 // GetRewriteModel 获取重写模型配置
-func (r *ModelRegistry) GetRewriteModel() *ModelConfig {
+func (r *ModelRegistry) GetRewriteModel() *ChatModelConfig {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.rewriteModel
@@ -234,8 +235,8 @@ func (r *ModelRegistry) SetRewriteModel(modelID string) error {
 		return errors.New(errors.ErrModelConfigInvalid, "rewrite model must be LLM type")
 	}
 
-	// 设置重写模型
-	r.rewriteModel = mc
+	// 将 ModelConfig 转换为 LLMModelConfig
+	r.rewriteModel = convertToLLMModelConfig(mc)
 	g.Log().Infof(gctx.New(), "Rewrite model set to: %s (%s)", mc.Name, mc.ModelID)
 	return nil
 }
@@ -245,4 +246,227 @@ func (r *ModelRegistry) HasRewriteModel() bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.rewriteModel != nil
+}
+
+// EmbeddingModelConfig Embedding 模型专用配置
+type EmbeddingModelConfig struct {
+	ModelID   string
+	Name      string
+	BaseURL   string
+	APIKey    string
+	Dimension int
+}
+
+func (e *EmbeddingModelConfig) GetDimension() int {
+	return e.Dimension
+}
+
+// GetAPIKey 实现 EmbeddingConfig 接口
+func (e *EmbeddingModelConfig) GetAPIKey() string {
+	return e.APIKey
+}
+
+// GetBaseURL 实现 EmbeddingConfig 接口
+func (e *EmbeddingModelConfig) GetBaseURL() string {
+	return e.BaseURL
+}
+
+// GetEmbeddingModel 实现 EmbeddingConfig 接口
+func (e *EmbeddingModelConfig) GetEmbeddingModel() string {
+	return e.Name
+}
+
+// RerankerModelConfig Reranker 模型专用配置
+type RerankerModelConfig struct {
+	ModelID string
+	Name    string
+	BaseURL string
+	APIKey  string
+}
+
+// ChatModelConfig 聊天模型通用配置（支持 LLM 和 Multimodal 类型）
+type ChatModelConfig struct {
+	ModelID             string
+	Name                string
+	BaseURL             string
+	APIKey              string
+	Enabled             bool
+	Client              *openai.Client
+	Type                ModelType
+	Temperature         *float32
+	MaxCompletionTokens *int
+	TopP                *float32
+	FrequencyPenalty    *float32
+	PresencePenalty     *float32
+	N                   *int
+	Stop                []string
+}
+
+//// LLMModelConfig LLM 模型专用配置（已废弃，使用 ChatModelConfig 替代）
+//// Deprecated: 使用 ChatModelConfig 替代
+//type LLMModelConfig = ChatModelConfig
+//
+//// MultimodalModelConfig 多模态模型专用配置（已废弃，使用 ChatModelConfig 替代）
+//// Deprecated: 使用 ChatModelConfig 替代
+//type MultimodalModelConfig = ChatModelConfig
+
+// GetEmbeddingModel 根据 model_id 获取 Embedding 模型配置
+func (r *ModelRegistry) GetEmbeddingModel(modelID string) *EmbeddingModelConfig {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	mc := r.models[modelID]
+	if mc == nil || mc.Type != ModelTypeEmbedding {
+		return nil
+	}
+
+	// 获取维度
+	dimension := 1024 // 默认值
+	if mc.Extra != nil {
+		if dim, exists := mc.Extra["dimension"]; exists {
+			if dimInt, ok := dim.(int); ok {
+				dimension = dimInt
+			} else if dimFloat, ok := dim.(float64); ok {
+				dimension = int(dimFloat)
+			}
+		}
+	}
+
+	return &EmbeddingModelConfig{
+		ModelID:   mc.ModelID,
+		Name:      mc.Name,
+		BaseURL:   mc.BaseURL,
+		APIKey:    mc.APIKey,
+		Dimension: dimension,
+	}
+}
+
+// GetRerankerModel 根据 model_id 获取 Reranker 模型配置
+func (r *ModelRegistry) GetRerankerModel(modelID string) *RerankerModelConfig {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	mc := r.models[modelID]
+	if mc == nil || mc.Type != ModelTypeReranker {
+		return nil
+	}
+
+	return &RerankerModelConfig{
+		ModelID: mc.ModelID,
+		Name:    mc.Name,
+		BaseURL: mc.BaseURL,
+		APIKey:  mc.APIKey,
+	}
+}
+
+// GetChatModel 根据 model_id 获取聊天模型配置
+func (r *ModelRegistry) GetChatModel(modelID string) *ChatModelConfig {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	mc := r.models[modelID]
+	if mc == nil || (mc.Type != ModelTypeLLM && mc.Type != ModelTypeMultimodal) {
+		return nil
+	}
+
+	config := &ChatModelConfig{
+		ModelID: mc.ModelID,
+		Name:    mc.Name,
+		BaseURL: mc.BaseURL,
+		APIKey:  mc.APIKey,
+		Client:  mc.Client,
+		Enabled: mc.Enabled,
+		Type:    mc.Type,
+	}
+
+	// 从 Extra 字段提取推理参数
+	if mc.Extra != nil {
+		if temp, exists := mc.Extra["temperature"]; exists {
+			if tempFloat, ok := temp.(float64); ok {
+				tempFloat32 := float32(tempFloat)
+				config.Temperature = &tempFloat32
+			}
+		}
+
+		if maxTokens, exists := mc.Extra["max_completion_tokens"]; exists {
+			if maxTokensInt, ok := maxTokens.(float64); ok {
+				maxTokensIntVal := int(maxTokensInt)
+				config.MaxCompletionTokens = &maxTokensIntVal
+			} else if maxTokensInt, ok := maxTokens.(int); ok {
+				config.MaxCompletionTokens = &maxTokensInt
+			}
+		}
+
+		if topP, exists := mc.Extra["top_p"]; exists {
+			if topPFloat, ok := topP.(float64); ok {
+				topPFloat32 := float32(topPFloat)
+				config.TopP = &topPFloat32
+			}
+		}
+
+		if freqPenalty, exists := mc.Extra["frequency_penalty"]; exists {
+			if freqPenaltyFloat, ok := freqPenalty.(float64); ok {
+				freqPenaltyFloat32 := float32(freqPenaltyFloat)
+				config.FrequencyPenalty = &freqPenaltyFloat32
+			}
+		}
+
+		if presPenalty, exists := mc.Extra["presence_penalty"]; exists {
+			if presPenaltyFloat, ok := presPenalty.(float64); ok {
+				presPenaltyFloat32 := float32(presPenaltyFloat)
+				config.PresencePenalty = &presPenaltyFloat32
+			}
+		}
+
+		if n, exists := mc.Extra["n"]; exists {
+			if nInt, ok := n.(float64); ok {
+				nIntVal := int(nInt)
+				config.N = &nIntVal
+			} else if nInt, ok := n.(int); ok {
+				config.N = &nInt
+			}
+		}
+
+		if stop, exists := mc.Extra["stop"]; exists {
+			if stopSlice, ok := stop.([]interface{}); ok {
+				stopStrings := make([]string, 0, len(stopSlice))
+				for _, s := range stopSlice {
+					if str, ok := s.(string); ok {
+						stopStrings = append(stopStrings, str)
+					}
+				}
+				config.Stop = stopStrings
+			} else if stopStr, ok := stop.(string); ok {
+				config.Stop = []string{stopStr}
+			}
+		}
+	}
+
+	return config
+}
+
+//// GetLLMModel 根据 model_id 获取 LLM 模型配置
+//// Deprecated: 使用 GetChatModel 替代
+//func (r *ModelRegistry) GetLLMModel(modelID string) *LLMModelConfig {
+//	config := r.GetChatModel(modelID)
+//	if config == nil || config.Type != ModelTypeLLM {
+//		return nil
+//	}
+//	return config
+//}
+//
+//// GetMultimodalModel 根据 model_id 获取多模态模型配置
+//// Deprecated: 使用 GetChatModel 替代
+//func (r *ModelRegistry) GetMultimodalModel(modelID string) *MultimodalModelConfig {
+//	config := r.GetChatModel(modelID)
+//	if config == nil || config.Type != ModelTypeMultimodal {
+//		return nil
+//	}
+//	return config
+//}
+
+// convertToLLMModelConfig 将 ModelConfig 转换为 ChatModelConfig
+func convertToLLMModelConfig(mc *ModelConfig) *ChatModelConfig {
+	// 直接使用 GetChatModel 的逻辑
+	return Registry.GetChatModel(mc.ModelID)
 }

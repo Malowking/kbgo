@@ -96,15 +96,28 @@ func (c *ControllerV1) ConversationDetail(ctx context.Context, req *v1.Conversat
 	// 转换消息格式
 	messages := make([]*v1.MessageItem, 0, len(detail.Messages))
 	for _, msg := range detail.Messages {
+		// 转换ToolCalls
+		var toolCalls []v1.ToolCall
+		for _, tc := range msg.ToolCalls {
+			toolCalls = append(toolCalls, v1.ToolCall{
+				ID:   tc.ID,
+				Type: tc.Type,
+				Function: v1.FunctionCall{
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				},
+			})
+		}
+
 		messages = append(messages, &v1.MessageItem{
-			ID:               msg.ID,
+			MsgID:            msg.MsgID,
 			Role:             msg.Role,
 			Content:          msg.Content,
+			ToolCalls:        toolCalls,
+			ToolCallID:       msg.ToolCallID,
 			ReasoningContent: msg.ReasoningContent,
-			Metadata:         msg.Metadata,
 			CreateTime:       msg.CreateTime,
-			TokensUsed:       msg.TokensUsed,
-			LatencyMs:        msg.LatencyMs,
+			Extra:            msg.Extra,
 		})
 	}
 

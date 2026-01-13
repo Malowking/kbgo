@@ -17,13 +17,13 @@ import (
 type SchemaEnhancer struct {
 	db           *gorm.DB
 	modelService *model.ModelService
-	modelConfig  *model.ModelConfig
+	modelConfig  *model.ChatModelConfig
 }
 
 // NewSchemaEnhancer 创建Schema增强器
 func NewSchemaEnhancer(db *gorm.DB, modelID string) (*SchemaEnhancer, error) {
 	// 获取模型配置
-	modelConfig := model.Registry.Get(modelID)
+	modelConfig := model.Registry.GetChatModel(modelID)
 	if modelConfig == nil {
 		return nil, fmt.Errorf("模型不存在: %s", modelID)
 	}

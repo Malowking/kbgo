@@ -19,15 +19,14 @@ func NewKnowledgeRetrievalTool() *KnowledgeRetrievalTool {
 
 // KnowledgeRetrievalConfig 知识检索工具配置
 type KnowledgeRetrievalConfig struct {
-	KnowledgeID      string   `json:"knowledge_id"`       // 知识库ID（必填）
-	TopK             int      `json:"top_k"`              // 返回文档数量（默认5）
-	Score            float64  `json:"score"`              // 相似度阈值（默认0.2）
-	RetrieveMode     string   `json:"retrieve_mode"`      // 检索模式: simple/rerank/rrf（默认rrf）
-	EnableRewrite    bool     `json:"enable_rewrite"`     // 是否启用查询重写（默认true）
-	RewriteAttempts  int      `json:"rewrite_attempts"`   // 查询重写次数（默认3）
-	RerankWeight     *float64 `json:"rerank_weight"`      // Rerank权重0-1（默认1.0）
-	EmbeddingModelID string   `json:"embedding_model_id"` // Embedding模型ID（可选，默认使用知识库绑定模型）
-	RerankModelID    string   `json:"rerank_model_id"`    // Rerank模型ID（可选）
+	KnowledgeID     string   `json:"knowledge_id"`     // 知识库ID（必填）
+	TopK            int      `json:"top_k"`            // 返回文档数量（默认5）
+	Score           float64  `json:"score"`            // 相似度阈值（默认0.2）
+	RetrieveMode    string   `json:"retrieve_mode"`    // 检索模式: simple/rerank/rrf（默认rrf）
+	EnableRewrite   bool     `json:"enable_rewrite"`   // 是否启用查询重写（默认true）
+	RewriteAttempts int      `json:"rewrite_attempts"` // 查询重写次数（默认3）
+	RerankWeight    *float64 `json:"rerank_weight"`    // Rerank权重0-1（默认1.0）
+	RerankModelID   string   `json:"rerank_model_id"`  // Rerank模型ID（可选）
 }
 
 // KnowledgeRetrievalResult 知识检索结果
@@ -74,16 +73,15 @@ func (t *KnowledgeRetrievalTool) Execute(ctx context.Context, config *KnowledgeR
 
 	// 调用检索逻辑
 	retrieverRes, err := retriever.ProcessRetrieval(ctx, &v1.RetrieverReq{
-		Question:         question,
-		EmbeddingModelID: config.EmbeddingModelID,
-		RerankModelID:    config.RerankModelID,
-		TopK:             topK,
-		Score:            score,
-		KnowledgeId:      config.KnowledgeID,
-		EnableRewrite:    config.EnableRewrite,
-		RewriteAttempts:  rewriteAttempts,
-		RetrieveMode:     retrieveMode,
-		RerankWeight:     config.RerankWeight,
+		Question:        question,
+		RerankModelID:   config.RerankModelID,
+		TopK:            topK,
+		Score:           score,
+		KnowledgeId:     config.KnowledgeID,
+		EnableRewrite:   config.EnableRewrite,
+		RewriteAttempts: rewriteAttempts,
+		RetrieveMode:    retrieveMode,
+		RerankWeight:    config.RerankWeight,
 	})
 
 	if err != nil {
@@ -143,10 +141,6 @@ func ParseConfig(configMap map[string]interface{}) *KnowledgeRetrievalConfig {
 
 	if rerankWeight, ok := configMap["rerank_weight"].(float64); ok {
 		config.RerankWeight = &rerankWeight
-	}
-
-	if embeddingModelID, ok := configMap["embedding_model_id"].(string); ok {
-		config.EmbeddingModelID = embeddingModelID
 	}
 
 	if rerankModelID, ok := configMap["rerank_model_id"].(string); ok {

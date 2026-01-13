@@ -175,7 +175,6 @@ export const chatApi = {
       formData.append('model_id', data.model_id);
       formData.append('stream', 'true');
 
-      if (data.embedding_model_id) formData.append('embedding_model_id', data.embedding_model_id);
       if (data.rerank_model_id) formData.append('rerank_model_id', data.rerank_model_id);
       if (data.knowledge_id) formData.append('knowledge_id', data.knowledge_id);
       if (data.enable_retriever !== undefined) formData.append('enable_retriever', data.enable_retriever.toString());
