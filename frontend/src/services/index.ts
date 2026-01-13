@@ -103,6 +103,7 @@ export const conversationApi = {
   list: (params?: {
     knowledge_id?: string;
     conversation_type?: string;
+    agent_preset_id?: string;
     page?: number;
     page_size?: number;
     status?: string;

@@ -62,7 +62,7 @@ export default function AgentChat() {
     try {
       const response = await conversationApi.list({
         conversation_type: 'agent',
-        agent_preset_id: presetId, // 直接使用后端筛选
+        agent_preset_id: presetId,
         page: 1,
         page_size: 100,
       });
