@@ -14,9 +14,9 @@ import (
 
 	"github.com/Malowking/kbgo/core/formatter"
 	coreModel "github.com/Malowking/kbgo/core/model"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/Malowking/kbgo/internal/history"
 	"github.com/Malowking/kbgo/internal/logic/rewriter"
-	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/sashabaranov/go-openai"
 )
@@ -46,7 +46,8 @@ func InitHistory() {
 }
 
 // GetAnswer 使用指定模型生成答案（非流式）
-func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, systemPrompt string, jsonFormat bool) (answer string, reasoningContent string, err error) {
+// messages: 完整的消息列表，包括系统提示词、历史消息、用户问题等，可以直接传给模型
+func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, messages []*schema.Message, jsonFormat bool) (answer string, reasoningContent string, err error) {
 	// 获取模型配置
 	mc := coreModel.Registry.GetChatModel(modelID)
 	if mc == nil {
@@ -68,64 +69,6 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 
 	// 创建模型服务
 	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
-
-	// 获取聊天历史
-	chatHistory, err := x.eh.GetHistory(convID, 50)
-	if err != nil {
-		return "", "", err
-	}
-
-	// 使用查询重写器进行指代消解
-	rewriteConfig := rewriter.DefaultConfig()
-	rewriteConfig.ModelID = modelID // 使用相同的模型进行重写
-	rewrittenQuestion, err := x.queryRewriter.RewriteQuery(ctx, question, chatHistory, rewriteConfig)
-	if err != nil {
-		g.Log().Warningf(ctx, "查询重写失败: %v，使用原查询", err)
-		rewrittenQuestion = question
-	}
-	_ = rewrittenQuestion
-
-	// 捕获用户消息接收时间
-	userMessageTime := time.Now()
-
-	// 保存用户消息
-	userMessage := &schema.Message{
-		Role:    schema.User,
-		Content: question,
-	}
-	err = x.eh.SaveMessage(userMessage, convID, nil, &userMessageTime)
-	if err != nil {
-		return "", "", err
-	}
-
-	// 格式化文档为系统提示
-	formattedDocs := formatDocumentsForChat(docs)
-
-	// 构建系统提示词
-	var systemContent string
-	if systemPrompt != "" {
-		// 如果提供了自定义系统提示词，使用它
-		systemContent = systemPrompt
-		// 如果有检索到的文档，追加到系统提示词后面
-		if formattedDocs != "" {
-			systemContent += "\n\n" + formattedDocs
-		}
-	} else {
-		// 使用默认系统提示词
-		systemContent = "你是一个专业的AI助手，能够根据提供的参考信息准确回答用户问题。" +
-			"如果没有提供参考信息，也请根据你的知识自由回答用户问题。\n\n" +
-			formattedDocs
-	}
-
-	// 构建消息列表
-	messages := []*schema.Message{
-		{
-			Role:    schema.System,
-			Content: systemContent,
-		},
-	}
-	messages = append(messages, chatHistory...)
-	messages = append(messages, userMessage)
 
 	// 准备响应格式
 	var responseFormat *openai.ChatCompletionResponseFormat
@@ -206,7 +149,9 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, doc
 }
 
 // GetAnswerStream 使用指定模型流式生成答案
-func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, systemPrompt string, jsonFormat bool) (answer schema.StreamReaderInterface[*schema.Message], err error) {
+// messages: 完整的消息列表，包括系统提示词、历史消息、用户问题等，可以直接传给模型
+// traceID: 可选的追踪ID，用于关联工具调用和最终回复
+func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID string, messages []*schema.Message, jsonFormat bool, traceID ...string) (answer schema.StreamReaderInterface[*schema.Message], err error) {
 	// 获取模型配置
 	mc := coreModel.Registry.GetChatModel(modelID)
 	if mc == nil {
@@ -242,71 +187,6 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 
 	// 创建模型服务
 	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
-
-	// 获取聊天历史
-	chatHistory, err := x.eh.GetHistory(convID, 50)
-	if err != nil {
-		return nil, err
-	}
-
-	// 使用查询重写器进行指代消解
-	rewriteConfig := rewriter.DefaultConfig()
-	rewriteConfig.ModelID = modelID // 使用相同的模型进行重写
-	rewrittenQuestion, err := x.queryRewriter.RewriteQuery(ctx, question, chatHistory, rewriteConfig)
-	if err != nil {
-		g.Log().Warningf(ctx, "查询重写失败: %v，使用原查询", err)
-		rewrittenQuestion = question
-	}
-	_ = rewrittenQuestion
-
-	// 创建用户消息
-	userMessage := &schema.Message{
-		Role:    schema.User,
-		Content: question,
-	}
-
-	// 格式化文档为系统提示
-	formattedDocs := formatDocumentsForChat(docs)
-
-	// 构建系统提示词
-	var systemContent string
-	if systemPrompt != "" {
-		// 如果提供了自定义系统提示词，使用它
-		systemContent = systemPrompt
-		// 如果有检索到的文档，追加到系统提示词后面
-		if formattedDocs != "" {
-			systemContent += "\n\n" + formattedDocs
-		}
-	} else {
-		// 使用默认系统提示词
-		systemContent = "你是一个专业的AI助手，能够根据提供的参考信息准确回答用户问题。" +
-			"如果没有提供参考信息，也请根据你的知识自由回答用户问题。\n\n" +
-			formattedDocs
-	}
-
-	// 构建消息列表
-	messages := []*schema.Message{
-		{
-			Role:    schema.System,
-			Content: systemContent,
-		},
-	}
-	messages = append(messages, chatHistory...)
-
-	// 检查历史中最后一条消息是否和当前用户消息重复
-	// 如果重复，不添加；否则添加
-	shouldAddUserMessage := true
-	if len(chatHistory) > 0 {
-		lastMsg := chatHistory[len(chatHistory)-1]
-		if lastMsg.Role == schema.User && lastMsg.Content == question {
-			g.Log().Warningf(ctx, "检测到重复的用户消息，跳过添加: %s", question)
-			shouldAddUserMessage = false
-		}
-	}
-
-	if shouldAddUserMessage {
-		messages = append(messages, userMessage)
-	}
 
 	// 准备响应格式
 	var responseFormat *openai.ChatCompletionResponseFormat
@@ -400,7 +280,14 @@ func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID strin
 					TokensUsed: tokenCount,
 				}
 
-				// 异步保存消息
+				// 提取 traceID（如果有）
+				var tid string
+				if len(traceID) > 0 {
+					tid = traceID[0]
+					msgWithMetrics.TraceID = tid
+				}
+
+				// 异步保存消息，传递 traceID
 				saveErr := x.eh.SaveMessageWithMetrics(msgWithMetrics, convID)
 				if saveErr != nil {
 					g.Log().Errorf(ctx, "save assistant message err: %v", saveErr)
@@ -616,4 +503,44 @@ func formatDocumentsForChat(docs []*schema.Document) string {
 		builder.WriteString(fmt.Sprintf("[%d] %s\n", i+1, doc.Content))
 	}
 	return builder.String()
+}
+
+// BuildMessagesForChat 构建用于聊天的完整消息列表
+
+// 包括系统提示词、历史消息等
+func BuildMessagesForChat(
+	ctx context.Context,
+	systemPrompt string,
+	chatHistory []*schema.Message,
+	docs []*schema.Document,
+) []*schema.Message {
+	// 格式化文档为系统提示
+	formattedContext := formatDocumentsForChat(docs)
+
+	// 构建系统提示词
+	var systemContent string
+	if systemPrompt != "" {
+		// 如果提供了自定义系统提示词，使用它
+		systemContent = systemPrompt
+		// 如果有检索到的文档，追加到系统提示词后面
+		if formattedContext != "" {
+			systemContent += "\n\n" + formattedContext
+		}
+	} else {
+		// 使用默认系统提示词
+		systemContent = "你是一个专业的AI助手，能够根据提供的参考信息准确回答用户问题。" +
+			"如果没有提供参考信息，也请根据你的知识自由回答用户问题。\n\n" +
+			formattedContext
+	}
+
+	// 构建消息列表
+	messages := []*schema.Message{
+		{
+			Role:    schema.System,
+			Content: systemContent,
+		},
+	}
+	messages = append(messages, chatHistory...)
+
+	return messages
 }

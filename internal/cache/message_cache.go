@@ -17,9 +17,8 @@ import (
 
 const (
 	// Redis key前缀
-	messageKeyPrefix        = "msg:"
-	messageContentKeyPrefix = "msg_content:"
-	convMessageListPrefix   = "conv_msgs:"
+	messageKeyPrefix      = "msg:"
+	convMessageListPrefix = "conv_msgs:"
 
 	// 默认缓存过期时间
 	defaultMessageTTL = 24 * time.Hour // 消息缓存24小时
@@ -33,16 +32,10 @@ const (
 type MessageCache struct {
 	rdb          *redis.Client
 	flushTicker  *time.Ticker
-	pendingQueue chan *PendingMessage
+	pendingQueue chan *gormModel.Message
 	wg           sync.WaitGroup
 	ctx          context.Context
 	cancel       context.CancelFunc
-}
-
-// PendingMessage 待刷盘的消息
-type PendingMessage struct {
-	Message  *gormModel.Message
-	Contents []*gormModel.MessageContent
 }
 
 var (
@@ -64,7 +57,7 @@ func InitMessageCache(ctx context.Context) error {
 		messageCache = &MessageCache{
 			rdb:          rdb,
 			flushTicker:  time.NewTicker(defaultFlushInterval),
-			pendingQueue: make(chan *PendingMessage, 1000),
+			pendingQueue: make(chan *gormModel.Message, 1000),
 			ctx:          cctx,
 			cancel:       cancel,
 		}
@@ -85,32 +78,29 @@ func GetMessageCache() *MessageCache {
 }
 
 // SaveMessage 保存消息到缓存
-func (mc *MessageCache) SaveMessage(ctx context.Context, message *gormModel.Message, contents []*gormModel.MessageContent) error {
+func (mc *MessageCache) SaveMessage(ctx context.Context, message *gormModel.Message) error {
 	// 1. 先写入Redis缓存
-	if err := mc.saveToCache(ctx, message, contents); err != nil {
+	if err := mc.saveToCache(ctx, message); err != nil {
 		g.Log().Errorf(ctx, "写入Redis缓存失败: %v", err)
 		// 缓存失败时直接写数据库
-		return mc.saveToDatabase(ctx, message, contents)
+		return mc.saveToDatabase(ctx, message)
 	}
 
 	// 2. 将消息加入刷盘队列
 	select {
-	case mc.pendingQueue <- &PendingMessage{
-		Message:  message,
-		Contents: contents,
-	}:
+	case mc.pendingQueue <- message:
 		// 成功加入队列
 	default:
 		// 队列满了，直接写数据库
 		g.Log().Warning(ctx, "刷盘队列已满，直接写入数据库")
-		return mc.saveToDatabase(ctx, message, contents)
+		return mc.saveToDatabase(ctx, message)
 	}
 
 	return nil
 }
 
 // saveToCache 保存消息到Redis
-func (mc *MessageCache) saveToCache(ctx context.Context, message *gormModel.Message, contents []*gormModel.MessageContent) error {
+func (mc *MessageCache) saveToCache(ctx context.Context, message *gormModel.Message) error {
 	// 1. 保存消息主体
 	msgKey := fmt.Sprintf("%s%s", messageKeyPrefix, message.MsgID)
 	msgJSON, err := json.Marshal(message)
@@ -121,20 +111,7 @@ func (mc *MessageCache) saveToCache(ctx context.Context, message *gormModel.Mess
 		return fmt.Errorf("保存消息到Redis失败: %w", err)
 	}
 
-	// 2. 保存消息内容块
-	for _, content := range contents {
-		contentKey := fmt.Sprintf("%s%s:%d", messageContentKeyPrefix, message.MsgID, content.SortOrder)
-		contentJSON, err := json.Marshal(content)
-		if err != nil {
-			g.Log().Errorf(ctx, "序列化消息内容块失败: %v", err)
-			continue
-		}
-		if err := mc.rdb.Set(ctx, contentKey, contentJSON, defaultMessageTTL).Err(); err != nil {
-			g.Log().Errorf(ctx, "保存消息内容块到Redis失败: %v", err)
-		}
-	}
-
-	// 3. 将消息ID添加到会话的消息列表中
+	// 2. 将消息ID添加到会话的消息列表中
 	convListKey := fmt.Sprintf("%s%s", convMessageListPrefix, message.ConvID)
 	score := float64(message.CreateTime.Unix())
 	if err := mc.rdb.ZAdd(ctx, convListKey, redis.Z{
@@ -150,12 +127,12 @@ func (mc *MessageCache) saveToCache(ctx context.Context, message *gormModel.Mess
 }
 
 // saveToDatabase 保存消息到数据库
-func (mc *MessageCache) saveToDatabase(ctx context.Context, message *gormModel.Message, contents []*gormModel.MessageContent) error {
-	return dao.Message.CreateWithContents(ctx, message, contents)
+func (mc *MessageCache) saveToDatabase(ctx context.Context, message *gormModel.Message) error {
+	return dao.Message.Create(ctx, message)
 }
 
 // GetMessage 获取消息
-func (mc *MessageCache) GetMessage(ctx context.Context, msgID string) (*gormModel.Message, []*gormModel.MessageContent, error) {
+func (mc *MessageCache) GetMessage(ctx context.Context, msgID string) (*gormModel.Message, error) {
 	// 1. 先从Redis缓存读取
 	msgKey := fmt.Sprintf("%s%s", messageKeyPrefix, msgID)
 	msgJSON, err := mc.rdb.Get(ctx, msgKey).Result()
@@ -163,9 +140,7 @@ func (mc *MessageCache) GetMessage(ctx context.Context, msgID string) (*gormMode
 		// 缓存命中
 		var message gormModel.Message
 		if err := json.Unmarshal([]byte(msgJSON), &message); err == nil {
-			// 读取内容块
-			contents, _ := mc.getMessageContentsFromCache(ctx, msgID)
-			return &message, contents, nil
+			return &message, nil
 		}
 	} else if err != redis.Nil {
 		g.Log().Errorf(ctx, "从Redis读取消息失败: %v", err)
@@ -174,47 +149,16 @@ func (mc *MessageCache) GetMessage(ctx context.Context, msgID string) (*gormMode
 	// 2. 缓存未命中，从数据库读取
 	message, err := dao.Message.GetByMsgID(ctx, msgID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if message == nil {
-		return nil, nil, nil
-	}
-
-	contents, err := dao.MessageContent.ListByMsgID(ctx, msgID)
-	if err != nil {
-		return nil, nil, err
+		return nil, nil
 	}
 
 	// 3. 回写缓存
-	go mc.saveToCache(gctx.New(), message, contents)
+	go mc.saveToCache(gctx.New(), message)
 
-	return message, contents, nil
-}
-
-// getMessageContentsFromCache 从缓存获取消息内容块
-func (mc *MessageCache) getMessageContentsFromCache(ctx context.Context, msgID string) ([]*gormModel.MessageContent, error) {
-	// 使用SCAN查找该消息的所有内容块
-	pattern := fmt.Sprintf("%s%s:*", messageContentKeyPrefix, msgID)
-	var contents []*gormModel.MessageContent
-
-	iter := mc.rdb.Scan(ctx, 0, pattern, 100).Iterator()
-	for iter.Next(ctx) {
-		contentJSON, err := mc.rdb.Get(ctx, iter.Val()).Result()
-		if err != nil {
-			continue
-		}
-
-		var content gormModel.MessageContent
-		if err := json.Unmarshal([]byte(contentJSON), &content); err != nil {
-			continue
-		}
-		contents = append(contents, &content)
-	}
-	if err := iter.Err(); err != nil {
-		return nil, err
-	}
-
-	return contents, nil
+	return message, nil
 }
 
 // GetMessagesByConvID 获取会话的消息列表
@@ -239,7 +183,7 @@ func (mc *MessageCache) GetMessagesByConvID(ctx context.Context, convID string, 
 			// 批量获取消息
 			var messages []*gormModel.Message
 			for _, msgID := range msgIDs {
-				msg, _, err := mc.GetMessage(ctx, msgID)
+				msg, err := mc.GetMessage(ctx, msgID)
 				if err == nil && msg != nil {
 					messages = append(messages, msg)
 				}
@@ -259,8 +203,7 @@ func (mc *MessageCache) GetMessagesByConvID(ctx context.Context, convID string, 
 	// 3. 回写缓存
 	go func() {
 		for _, msg := range messages {
-			contents, _ := dao.MessageContent.ListByMsgID(gctx.New(), msg.MsgID)
-			mc.saveToCache(gctx.New(), msg, contents)
+			mc.saveToCache(gctx.New(), msg)
 		}
 	}()
 
@@ -271,7 +214,7 @@ func (mc *MessageCache) GetMessagesByConvID(ctx context.Context, convID string, 
 func (mc *MessageCache) flushWorker() {
 	defer mc.wg.Done()
 
-	batch := make([]*PendingMessage, 0, defaultBatchSize)
+	batch := make([]*gormModel.Message, 0, defaultBatchSize)
 
 	for {
 		select {
@@ -280,7 +223,7 @@ func (mc *MessageCache) flushWorker() {
 			mc.flushBatch(batch)
 			for len(mc.pendingQueue) > 0 {
 				msg := <-mc.pendingQueue
-				if err := mc.saveToDatabase(gctx.New(), msg.Message, msg.Contents); err != nil {
+				if err := mc.saveToDatabase(gctx.New(), msg); err != nil {
 					g.Log().Errorf(gctx.New(), "刷盘消息失败: %v", err)
 				}
 			}
@@ -290,7 +233,7 @@ func (mc *MessageCache) flushWorker() {
 			// 定时刷盘
 			if len(batch) > 0 {
 				mc.flushBatch(batch)
-				batch = make([]*PendingMessage, 0, defaultBatchSize)
+				batch = make([]*gormModel.Message, 0, defaultBatchSize)
 			}
 
 		case msg := <-mc.pendingQueue:
@@ -298,14 +241,14 @@ func (mc *MessageCache) flushWorker() {
 			if len(batch) >= defaultBatchSize {
 				// 批次满了，立即刷盘
 				mc.flushBatch(batch)
-				batch = make([]*PendingMessage, 0, defaultBatchSize)
+				batch = make([]*gormModel.Message, 0, defaultBatchSize)
 			}
 		}
 	}
 }
 
 // flushBatch 批量刷盘
-func (mc *MessageCache) flushBatch(batch []*PendingMessage) {
+func (mc *MessageCache) flushBatch(batch []*gormModel.Message) {
 	if len(batch) == 0 {
 		return
 	}
@@ -314,9 +257,9 @@ func (mc *MessageCache) flushBatch(batch []*PendingMessage) {
 	successCount := 0
 	failCount := 0
 
-	for _, pending := range batch {
-		if err := mc.saveToDatabase(ctx, pending.Message, pending.Contents); err != nil {
-			g.Log().Errorf(ctx, "刷盘消息失败 (msgID=%s): %v", pending.Message.MsgID, err)
+	for _, message := range batch {
+		if err := mc.saveToDatabase(ctx, message); err != nil {
+			g.Log().Errorf(ctx, "刷盘消息失败 (msgID=%s): %v", message.MsgID, err)
 			failCount++
 		} else {
 			successCount++

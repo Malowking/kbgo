@@ -22,16 +22,16 @@ import (
 	"github.com/Malowking/kbgo/core/formatter"
 	"github.com/Malowking/kbgo/core/indexer"
 	coreModel "github.com/Malowking/kbgo/core/model"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/history"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
-	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/sashabaranov/go-openai"
 )
 
-// GetAnswerWithParsedFiles 使用已解析的文件内容进行多模态对话
-func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, multimodalFiles []*common.MultimodalFile, fileContent string, fileImages []string, customSystemPrompt string, jsonFormat bool) (answer string, reasoningContent string, err error) {
+// GetAnswerWithFiles 使用已解析的文件内容进行多模态对话
+func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, multimodalFiles []*common.MultimodalFile, fileContent string, fileImages []string, customSystemPrompt string, jsonFormat bool) (answer string, reasoningContent string, err error) {
 	// 获取模型配置
 	mc := coreModel.Registry.GetChatModel(modelID)
 	if mc == nil {
@@ -49,10 +49,11 @@ func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, con
 	// 创建模型服务
 	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
 
-	// 获取聊天历史
+	// 获取聊天历史（用于构建消息列表）
 	chatHistory, err := x.eh.GetHistory(convID, 50)
 	if err != nil {
-		return "", "", err
+		g.Log().Warningf(ctx, "Failed to get chat history: %v", err)
+		chatHistory = []*schema.Message{}
 	}
 
 	// 构建多模态消息（只包含用户问题和多模态文件）
@@ -175,150 +176,8 @@ func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, con
 	return answerContent, thinkContent, nil
 }
 
-// GetAnswerWithFiles 统一的多模态对话处理
-func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile) (answer string, reasoningContent string, err error) {
-	// 获取模型配置
-	mc := coreModel.Registry.GetChatModel(modelID)
-	if mc == nil {
-		return "", "", coreErrors.Newf(coreErrors.ErrModelNotFound, "model not found: %s", modelID)
-	}
-
-	// 根据模型类型选择格式适配器
-	var msgFormatter formatter.MessageFormatter
-	if IsQwenModel(mc.Name) {
-		msgFormatter = formatter.NewQwenFormatter()
-	} else {
-		msgFormatter = formatter.NewOpenAIFormatter()
-	}
-
-	// 创建模型服务
-	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
-
-	// 获取聊天历史
-	chatHistory, err := x.eh.GetHistory(convID, 50)
-	if err != nil {
-		return "", "", err
-	}
-
-	// 分离多模态文件和文档文件
-	multimodalFiles, documentFiles := separateFilesByType(files)
-
-	// 检查会话中是否已有文档信息（用于多轮对话）
-	existingFileContent, existingFileImages, err := getConversationDocumentInfo(ctx, x.eh, convID)
-	if err != nil {
-		g.Log().Warningf(ctx, "Failed to get existing document info: %v", err)
-	}
-
-	var fileContent string
-	var fileImages []string
-
-	// 如果本次有新的文档文件上传，解析它们
-	if len(documentFiles) > 0 {
-		fileContent, fileImages, err = ParseDocumentFiles(ctx, documentFiles)
-		if err != nil {
-			g.Log().Warningf(ctx, "Failed to parse document files: %v", err)
-			fileContent = ""
-		}
-
-		// 保存文档信息到会话metadata（仅第一次）
-		if existingFileContent == "" {
-			err = saveConversationDocumentInfo(ctx, x.eh, convID, documentFiles, fileContent, fileImages)
-			if err != nil {
-				g.Log().Errorf(ctx, "Failed to save document info to conversation: %v", err)
-			}
-		}
-	} else if existingFileContent != "" {
-		// 多轮对话，使用已保存的文档信息
-		fileContent = existingFileContent
-		fileImages = existingFileImages
-		g.Log().Infof(ctx, "Reusing existing document info from conversation metadata")
-	}
-
-	// 构建多模态消息（只包含用户问题和多模态文件）
-	userMessage, err := buildMultimodalMessageWithImages(ctx, question, multimodalFiles, fileImages, mc.Type)
-	if err != nil {
-		return "", "", coreErrors.Newf(coreErrors.ErrInternalError, "构建多模态消息失败: %v", err)
-	}
-
-	// 保存用户消息
-	err = x.eh.SaveMessage(userMessage, convID, nil, nil)
-	if err != nil {
-		return "", "", err
-	}
-
-	// 构建system提示词
-	systemPrompt := buildSystemPrompt(mc.Type, docs, fileContent, fileImages)
-
-	// 构建消息列表
-	messages := []*schema.Message{
-		{
-			Role:    schema.System,
-			Content: systemPrompt,
-		},
-	}
-	messages = append(messages, chatHistory...)
-	messages = append(messages, userMessage)
-
-	// 构建请求参数，直接使用模型配置中的参数
-	chatParams := coreModel.ChatCompletionParams{
-		ModelName:           mc.Name,
-		Messages:            messages,
-		Temperature:         getFloat32OrDefault(mc.Temperature, 0.7),
-		MaxCompletionTokens: getIntOrDefault(mc.MaxCompletionTokens, 2000),
-		TopP:                getFloat32OrDefault(mc.TopP, 0.9),
-		FrequencyPenalty:    getFloat32OrDefault(mc.FrequencyPenalty, 0.0),
-		PresencePenalty:     getFloat32OrDefault(mc.PresencePenalty, 0.0),
-		N:                   getIntOrDefault(mc.N, 1),
-	}
-
-	// 记录开始时间
-	start := time.Now()
-
-	// 调用模型服务
-	resp, err := modelService.ChatCompletion(ctx, chatParams)
-	if err != nil {
-		return "", "", coreErrors.Newf(coreErrors.ErrLLMCallFailed, "API调用失败: %v", err)
-	}
-
-	if len(resp.Choices) == 0 {
-		return "", "", coreErrors.New(coreErrors.ErrLLMCallFailed, "received empty choices from API")
-	}
-
-	answerContent := resp.Choices[0].Message.Content
-	thinkContent := resp.Choices[0].Message.ReasoningContent
-
-	// 计算延迟
-	latencyMs := time.Since(start).Milliseconds()
-
-	// 创建assistant消息
-	assistantMsg := &schema.Message{
-		Role:    schema.Assistant,
-		Content: answerContent,
-	}
-
-	// 只有当思考内容不为空时才添加到消息中
-	if thinkContent != "" {
-		assistantMsg.ReasoningContent = thinkContent
-	}
-
-	// 创建带指标的消息
-	msgWithMetrics := &history.MessageWithMetrics{
-		Message:    assistantMsg,
-		LatencyMs:  int(latencyMs),
-		TokensUsed: resp.Usage.TotalTokens,
-	}
-
-	err = x.eh.SaveMessageWithMetrics(msgWithMetrics, convID)
-	if err != nil {
-		g.Log().Error(ctx, "save assistant message err: %v", err)
-		return "", "", err
-	}
-
-	return answerContent, thinkContent, nil
-}
-
 // GetAnswerStreamWithFiles 统一的多模态流式对话处理
-func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile, jsonFormat bool) (answer schema.StreamReaderInterface[*schema.Message], err error) {
+func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, convID string, messages []*schema.Message, question string, files []*common.MultimodalFile, jsonFormat bool, traceID ...string) (answer schema.StreamReaderInterface[*schema.Message], err error) {
 	// 获取模型配置
 	mc := coreModel.Registry.GetChatModel(modelID)
 	if mc == nil {
@@ -336,12 +195,6 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 	// 创建模型服务
 	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
 
-	// 获取聊天历史
-	chatHistory, err := x.eh.GetHistory(convID, 50)
-	if err != nil {
-		return nil, err
-	}
-
 	// 分离多模态文件和文档文件
 	multimodalFiles, documentFiles := separateFilesByType(files)
 
@@ -351,27 +204,24 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 		g.Log().Warningf(ctx, "Failed to get existing document info: %v", err)
 	}
 
-	var fileContent string
 	var fileImages []string
 
 	// 如果本次有新的文档文件上传，解析它们
 	if len(documentFiles) > 0 {
-		fileContent, fileImages, err = ParseDocumentFiles(ctx, documentFiles)
+		fileContent, fileImages, err := ParseDocumentFiles(ctx, documentFiles)
 		if err != nil {
 			g.Log().Warningf(ctx, "Failed to parse document files: %v", err)
-			fileContent = ""
-		}
-
-		// 保存文档信息到会话metadata（仅第一次）
-		if existingFileContent == "" {
-			err = saveConversationDocumentInfo(ctx, x.eh, convID, documentFiles, fileContent, fileImages)
-			if err != nil {
-				g.Log().Errorf(ctx, "Failed to save document info to conversation: %v", err)
+		} else {
+			// 保存文档信息到会话metadata（仅第一次）
+			if existingFileContent == "" {
+				err = saveConversationDocumentInfo(ctx, x.eh, convID, documentFiles, fileContent, fileImages)
+				if err != nil {
+					g.Log().Errorf(ctx, "Failed to save document info to conversation: %v", err)
+				}
 			}
 		}
 	} else if existingFileContent != "" {
 		// 多轮对话，使用已保存的文档信息
-		fileContent = existingFileContent
 		fileImages = existingFileImages
 		g.Log().Infof(ctx, "Reusing existing document info from conversation metadata")
 	}
@@ -388,17 +238,7 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 		return nil, err
 	}
 
-	// 构建system提示词
-	systemPrompt := buildSystemPrompt(mc.Type, docs, fileContent, fileImages)
-
-	// 构建消息列表
-	messages := []*schema.Message{
-		{
-			Role:    schema.System,
-			Content: systemPrompt,
-		},
-	}
-	messages = append(messages, chatHistory...)
+	// 将用户消息添加到消息列表
 	messages = append(messages, userMessage)
 
 	// 准备响应格式
@@ -489,6 +329,13 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 					Message:    assistantMsg,
 					LatencyMs:  int(latencyMs),
 					TokensUsed: tokenCount,
+				}
+
+				// 提取 traceID（如果有）
+				var tid string
+				if len(traceID) > 0 {
+					tid = traceID[0]
+					msgWithMetrics.TraceID = tid
 				}
 
 				// 异步保存消息

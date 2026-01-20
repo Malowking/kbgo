@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	coreErrors "github.com/Malowking/kbgo/core/errors"
 	dbgorm "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/Malowking/kbgo/nl2sql/adapter"
 	nl2sqlCommon "github.com/Malowking/kbgo/nl2sql/common"
@@ -27,7 +28,7 @@ func (s *NL2SQLService) QueryWithAdapters(
 	// 1. 获取数据源信息
 	var ds dbgorm.NL2SQLDataSource
 	if err := s.db.First(&ds, "id = ?", req.DatasourceID).Error; err != nil {
-		return nil, fmt.Errorf("数据源不存在: %w", err)
+		return nil, coreErrors.Newf(coreErrors.ErrNL2SQLDataSourceNotFound, "数据源不存在: %v", err)
 	}
 
 	// 2. 检查是否有已解析的表
@@ -35,10 +36,10 @@ func (s *NL2SQLService) QueryWithAdapters(
 	if err := s.db.Model(&dbgorm.NL2SQLTable{}).
 		Where("datasource_id = ? AND parsed = ?", req.DatasourceID, true).
 		Count(&parsedTableCount).Error; err != nil {
-		return nil, fmt.Errorf("检查表状态失败: %w", err)
+		return nil, coreErrors.Newf(coreErrors.ErrInternalError, "检查表状态失败: %v", err)
 	}
 	if parsedTableCount == 0 {
-		return nil, fmt.Errorf("没有已解析的表，请先解析数据源")
+		return nil, coreErrors.New(coreErrors.ErrNL2SQLTableNotParsed, "没有已解析的表，请先解析数据源")
 	}
 
 	// 3. 创建查询日志
@@ -48,7 +49,7 @@ func (s *NL2SQLService) QueryWithAdapters(
 		ExecutionStatus: "processing",
 	}
 	if err := s.db.Create(queryLog).Error; err != nil {
-		return nil, fmt.Errorf("创建查询日志失败: %w", err)
+		return nil, coreErrors.Newf(coreErrors.ErrNL2SQLQueryLogFailed, "创建查询日志失败: %v", err)
 	}
 
 	g.Log().Infof(ctx, "Query log created: %s", queryLog.ID)
@@ -110,7 +111,7 @@ func (s *NL2SQLService) QueryWithAdapters(
 		g.Log().Warning(ctx, "Using fallback: loading all tables")
 		schemaContext, err = sqlGenerator.RecallSchema(ctx, req.DatasourceID, req.Question)
 		if err != nil {
-			return nil, fmt.Errorf("构建Schema上下文失败: %w", err)
+			return nil, coreErrors.Newf(coreErrors.ErrInternalError, "构建Schema上下文失败: %v", err)
 		}
 	}
 
@@ -121,7 +122,7 @@ func (s *NL2SQLService) QueryWithAdapters(
 	}
 
 	if llmAdapter == nil {
-		return nil, fmt.Errorf("LLM适配器未配置")
+		return nil, coreErrors.New(coreErrors.ErrNL2SQLAdapterNotConfigured, "LLM适配器未配置")
 	}
 
 	generateResp, err := sqlGenerator.Generate(ctx, generateReq, func(prompt string) (string, error) {
@@ -129,7 +130,7 @@ func (s *NL2SQLService) QueryWithAdapters(
 	})
 	if err != nil {
 		s.updateQueryLogStatus(queryLog.ID, nl2sqlCommon.ExecutionStatusFailed, "", fmt.Sprintf("SQL生成失败: %v", err))
-		return nil, fmt.Errorf("SQL生成失败: %w", err)
+		return nil, coreErrors.Newf(coreErrors.ErrNL2SQLGenerateFailed, "SQL生成失败: %v", err)
 	}
 
 	generatedSQL := generateResp.SQL
@@ -240,7 +241,7 @@ func (s *NL2SQLService) executeSQL(ctx context.Context, ds *dbgorm.NL2SQLDataSou
 	// 对于JDBC数据源，连接到远程数据库执行查询
 	var configMap map[string]interface{}
 	if err := json.Unmarshal(ds.Config, &configMap); err != nil {
-		return nil, fmt.Errorf("解析配置失败: %w", err)
+		return nil, coreErrors.Newf(coreErrors.ErrNL2SQLConfigInvalid, "解析配置失败: %v", err)
 	}
 
 	// 使用工厂创建数据源
@@ -253,19 +254,19 @@ func (s *NL2SQLService) executeSQL(ctx context.Context, ds *dbgorm.NL2SQLDataSou
 
 	connector, err := factory.Create(dataSourceConfig)
 	if err != nil {
-		return nil, fmt.Errorf("创建数据源失败: %w", err)
+		return nil, coreErrors.Newf(coreErrors.ErrNL2SQLDataSourceCreateFailed, "创建数据源失败: %v", err)
 	}
 
 	// 连接数据源
 	if err := connector.Connect(ctx); err != nil {
-		return nil, fmt.Errorf("连接数据源失败: %w", err)
+		return nil, coreErrors.Newf(coreErrors.ErrNL2SQLDataSourceConnectFailed, "连接数据源失败: %v", err)
 	}
 	defer connector.Close()
 
 	// 执行查询
 	result, err := connector.ExecuteQuery(ctx, sql)
 	if err != nil {
-		return nil, fmt.Errorf("执行查询失败: %w", err)
+		return nil, coreErrors.Newf(coreErrors.ErrNL2SQLExecuteFailed, "执行查询失败: %v", err)
 	}
 
 	// 转换结果格式 (*datasource.QueryResult -> *QueryResult)
@@ -300,14 +301,14 @@ func (s *NL2SQLService) executeLocalQuery(ctx context.Context, sql string) (*Que
 	// 使用GORM的Raw查询执行SQL
 	rows, err := s.db.Raw(sql).Rows()
 	if err != nil {
-		return nil, fmt.Errorf("执行查询失败: %w", err)
+		return nil, coreErrors.Newf(coreErrors.ErrNL2SQLExecuteFailed, "执行查询失败: %v", err)
 	}
 	defer rows.Close()
 
 	// 获取列名
 	columns, err := rows.Columns()
 	if err != nil {
-		return nil, fmt.Errorf("获取列名失败: %w", err)
+		return nil, coreErrors.Newf(coreErrors.ErrInternalError, "获取列名失败: %v", err)
 	}
 
 	// 读取数据
@@ -321,7 +322,7 @@ func (s *NL2SQLService) executeLocalQuery(ctx context.Context, sql string) (*Que
 		}
 
 		if err := rows.Scan(valuePtrs...); err != nil {
-			return nil, fmt.Errorf("扫描行数据失败: %w", err)
+			return nil, coreErrors.Newf(coreErrors.ErrInternalError, "扫描行数据失败: %v", err)
 		}
 
 		// 转换为map
@@ -339,7 +340,7 @@ func (s *NL2SQLService) executeLocalQuery(ctx context.Context, sql string) (*Que
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("读取数据失败: %w", err)
+		return nil, coreErrors.Newf(coreErrors.ErrInternalError, "读取数据失败: %v", err)
 	}
 
 	return &QueryResult{
@@ -386,7 +387,7 @@ func (s *NL2SQLService) SimplifiedQuery(
 		return nil, fmt.Errorf("检查表状态失败: %w", err)
 	}
 	if parsedTableCount == 0 {
-		return nil, fmt.Errorf("没有已解析的表，请先解析数据源")
+		return nil, coreErrors.New(coreErrors.ErrNL2SQLTableNotParsed, "没有已解析的表，请先解析数据源")
 	}
 
 	// 3. 创建查询日志
@@ -396,7 +397,7 @@ func (s *NL2SQLService) SimplifiedQuery(
 		ExecutionStatus: "processing",
 	}
 	if err := s.db.Create(queryLog).Error; err != nil {
-		return nil, fmt.Errorf("创建查询日志失败: %w", err)
+		return nil, coreErrors.Newf(coreErrors.ErrNL2SQLQueryLogFailed, "创建查询日志失败: %v", err)
 	}
 	queryLogID := queryLog.ID
 
@@ -404,7 +405,7 @@ func (s *NL2SQLService) SimplifiedQuery(
 	sqlGenerator := generator.NewSQLGenerator(s.db)
 	schemaContext, err := sqlGenerator.RecallSchema(ctx, req.DatasourceID, req.Question)
 	if err != nil {
-		return nil, fmt.Errorf("构建Schema上下文失败: %w", err)
+		return nil, coreErrors.Newf(coreErrors.ErrInternalError, "构建Schema上下文失败: %v", err)
 	}
 
 	// 5. 生成SQL

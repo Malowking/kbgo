@@ -3,8 +3,8 @@ package history
 import (
 	"testing"
 
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/Malowking/kbgo/internal/dao"
-	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/stretchr/testify/assert"
 )
 

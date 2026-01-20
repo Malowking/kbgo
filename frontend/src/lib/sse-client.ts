@@ -42,6 +42,22 @@ export interface LLMIterationInfo {
   message: string;
 }
 
+export interface ToolPlanInfo {
+  message_id: string;
+  steps_count?: number;
+  need_tools?: boolean;
+}
+
+export interface ToolExecutionEventInfo {
+  message_id: string;
+  step_id: string;
+  tool_name: string;
+  reason?: string;
+  progress?: string;
+  result_summary?: string;
+  error?: string;
+}
+
 export interface SSEStreamOptions {
   /** 接收到内容块时的回调 */
   onChunk?: (content: string) => void;
@@ -57,6 +73,26 @@ export interface SSEStreamOptions {
   onLLMIteration?: (iteration: LLMIterationInfo) => void;
   /** 思考过程时的回调 */
   onThinking?: (thinking: string) => void;
+  /** 工具计划开始 */
+  onToolPlanStart?: (messageId: string) => void;
+  /** 工具计划思考内容 */
+  onToolPlanThinking?: (messageId: string, content: string) => void;
+  /** 工具计划完成 */
+  onToolPlanComplete?: (info: ToolPlanInfo) => void;
+  /** 工具执行开始 */
+  onToolExecutionStart?: (info: ToolExecutionEventInfo) => void;
+  /** 工具执行进度 */
+  onToolExecutionProgress?: (info: ToolExecutionEventInfo) => void;
+  /** 工具执行完成 */
+  onToolExecutionComplete?: (info: ToolExecutionEventInfo) => void;
+  /** 工具执行失败 */
+  onToolExecutionError?: (info: ToolExecutionEventInfo) => void;
+  /** 最终答案开始 */
+  onFinalAnswerStart?: (messageId: string) => void;
+  /** 最终答案完成 */
+  onFinalAnswerComplete?: (messageId: string) => void;
+  /** 工具结果回调 */
+  onToolResults?: (toolResults: any[]) => void;
   /** 发生错误时的回调 */
   onError?: (error: Error) => void;
   /** 流结束时的回调 */
@@ -85,6 +121,15 @@ export async function handleSSEStream(
     onToolCallEnd,
     onLLMIteration,
     onThinking,
+    onToolPlanStart,
+    onToolPlanThinking,
+    onToolPlanComplete,
+    onToolExecutionStart,
+    onToolExecutionProgress,
+    onToolExecutionComplete,
+    onToolExecutionError,
+    onFinalAnswerStart,
+    onFinalAnswerComplete,
     onError,
     onEnd,
     timeout = API_CONFIG.STREAM_TIMEOUT,
@@ -129,7 +174,7 @@ export async function handleSSEStream(
       const { done, value } = await reader.read();
 
       if (done) {
-        
+
         break;
       }
 
@@ -165,6 +210,83 @@ export async function handleSSEStream(
             const eventType = parsed.type || 'content';
 
             switch (eventType) {
+              case 'tool_plan_start':
+                if (onToolPlanStart) {
+                  onToolPlanStart(parsed.id);
+                }
+                break;
+              case 'tool_plan_thinking':
+                if (parsed.content && onToolPlanThinking) {
+                  onToolPlanThinking(parsed.id, parsed.content);
+                }
+                break;
+              case 'tool_plan_complete':
+                if (onToolPlanComplete) {
+                  onToolPlanComplete({
+                    message_id: parsed.id,
+                    steps_count: parsed.metadata?.steps_count,
+                    need_tools: parsed.metadata?.need_tools,
+                  });
+                }
+                break;
+              case 'tool_execution_start':
+                if (onToolExecutionStart && parsed.metadata?.step_id && parsed.metadata?.tool_name) {
+                  onToolExecutionStart({
+                    message_id: parsed.id,
+                    step_id: parsed.metadata.step_id,
+                    tool_name: parsed.metadata.tool_name,
+                    reason: parsed.metadata.reason,
+                  });
+                }
+                break;
+              case 'tool_execution_progress':
+                if (onToolExecutionProgress && parsed.metadata?.step_id && parsed.metadata?.tool_name) {
+                  onToolExecutionProgress({
+                    message_id: parsed.id,
+                    step_id: parsed.metadata.step_id,
+                    tool_name: parsed.metadata.tool_name,
+                    progress: parsed.content,
+                  });
+                }
+                break;
+              case 'tool_execution_complete':
+                if (onToolExecutionComplete && parsed.metadata?.step_id && parsed.metadata?.tool_name) {
+                  onToolExecutionComplete({
+                    message_id: parsed.id,
+                    step_id: parsed.metadata.step_id,
+                    tool_name: parsed.metadata.tool_name,
+                    result_summary: parsed.metadata.result_summary,
+                  });
+                }
+                break;
+              case 'tool_execution_error':
+                if (onToolExecutionError && parsed.metadata?.step_id && parsed.metadata?.tool_name) {
+                  onToolExecutionError({
+                    message_id: parsed.id,
+                    step_id: parsed.metadata.step_id,
+                    tool_name: parsed.metadata.tool_name,
+                    error: parsed.metadata.error || parsed.content,
+                  });
+                }
+                break;
+              case 'final_answer_start':
+                if (onFinalAnswerStart) {
+                  onFinalAnswerStart(parsed.id);
+                }
+                break;
+              case 'final_answer_complete':
+                if (onFinalAnswerComplete) {
+                  onFinalAnswerComplete(parsed.id);
+                }
+                break;
+              case 'final_answer_thinking':
+                if (parsed.content && onChunk) {
+                  onChunk(parsed.content);
+                }
+                if (parsed.reasoning_content && onReasoning) {
+                  onReasoning(parsed.reasoning_content);
+                }
+                break;
               case 'tool_call_start':
                 // 工具调用开始事件
                 if (onToolCallStart && parsed.metadata) {
@@ -238,21 +360,6 @@ export async function handleSSEStream(
             logger.warn('Failed to parse SSE data:', jsonStr, parseError);
           }
         }
-        // 处理 "documents:" 行（兼容旧格式）
-        else if (trimmedLine.startsWith('documents:')) {
-          const jsonStr = trimmedLine.slice(10).trim(); // 移除 "documents:" 前缀
-
-          try {
-            const parsed = JSON.parse(jsonStr);
-
-            // 处理文档作为引用
-            if (parsed.document && onReferences) {
-              onReferences(parsed.document);
-            }
-          } catch (parseError) {
-            logger.warn('Failed to parse SSE documents:', jsonStr, parseError);
-          }
-        }
       }
     }
 
@@ -282,6 +389,15 @@ export async function handleSSEStreamWithFormData(
     onToolCallEnd,
     onLLMIteration,
     onThinking,
+    onToolPlanStart,
+    onToolPlanThinking,
+    onToolPlanComplete,
+    onToolExecutionStart,
+    onToolExecutionProgress,
+    onToolExecutionComplete,
+    onToolExecutionError,
+    onFinalAnswerStart,
+    onFinalAnswerComplete,
     onError,
     onEnd,
     timeout = API_CONFIG.STREAM_TIMEOUT,
@@ -351,6 +467,79 @@ export async function handleSSEStreamWithFormData(
             const eventType = parsed.type || 'content';
 
             switch (eventType) {
+              case 'tool_plan_start':
+                if (onToolPlanStart) {
+                  onToolPlanStart(parsed.id);
+                }
+                break;
+              case 'tool_plan_thinking':
+                if (parsed.content && onToolPlanThinking) {
+                  onToolPlanThinking(parsed.id, parsed.content);
+                }
+                break;
+              case 'tool_plan_complete':
+                if (onToolPlanComplete) {
+                  onToolPlanComplete({
+                    message_id: parsed.id,
+                    steps_count: parsed.metadata?.steps_count,
+                    need_tools: parsed.metadata?.need_tools,
+                  });
+                }
+                break;
+              case 'tool_execution_start':
+                if (onToolExecutionStart && parsed.metadata?.step_id && parsed.metadata?.tool_name) {
+                  onToolExecutionStart({
+                    message_id: parsed.id,
+                    step_id: parsed.metadata.step_id,
+                    tool_name: parsed.metadata.tool_name,
+                    reason: parsed.metadata.reason,
+                  });
+                }
+                break;
+              case 'tool_execution_progress':
+                if (onToolExecutionProgress && parsed.metadata?.step_id && parsed.metadata?.tool_name) {
+                  onToolExecutionProgress({
+                    message_id: parsed.id,
+                    step_id: parsed.metadata.step_id,
+                    tool_name: parsed.metadata.tool_name,
+                    progress: parsed.content,
+                  });
+                }
+                break;
+              case 'tool_execution_complete':
+                if (onToolExecutionComplete && parsed.metadata?.step_id && parsed.metadata?.tool_name) {
+                  onToolExecutionComplete({
+                    message_id: parsed.id,
+                    step_id: parsed.metadata.step_id,
+                    tool_name: parsed.metadata.tool_name,
+                    result_summary: parsed.metadata.result_summary,
+                  });
+                }
+                break;
+              case 'tool_execution_error':
+                if (onToolExecutionError && parsed.metadata?.step_id && parsed.metadata?.tool_name) {
+                  onToolExecutionError({
+                    message_id: parsed.id,
+                    step_id: parsed.metadata.step_id,
+                    tool_name: parsed.metadata.tool_name,
+                    error: parsed.metadata.error || parsed.content,
+                  });
+                }
+                break;
+              case 'final_answer_start':
+                if (onFinalAnswerStart) {
+                  onFinalAnswerStart(parsed.id);
+                }
+                break;
+              case 'final_answer_complete':
+                if (onFinalAnswerComplete) {
+                  onFinalAnswerComplete(parsed.id);
+                }
+                break;
+              case 'final_answer_thinking':
+                if (parsed.content && onChunk) onChunk(parsed.content);
+                if (parsed.reasoning_content && onReasoning) onReasoning(parsed.reasoning_content);
+                break;
               case 'tool_call_start':
                 if (onToolCallStart && parsed.metadata) {
                   const toolCall: ToolCallInfo = {
@@ -407,19 +596,6 @@ export async function handleSSEStreamWithFormData(
             }
           } catch (parseError) {
             logger.warn('Failed to parse SSE data:', jsonStr);
-          }
-        }
-        // 处理 "documents:" 行（兼容旧格式）
-        else if (trimmedLine.startsWith('documents:')) {
-          const jsonStr = trimmedLine.slice(10).trim(); // 移除 "documents:" 前缀
-
-          try {
-            const parsed = JSON.parse(jsonStr);
-            if (parsed.document && onReferences) {
-              onReferences(parsed.document);
-            }
-          } catch (parseError) {
-            logger.warn('Failed to parse SSE documents:', jsonStr);
           }
         }
       }

@@ -2,6 +2,7 @@ import { User, Bot, Wrench } from 'lucide-react';
 import type { Message, ToolMessageMetadata } from '@/types';
 import { formatDate } from '@/lib/utils';
 import MessageContent from '@/components/MessageContent';
+import ToolExecutionProgress from '@/components/ToolExecutionProgress';
 import ReferencesList from '@/components/ReferencesList';
 
 interface ChatMessageProps {
@@ -19,6 +20,11 @@ function isToolMessageMetadata(metadata: any): metadata is ToolMessageMetadata {
 export default function ChatMessage({ message, isStreaming = false }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const isTool = message.role === 'tool';
+
+  // 调试日志
+  if (!isUser && message.tool_plan) {
+    console.log('[ChatMessage] Rendering tool_plan:', message.tool_plan);
+  }
 
   // 对于 tool 角色，从 metadata 中提取工具信息
   const toolResults = isTool && message.metadata && isToolMessageMetadata(message.metadata) ? [{
@@ -124,6 +130,16 @@ export default function ChatMessage({ message, isStreaming = false }: ChatMessag
               />
             )}
           </div>
+
+          {/* Tool Results Section - 显示工具调用结果 */}
+          {!isUser && message.tool_plan && (
+            <ToolExecutionProgress
+              reasoning={message.tool_plan.reasoning}
+              steps={message.tool_plan.steps || []}
+              stepsCount={message.tool_plan.steps_count}
+              needTools={message.tool_plan.need_tools}
+            />
+          )}
 
           {/* Tool Results Section - 显示工具调用结果 */}
           {!isUser && toolResults.length > 0 && (

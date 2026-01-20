@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/Malowking/kbgo/core/config"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/Malowking/kbgo/core/vector_store"
-	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
 

@@ -6,17 +6,25 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Malowking/kbgo/core/agent_tools/file_export"
+	// "github.com/Malowking/kbgo/core/agent_tools/file_export"
 	"github.com/Malowking/kbgo/core/cache"
 	"github.com/Malowking/kbgo/core/model"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/Malowking/kbgo/core/vector_store"
 	"github.com/Malowking/kbgo/internal/dao"
 	dbgorm "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/Malowking/kbgo/nl2sql/adapter"
+	"github.com/Malowking/kbgo/nl2sql/generator"
 	nl2sqlservice "github.com/Malowking/kbgo/nl2sql/service"
-	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
+
+// NL2SQLConfig NL2SQL配置
+type NL2SQLConfig struct {
+	DatasourceID string `json:"datasource_id"` // 数据源ID
+	ModelID      string `json:"model_id"`      // 模型ID
+	Question     string `json:"question"`      // 用户问题
+}
 
 // NL2SQLTool NL2SQL工具，用于在Chat中集成NL2SQL功能
 type NL2SQLTool struct {
@@ -184,37 +192,41 @@ func (t *NL2SQLTool) DetectAndExecute(ctx context.Context, question string, data
 		var dataToReturn []map[string]interface{}
 		var dataForLLM []map[string]interface{}
 
-		// 如果结果集很大（> 100行），生成文件并返回下载URL（所有模式都支持）
-		if totalRows > 100 {
-			g.Log().Infof(ctx, "Large result set (%d rows), generating export file", totalRows)
+		// 如果结果集很大（> 50行），生成文件并返回下载URL（所有模式都支持）
+		if totalRows > 50 {
+			g.Log().Infof(ctx, "Large result set (%d rows), file export feature is disabled", totalRows)
+			result.FileURL = "文件导出功能暂时不可用"
 
-			// 创建文件导出器
-			exporter := file_export.NewFileExporter("upload")
+			// TODO: Re-enable file export when file_export package is available
+			/*
+				// 创建文件导出器
+				exporter := file_export.NewFileExporter("upload")
 
-			// 导出为Excel格式（可以根据需要支持多种格式）
-			exportReq := &file_export.ExportRequest{
-				Format:      file_export.FormatExcel,
-				Filename:    fmt.Sprintf("nl2sql_query_%s", result.QueryLogID),
-				Columns:     result.Columns,
-				Data:        queryResp.Result.Data, // 导出全部数据
-				Title:       "NL2SQL查询结果",
-				Description: fmt.Sprintf("SQL: %s\n说明: %s", result.SQL, result.Explanation),
-			}
-
-			exportResult, err := exporter.Export(ctx, exportReq)
-			if err != nil {
-				g.Log().Errorf(ctx, "Failed to export file: %v", err)
-				result.FileURL = fmt.Sprintf("文件导出失败: %v", err)
-			} else {
-				result.FileURL = exportResult.FileURL
-				// 将文件URL保存到数据库的Extra字段
-				extraData := map[string]interface{}{
-					"export_file_url": exportResult.FileURL,
+				// 导出为Excel格式（可以根据需要支持多种格式）
+				exportReq := &file_export.ExportRequest{
+					Format:      file_export.FormatExcel,
+					Filename:    fmt.Sprintf("nl2sql_query_%s", result.QueryLogID),
+					Columns:     result.Columns,
+					Data:        queryResp.Result.Data, // 导出全部数据
+					Title:       "NL2SQL查询结果",
+					Description: fmt.Sprintf("SQL: %s\n说明: %s", result.SQL, result.Explanation),
 				}
-				extraJSON, _ := json.Marshal(extraData)
-				dao.GetDB().Model(&dbgorm.NL2SQLQueryLog{}).Where("id = ?", result.QueryLogID).Update("extra", extraJSON)
-				g.Log().Infof(ctx, "Export file generated and saved to DB: %s (size: %d bytes)", exportResult.FileURL, exportResult.Size)
-			}
+
+				exportResult, err := exporter.Export(ctx, exportReq)
+				if err != nil {
+					g.Log().Errorf(ctx, "Failed to export file: %v", err)
+					result.FileURL = fmt.Sprintf("文件导出失败: %v", err)
+				} else {
+					result.FileURL = exportResult.FileURL
+					// 将文件URL保存到数据库的Extra字段
+					extraData := map[string]interface{}{
+						"export_file_url": exportResult.FileURL,
+					}
+					extraJSON, _ := json.Marshal(extraData)
+					dao.GetDB().Model(&dbgorm.NL2SQLQueryLog{}).Where("id = ?", result.QueryLogID).Update("extra", extraJSON)
+					g.Log().Infof(ctx, "Export file generated and saved to DB: %s (size: %d bytes)", exportResult.FileURL, exportResult.Size)
+				}
+			*/
 		}
 
 		if intent.IntentType == "data_only" {
@@ -577,19 +589,76 @@ func (t *NL2SQLTool) generateSQLOnly(ctx context.Context, question string, datas
 
 // buildSQLPrompt 构建SQL生成提示词
 func (t *NL2SQLTool) buildSQLPrompt(question string, schemaContext interface{}) string {
-	// 这里简化实现，实际应该使用generator.SQLGenerator的buildPrompt方法
-	// 但为了避免类型转换问题，我们直接构建一个简单的prompt
-	return fmt.Sprintf(`你是一个专业的SQL生成助手。根据用户问题和数据库Schema，生成准确的SQL查询。
+	var sb strings.Builder
 
-用户问题：%s
+	// 系统角色
+	sb.WriteString("你是一个专业的SQL生成助手。根据用户问题和数据库Schema，生成准确的SQL查询。\n\n")
 
-请生成对应的SQL查询语句，并解释生成思路。
+	// Schema信息
+	sb.WriteString("## 数据库Schema\n\n")
 
-输出格式：
-{
-  "sql": "生成的SQL语句",
-  "explanation": "生成思路说明"
-}`, question)
+	// 尝试将schemaContext转换为SchemaContext类型
+	if ctx, ok := schemaContext.(*generator.SchemaContext); ok && ctx != nil {
+		// 表信息
+		for _, table := range ctx.Tables {
+			sb.WriteString(fmt.Sprintf("### 表: %s (%s)\n", table.Name, table.DisplayName))
+			if table.Description != "" {
+				sb.WriteString(fmt.Sprintf("说明: %s\n", table.Description))
+			}
+			sb.WriteString("字段:\n")
+			for _, col := range table.Columns {
+				sb.WriteString(fmt.Sprintf("- %s (%s): %s\n", col.ColumnName, col.DataType, col.Description))
+			}
+			sb.WriteString("\n")
+		}
+
+		// 指标信息
+		if len(ctx.Metrics) > 0 {
+			sb.WriteString("### 预定义指标\n")
+			for _, metric := range ctx.Metrics {
+				sb.WriteString(fmt.Sprintf("- %s: %s (公式: %s)\n", metric.Name, metric.Description, metric.Formula))
+			}
+			sb.WriteString("\n")
+		}
+
+		// 关系信息
+		if len(ctx.Relations) > 0 {
+			sb.WriteString("### 表关系\n")
+			for _, rel := range ctx.Relations {
+				sb.WriteString(fmt.Sprintf("- %s.%s -> %s.%s\n", rel.FromTable, rel.FromCol, rel.ToTable, rel.ToCol))
+			}
+			sb.WriteString("\n")
+		}
+	} else {
+		// 如果类型转换失败，使用简化的Schema描述
+		sb.WriteString("_(Schema信息加载中...)_\n\n")
+	}
+
+	// 规则约束
+	sb.WriteString("## 规则\n")
+	sb.WriteString("1. 只生成SELECT查询，禁止INSERT/UPDATE/DELETE\n")
+	sb.WriteString("2. 始终添加LIMIT子句限制结果数量（默认1000）\n")
+	sb.WriteString("3. 优先使用预定义指标\n")
+	sb.WriteString("4. 时间过滤优先使用相对时间（如 CURRENT_DATE - INTERVAL '7 days'）\n")
+	sb.WriteString("5. 避免SELECT *，明确列出所需字段\n")
+	sb.WriteString("6. 确保JOIN条件正确\n\n")
+
+	// 用户问题
+	sb.WriteString("## 用户问题\n")
+	sb.WriteString(question)
+	sb.WriteString("\n\n")
+
+	// 输出格式
+	sb.WriteString("## 输出格式\n")
+	sb.WriteString("请按以下JSON格式返回：\n")
+	sb.WriteString("```json\n")
+	sb.WriteString("{\n")
+	sb.WriteString("  \"sql\": \"生成的SQL语句\",\n")
+	sb.WriteString("  \"explanation\": \"生成思路说明\"\n")
+	sb.WriteString("}\n")
+	sb.WriteString("```\n")
+
+	return sb.String()
 }
 
 // parseSQLResponse 解析SQL生成响应

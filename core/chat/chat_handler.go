@@ -5,12 +5,11 @@ import (
 	"time"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
-	"github.com/Malowking/kbgo/core/agent_tools"
 	"github.com/Malowking/kbgo/core/common"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/Malowking/kbgo/internal/history"
 	"github.com/Malowking/kbgo/internal/logic/chat"
 	"github.com/Malowking/kbgo/internal/logic/retriever"
-	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -24,6 +23,9 @@ func NewChatHandler() *ChatHandler {
 
 // Chat Handle basic chat request (non-streaming)
 func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles []*common.MultimodalFile) (*v1.ChatRes, error) {
+	// 初始化历史管理器
+	historyManager := history.NewManager()
+
 	// 保存用户消息
 	if req.ConvID != "" {
 		userMessageTime := time.Now()
@@ -32,13 +34,21 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 			Content: req.Question,
 		}
 
-		historyManager := history.NewManager()
 		if err := historyManager.SaveMessage(userMessage, req.ConvID, nil, &userMessageTime); err != nil {
 			g.Log().Warningf(ctx, "保存用户消息失败: %v，继续执行", err)
 		} else {
 			g.Log().Infof(ctx, "成功保存用户消息")
 		}
 	}
+
+	// 一次性获取50条历史记录（用于整个流程）
+	chatHistory, err := historyManager.GetHistory(req.ConvID, 50)
+	if err != nil {
+		g.Log().Warningf(ctx, "Failed to get chat history: %v", err)
+		chatHistory = []*schema.Message{}
+	}
+	g.Log().Infof(ctx, "Retrieved %d messages from history for processing", len(chatHistory))
+
 	// 验证：Tools和知识库检索不能同时启用
 	if req.Tools != nil && len(req.Tools) > 0 && req.EnableRetriever && req.KnowledgeId != "" {
 		g.Log().Warningf(ctx, "Chat handler - Both Tools and knowledge retrieval are enabled, knowledge retrieval will be treated as a tool")
@@ -72,7 +82,7 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 	retrievalChan := make(chan retrievalResult, 1)
 	fileParseChan := make(chan fileParseResult, 1)
 
-	// 1. 并行执行知识检索
+	// 并行执行知识检索
 	go func() {
 		var result retrievalResult
 		if req.EnableRetriever && req.KnowledgeId != "" {
@@ -115,7 +125,7 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 		retrievalChan <- result
 	}()
 
-	// 2. 并行处理文件
+	// 并行处理文件
 	go func() {
 		var result fileParseResult
 		if len(uploadedFiles) > 0 {
@@ -158,7 +168,7 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 		fileParseChan <- result
 	}()
 
-	// 3. 等待并行任务完成
+	// 等待并行任务完成
 	retrievalRes := <-retrievalChan
 	fileParseRes := <-fileParseChan
 
@@ -179,76 +189,31 @@ func (h *ChatHandler) Chat(ctx context.Context, req *v1.ChatReq, uploadedFiles [
 		res.References = retrievalRes.documents
 	}
 
-	// 4. 执行工具调用
-	if req.Tools != nil && len(req.Tools) > 0 {
-		g.Log().Infof(ctx, "Executing tools using unified executor with LLM selection")
-		executor := agent_tools.NewToolExecutor()
-
-		// 生成消息ID（用于SSE事件关联，非流式场景可以传空字符串）
-		messageID := common.GenerateMessageID()
-
-		// 传入 SystemPrompt 和 ConvID，让工具选择阶段也能感知 Agent 的角色
-		toolResult, err := executor.Execute(ctx, req.Tools, req.Question,
-			req.ModelID, documents, req.SystemPrompt, req.ConvID, messageID)
-
-		if err != nil {
-			g.Log().Errorf(ctx, "Tool execution failed: %v", err)
-		} else {
-			// 添加工具返回的文档
-			if len(toolResult.Documents) > 0 {
-				documents = append(documents, toolResult.Documents...)
-				res.References = append(res.References, toolResult.Documents...)
-			}
-
-			// 设置NL2SQL结果
-			if toolResult.NL2SQLResult != nil {
-				res.NL2SQLResult = toolResult.NL2SQLResult
-			}
-
-			// 设置MCP结果
-			if toolResult.MCPResults != nil {
-				res.MCPResults = toolResult.MCPResults
-			}
-
-			// 如果工具返回了最终答案,直接返回
-			if toolResult.FinalAnswer != "" {
-				g.Log().Infof(ctx, "Tool returned final answer, skipping LLM call")
-				res.Answer = toolResult.FinalAnswer
-
-				// 转换返回的文档中的图片URL为可访问的代理URL
-				r := g.RequestFromCtx(ctx)
-				if r != nil && res.References != nil {
-					baseURL := common.GetBaseURL(r.Host, r.URL.Scheme, map[string]string{
-						"X-Forwarded-Host":  r.Header.Get("X-Forwarded-Host"),
-						"X-Forwarded-Proto": r.Header.Get("X-Forwarded-Proto"),
-					})
-					common.ConvertImageURLsInDocuments(res.References, baseURL)
-				}
-
-				return res, nil
-			}
-		}
-	}
-
-	// 5. 调用Chat逻辑生成最终答案
+	// 调用Chat逻辑生成最终答案
 	chatI := chat.GetChat()
+
+	finalSystemPrompt := req.SystemPrompt
 
 	// 根据是否有文件或文档内容选择不同的处理方式
 	if len(fileParseRes.multimodalFiles) > 0 || fileParseRes.fileContent != "" || len(fileParseRes.fileImages) > 0 {
 		// 有文件或文档内容：使用文件对话模式
 		g.Log().Infof(ctx, "Using file-based chat with %d multimodal files, text content length: %d, %d images",
 			len(fileParseRes.multimodalFiles), len(fileParseRes.fileContent), len(fileParseRes.fileImages))
-		answer, reasoningContent, err := chatI.GetAnswerWithParsedFiles(ctx, req.ModelID, req.ConvID, documents, req.Question,
-			fileParseRes.multimodalFiles, fileParseRes.fileContent, fileParseRes.fileImages, req.SystemPrompt, req.JsonFormat)
+		answer, reasoningContent, err := chatI.GetAnswerWithFiles(ctx, req.ModelID, req.ConvID, documents, req.Question,
+			fileParseRes.multimodalFiles, fileParseRes.fileContent, fileParseRes.fileImages, finalSystemPrompt, req.JsonFormat)
 		if err != nil {
 			return nil, err
 		}
 		res.Answer = answer
 		res.ReasoningContent = reasoningContent
 	} else {
-		// 普通对话模式
+		// 普通对话模式：构建完整的消息列表
 		g.Log().Infof(ctx, "Using standard chat without files")
-		answer, reasoningContent, err := chatI.GetAnswer(ctx, req.ModelID, req.ConvID, documents, req.Question, req.SystemPrompt, req.JsonFormat)
+
+		// 构建消息列表
+		messages := chat.BuildMessagesForChat(ctx, finalSystemPrompt, chatHistory, documents)
+
+		answer, reasoningContent, err := chatI.GetAnswer(ctx, req.ModelID, req.ConvID, messages, req.JsonFormat)
 		if err != nil {
 			return nil, err
 		}

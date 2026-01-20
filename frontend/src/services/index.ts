@@ -1,5 +1,12 @@
 import { apiClient } from './api';
-import { handleSSEStream, handleSSEStreamWithFormData, ToolCallInfo, LLMIterationInfo } from '@/lib/sse-client';
+import {
+  handleSSEStream,
+  handleSSEStreamWithFormData,
+  ToolCallInfo,
+  LLMIterationInfo,
+  ToolPlanInfo,
+  ToolExecutionEventInfo,
+} from '@/lib/sse-client';
 import type {
   KnowledgeBase,
   CreateKBRequest,
@@ -148,8 +155,26 @@ export const chatApi = {
   sendStream: async (
     data: ChatRequest & { files?: File[] },
     onMessage: (chunk: string, reasoningChunk?: string, references?: any[]) => void,
-    onError?: (error: Error) => void
+    onError?: (error: Error) => void,
+    callbacks?: {
+      onToolPlanStart?: (messageId: string) => void;
+      onToolPlanThinking?: (messageId: string, content: string) => void;
+      onToolPlanComplete?: (info: ToolPlanInfo) => void;
+      onToolExecutionStart?: (info: ToolExecutionEventInfo) => void;
+      onToolExecutionProgress?: (info: ToolExecutionEventInfo) => void;
+      onToolExecutionComplete?: (info: ToolExecutionEventInfo) => void;
+      onToolExecutionError?: (info: ToolExecutionEventInfo) => void;
+      onFinalAnswerStart?: (messageId: string) => void;
+      onFinalAnswerComplete?: (messageId: string) => void;
+      onToolResults?: (toolResults: any[]) => void;
+    }
   ) => {
+    // 强制验证新代码已加载
+
+    if (!callbacks) {
+      console.error('[chatApi.sendStream] ERROR: callbacks is undefined!');
+    }
+
     const hasFiles = data.files && data.files.length > 0;
 
     // 准备回调函数
@@ -194,6 +219,16 @@ export const chatApi = {
         onChunk: handleChunk,
         onReasoning: handleReasoning,
         onReferences: handleReferences,
+        onToolPlanStart: callbacks?.onToolPlanStart,
+        onToolPlanThinking: callbacks?.onToolPlanThinking,
+        onToolPlanComplete: callbacks?.onToolPlanComplete,
+        onToolExecutionStart: callbacks?.onToolExecutionStart,
+        onToolExecutionProgress: callbacks?.onToolExecutionProgress,
+        onToolExecutionComplete: callbacks?.onToolExecutionComplete,
+        onToolExecutionError: callbacks?.onToolExecutionError,
+        onFinalAnswerStart: callbacks?.onFinalAnswerStart,
+        onFinalAnswerComplete: callbacks?.onFinalAnswerComplete,
+        onToolResults: callbacks?.onToolResults,
         onError,
       });
     } else {
@@ -202,6 +237,16 @@ export const chatApi = {
         onChunk: handleChunk,
         onReasoning: handleReasoning,
         onReferences: handleReferences,
+        onToolPlanStart: callbacks?.onToolPlanStart,
+        onToolPlanThinking: callbacks?.onToolPlanThinking,
+        onToolPlanComplete: callbacks?.onToolPlanComplete,
+        onToolExecutionStart: callbacks?.onToolExecutionStart,
+        onToolExecutionProgress: callbacks?.onToolExecutionProgress,
+        onToolExecutionComplete: callbacks?.onToolExecutionComplete,
+        onToolExecutionError: callbacks?.onToolExecutionError,
+        onFinalAnswerStart: callbacks?.onFinalAnswerStart,
+        onFinalAnswerComplete: callbacks?.onFinalAnswerComplete,
+        onToolResults: callbacks?.onToolResults,
         onError,
       });
     }
@@ -334,6 +379,15 @@ export const agentApi = {
       onToolCallEnd?: (toolCall: ToolCallInfo) => void;
       onLLMIteration?: (iteration: LLMIterationInfo) => void;
       onThinking?: (thinking: string) => void;
+      onToolPlanStart?: (messageId: string) => void;
+      onToolPlanThinking?: (messageId: string, content: string) => void;
+      onToolPlanComplete?: (info: ToolPlanInfo) => void;
+      onToolExecutionStart?: (info: ToolExecutionEventInfo) => void;
+      onToolExecutionProgress?: (info: ToolExecutionEventInfo) => void;
+      onToolExecutionComplete?: (info: ToolExecutionEventInfo) => void;
+      onToolExecutionError?: (info: ToolExecutionEventInfo) => void;
+      onFinalAnswerStart?: (messageId: string) => void;
+      onFinalAnswerComplete?: (messageId: string) => void;
     }
   ) => {
     const hasFiles = data.files && data.files.length > 0;
@@ -377,6 +431,15 @@ export const agentApi = {
         onToolCallEnd: callbacks?.onToolCallEnd,
         onLLMIteration: callbacks?.onLLMIteration,
         onThinking: callbacks?.onThinking,
+        onToolPlanStart: callbacks?.onToolPlanStart,
+        onToolPlanThinking: callbacks?.onToolPlanThinking,
+        onToolPlanComplete: callbacks?.onToolPlanComplete,
+        onToolExecutionStart: callbacks?.onToolExecutionStart,
+        onToolExecutionProgress: callbacks?.onToolExecutionProgress,
+        onToolExecutionComplete: callbacks?.onToolExecutionComplete,
+        onToolExecutionError: callbacks?.onToolExecutionError,
+        onFinalAnswerStart: callbacks?.onFinalAnswerStart,
+        onFinalAnswerComplete: callbacks?.onFinalAnswerComplete,
         onError,
       });
     } else {
@@ -389,6 +452,15 @@ export const agentApi = {
         onToolCallEnd: callbacks?.onToolCallEnd,
         onLLMIteration: callbacks?.onLLMIteration,
         onThinking: callbacks?.onThinking,
+        onToolPlanStart: callbacks?.onToolPlanStart,
+        onToolPlanThinking: callbacks?.onToolPlanThinking,
+        onToolPlanComplete: callbacks?.onToolPlanComplete,
+        onToolExecutionStart: callbacks?.onToolExecutionStart,
+        onToolExecutionProgress: callbacks?.onToolExecutionProgress,
+        onToolExecutionComplete: callbacks?.onToolExecutionComplete,
+        onToolExecutionError: callbacks?.onToolExecutionError,
+        onFinalAnswerStart: callbacks?.onFinalAnswerStart,
+        onFinalAnswerComplete: callbacks?.onFinalAnswerComplete,
         onError,
       });
     }

@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/Malowking/kbgo/core/schema"
 )
 
 // imageURLPattern 匹配Markdown格式的图片

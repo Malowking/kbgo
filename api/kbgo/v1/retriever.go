@@ -1,7 +1,7 @@
 package v1
 
 import (
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
 

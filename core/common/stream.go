@@ -8,17 +8,12 @@ import (
 
 	"github.com/gogf/gf/v2/os/gctx"
 
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/bytedance/sonic"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/google/uuid"
 )
-
-// GenerateMessageID 生成消息ID
-func GenerateMessageID() string {
-	return uuid.NewString()
-}
 
 type StreamData struct {
 	Id               string                 `json:"id"`                          // 同一个消息里面的id是相同的
@@ -27,11 +22,11 @@ type StreamData struct {
 	Content          string                 `json:"content"`                     // 消息具体内容
 	ReasoningContent string                 `json:"reasoning_content,omitempty"` // 思考内容（用于思考模型）
 	Document         []*schema.Document     `json:"document,omitempty"`          // 知识库检索结果（用于知识检索）
-	Tool             []*schema.Document     `json:"tool,omitempty"`              // 工具调用结果（用于工具调用）
+	ToolResults      []*schema.ToolResult   `json:"tool_results,omitempty"`      // 工具调用结果
 	Metadata         map[string]interface{} `json:"metadata,omitempty"`          // 元数据（用于工具调用、LLM迭代等信息）
 }
 
-func SteamResponse(ctx context.Context, streamReader schema.StreamReaderInterface[*schema.Message], retrievalDocs []*schema.Document, toolDocs []*schema.Document) (err error) {
+func SteamResponse(ctx context.Context, streamReader schema.StreamReaderInterface[*schema.Message], retrievalDocs []*schema.Document, toolResults []*schema.ToolResult, messageID string) (err error) {
 	// 获取HTTP响应对象
 	httpReq := ghttp.RequestFromCtx(ctx)
 	httpResp := httpReq.Response
@@ -41,9 +36,16 @@ func SteamResponse(ctx context.Context, streamReader schema.StreamReaderInterfac
 	httpResp.Header().Set("Connection", "keep-alive")
 	httpResp.Header().Set("X-Accel-Buffering", "no") // 禁用Nginx缓冲
 	httpResp.Header().Set("Access-Control-Allow-Origin", "*")
+	useFinalAnswerEvents := messageID != ""
+	if messageID == "" {
+		messageID = uuid.NewString()
+	}
 	sd := &StreamData{
-		Id:      uuid.NewString(),
+		Id:      messageID,
 		Created: time.Now().Unix(),
+	}
+	if useFinalAnswerEvents {
+		sd.Type = string(schema.EventFinalAnswerThinking)
 	}
 
 	// 处理流式响应
@@ -69,9 +71,13 @@ func SteamResponse(ctx context.Context, streamReader schema.StreamReaderInterfac
 	}
 
 	// 在流式响应结束后，发送知识库检索结果和工具调用结果作为最后一条消息
-	if len(retrievalDocs) > 0 || len(toolDocs) > 0 {
+	if useFinalAnswerEvents {
+		WriteFinalAnswerComplete(httpResp, messageID)
+	}
+	if len(retrievalDocs) > 0 || len(toolResults) > 0 {
+		sd.Type = ""
 		sd.Document = retrievalDocs
-		sd.Tool = toolDocs
+		sd.ToolResults = toolResults
 		sd.Content = ""
 		sd.ReasoningContent = ""
 		marshal, _ := sonic.Marshal(sd)
@@ -203,6 +209,177 @@ func WriteSkillProgress(resp *ghttp.Response, messageID string, toolID string, s
 		Created:  time.Now().Unix(),
 		Type:     "skill_progress",
 		Metadata: meta,
+	}
+	marshal, _ := sonic.Marshal(sd)
+	writeSSEData(resp, string(marshal))
+}
+
+// ============================================
+// 工具执行事件 - 智能工具执行流程
+// ============================================
+
+// WriteToolPlanStart 发送工具计划开始事件
+func WriteToolPlanStart(resp *ghttp.Response, messageID string) {
+	if resp == nil {
+		return
+	}
+
+	sd := &StreamData{
+		Id:      messageID,
+		Created: time.Now().Unix(),
+		Type:    string(schema.EventToolPlanStart),
+		Content: "开始分析问题并制定工具执行计划...",
+	}
+	marshal, _ := sonic.Marshal(sd)
+	writeSSEData(resp, string(marshal))
+}
+
+// WriteToolPlanThinking 发送工具计划思考事件
+func WriteToolPlanThinking(resp *ghttp.Response, messageID string, thinking string) {
+	if resp == nil {
+		return
+	}
+
+	sd := &StreamData{
+		Id:      messageID,
+		Created: time.Now().Unix(),
+		Type:    string(schema.EventToolPlanThinking),
+		Content: thinking,
+	}
+	marshal, _ := sonic.Marshal(sd)
+	writeSSEData(resp, string(marshal))
+}
+
+// WriteToolPlanComplete 发送工具计划完成事件
+func WriteToolPlanComplete(resp *ghttp.Response, messageID string, stepsCount int, needTools bool) {
+	if resp == nil {
+		return
+	}
+
+	sd := &StreamData{
+		Id:      messageID,
+		Created: time.Now().Unix(),
+		Type:    string(schema.EventToolPlanComplete),
+		Content: "工具执行计划已生成",
+		Metadata: map[string]interface{}{
+			"steps_count": stepsCount,
+			"need_tools":  needTools,
+		},
+	}
+	marshal, _ := sonic.Marshal(sd)
+	writeSSEData(resp, string(marshal))
+}
+
+// WriteToolExecutionStart 发送工具执行开始事件
+func WriteToolExecutionStart(resp *ghttp.Response, messageID string, stepID string, toolName string, reason string) {
+	if resp == nil {
+		return
+	}
+
+	sd := &StreamData{
+		Id:      messageID,
+		Created: time.Now().Unix(),
+		Type:    string(schema.EventToolExecutionStart),
+		Content: fmt.Sprintf("开始执行工具: %s", toolName),
+		Metadata: map[string]interface{}{
+			"step_id":   stepID,
+			"tool_name": toolName,
+			"reason":    reason,
+		},
+	}
+	marshal, _ := sonic.Marshal(sd)
+	writeSSEData(resp, string(marshal))
+}
+
+// WriteToolExecutionProgress 发送工具执行进度事件
+func WriteToolExecutionProgress(resp *ghttp.Response, messageID string, stepID string, toolName string, progress string) {
+	if resp == nil {
+		return
+	}
+
+	sd := &StreamData{
+		Id:      messageID,
+		Created: time.Now().Unix(),
+		Type:    string(schema.EventToolExecutionProgress),
+		Content: progress,
+		Metadata: map[string]interface{}{
+			"step_id":   stepID,
+			"tool_name": toolName,
+		},
+	}
+	marshal, _ := sonic.Marshal(sd)
+	writeSSEData(resp, string(marshal))
+}
+
+// WriteToolExecutionComplete 发送工具执行完成事件
+func WriteToolExecutionComplete(resp *ghttp.Response, messageID string, stepID string, toolName string, resultSummary string) {
+	if resp == nil {
+		return
+	}
+
+	sd := &StreamData{
+		Id:      messageID,
+		Created: time.Now().Unix(),
+		Type:    string(schema.EventToolExecutionComplete),
+		Content: "工具执行完成",
+		Metadata: map[string]interface{}{
+			"step_id":        stepID,
+			"tool_name":      toolName,
+			"result_summary": resultSummary,
+		},
+	}
+	marshal, _ := sonic.Marshal(sd)
+	writeSSEData(resp, string(marshal))
+}
+
+// WriteToolExecutionError 发送工具执行错误事件
+func WriteToolExecutionError(resp *ghttp.Response, messageID string, stepID string, toolName string, errorMsg string) {
+	if resp == nil {
+		return
+	}
+
+	sd := &StreamData{
+		Id:      messageID,
+		Created: time.Now().Unix(),
+		Type:    string(schema.EventToolExecutionError),
+		Content: fmt.Sprintf("工具执行失败: %s", errorMsg),
+		Metadata: map[string]interface{}{
+			"step_id":   stepID,
+			"tool_name": toolName,
+			"error":     errorMsg,
+		},
+	}
+	marshal, _ := sonic.Marshal(sd)
+	writeSSEData(resp, string(marshal))
+}
+
+// WriteFinalAnswerStart 发送最终答案开始事件
+func WriteFinalAnswerStart(resp *ghttp.Response, messageID string) {
+	if resp == nil {
+		return
+	}
+
+	sd := &StreamData{
+		Id:      messageID,
+		Created: time.Now().Unix(),
+		Type:    string(schema.EventFinalAnswerStart),
+		Content: "开始生成最终答案...",
+	}
+	marshal, _ := sonic.Marshal(sd)
+	writeSSEData(resp, string(marshal))
+}
+
+// WriteFinalAnswerComplete 发送最终答案完成事件
+func WriteFinalAnswerComplete(resp *ghttp.Response, messageID string) {
+	if resp == nil {
+		return
+	}
+
+	sd := &StreamData{
+		Id:      messageID,
+		Created: time.Now().Unix(),
+		Type:    string(schema.EventFinalAnswerComplete),
+		Content: "最终答案已生成",
 	}
 	marshal, _ := sonic.Marshal(sd)
 	writeSSEData(resp, string(marshal))

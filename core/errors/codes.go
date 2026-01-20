@@ -66,6 +66,27 @@ const (
 	// 检索相关 9000-9999
 	ErrRetrievalFailed ErrCode = 9001 // 检索失败
 	ErrRewriteFailed   ErrCode = 9002 // 查询重写失败
+
+	// NL2SQL相关 10000-10999
+	ErrNL2SQLDataSourceNotFound      ErrCode = 10001 // 数据源不存在
+	ErrNL2SQLDataSourceCreateFailed  ErrCode = 10002 // 数据源创建失败
+	ErrNL2SQLDataSourceConnectFailed ErrCode = 10003 // 数据源连接失败
+	ErrNL2SQLTableNotParsed          ErrCode = 10004 // 表未解析
+	ErrNL2SQLTableParseFailed        ErrCode = 10005 // 表解析失败
+	ErrNL2SQLSchemaVectorizeFailed   ErrCode = 10006 // Schema向量化失败
+	ErrNL2SQLSchemaRetrieveFailed    ErrCode = 10007 // Schema检索失败
+	ErrNL2SQLGenerateFailed          ErrCode = 10008 // SQL生成失败
+	ErrNL2SQLExecuteFailed           ErrCode = 10009 // SQL执行失败
+	ErrNL2SQLValidateFailed          ErrCode = 10010 // SQL验证失败
+	ErrNL2SQLQueryLogFailed          ErrCode = 10011 // 查询日志失败
+	ErrNL2SQLConfigInvalid           ErrCode = 10012 // 配置无效
+	ErrNL2SQLAdapterNotConfigured    ErrCode = 10013 // 适配器未配置
+
+	// 工具相关 11000-11999
+	ErrToolEventManagerCreateFailed ErrCode = 11001 // 工具事件管理器创建失败
+	ErrToolPlanGenerateFailed       ErrCode = 11002 // 工具计划生成失败
+	ErrToolPlanValidateFailed       ErrCode = 11003 // 工具计划验证失败
+	ErrToolExecutionFailed          ErrCode = 11004 // 工具执行失败
 )
 
 // HTTPStatusCode 返回错误码对应的HTTP状态码
@@ -110,6 +131,16 @@ func (e ErrCode) HTTPStatusCode() int {
 			return 409
 		case ErrFileSizeExceeded:
 			return 413
+		default:
+			return 500
+		}
+	case e >= 10000 && e <= 10999:
+		// NL2SQL相关错误
+		switch e {
+		case ErrNL2SQLDataSourceNotFound:
+			return 404
+		case ErrNL2SQLConfigInvalid:
+			return 400
 		default:
 			return 500
 		}

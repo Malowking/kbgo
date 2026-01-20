@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/Malowking/kbgo/core/model"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/Malowking/kbgo/core/vector_store"
-	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
 

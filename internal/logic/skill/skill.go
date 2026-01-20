@@ -11,7 +11,7 @@ import (
 	"github.com/gogf/gf/v2/os/gctx"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
-	"github.com/Malowking/kbgo/core/agent_tools/claude_skills"
+	"github.com/Malowking/kbgo/core/agent_tools/executor/claude_skill"
 	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/internal/dao"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
@@ -257,7 +257,7 @@ func ExecuteSkill(ctx context.Context, req *v1.SkillExecuteReq, ownerID string, 
 	venvBaseDir := g.Cfg().MustGet(ctx, "skills.venvBaseDir", "/data/kbgo_venvs").String()
 	skillsDir := g.Cfg().MustGet(ctx, "skills.scriptsDir", "/data/kbgo_skills").String()
 
-	executor, err := claude_skills.NewSkillExecutor(venvBaseDir, skillsDir)
+	executor, err := claude_skill.NewSkillExecutor(venvBaseDir, skillsDir)
 	if err != nil {
 		return nil, errors.Newf(errors.ErrInternalError, "创建执行器失败: %v", err)
 	}
@@ -455,13 +455,13 @@ func convertSkillToListItem(skill *gormModel.ClaudeSkill) *v1.SkillItem {
 	return item
 }
 
-func convertToExecutorSkill(skill *gormModel.ClaudeSkill) (*claude_skills.Skill, error) {
+func convertToExecutorSkill(skill *gormModel.ClaudeSkill) (*claude_skill.Skill, error) {
 	var requirements []string
 	if err := json.Unmarshal([]byte(skill.Requirements), &requirements); err != nil {
 		return nil, errors.Newf(errors.ErrInternalError, "解析依赖列表失败: %v", err)
 	}
 
-	var toolParameters map[string]claude_skills.SkillToolParameter
+	var toolParameters map[string]claude_skill.SkillToolParameter
 	if err := json.Unmarshal([]byte(skill.ToolParameters), &toolParameters); err != nil {
 		return nil, errors.Newf(errors.ErrInternalError, "解析工具参数失败: %v", err)
 	}
@@ -469,17 +469,17 @@ func convertToExecutorSkill(skill *gormModel.ClaudeSkill) (*claude_skills.Skill,
 	var metadata map[string]interface{}
 	json.Unmarshal([]byte(skill.Metadata), &metadata)
 
-	return &claude_skills.Skill{
+	return &claude_skill.Skill{
 		ID:          skill.ID,
 		Name:        skill.Name,
 		Description: skill.Description,
 		Version:     skill.Version,
-		Runtime: claude_skills.SkillRuntime{
+		Runtime: claude_skill.SkillRuntime{
 			Type:         skill.RuntimeType,
 			Version:      skill.RuntimeVersion,
 			Requirements: requirements,
 		},
-		Tool: claude_skills.SkillTool{
+		Tool: claude_skill.SkillTool{
 			Name:        skill.ToolName,
 			Description: skill.ToolDescription,
 			Parameters:  toolParameters,

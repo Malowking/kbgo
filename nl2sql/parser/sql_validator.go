@@ -1,18 +1,18 @@
 package parser
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
+	coreErrors "github.com/Malowking/kbgo/core/errors"
 	"github.com/xwb1989/sqlparser"
 )
 
 var (
-	ErrNotReadOnly    = errors.New("SQL语句不是只读操作")
-	ErrInvalidSQL     = errors.New("无效的SQL语句")
-	ErrUnsafeKeywords = errors.New("SQL包含危险关键字")
-	ErrNoFromClause   = errors.New("缺少FROM子句")
+	ErrNotReadOnly    = coreErrors.New(coreErrors.ErrNL2SQLValidateFailed, "SQL语句不是只读操作")
+	ErrInvalidSQL     = coreErrors.New(coreErrors.ErrNL2SQLValidateFailed, "无效的SQL语句")
+	ErrUnsafeKeywords = coreErrors.New(coreErrors.ErrNL2SQLValidateFailed, "SQL包含危险关键字")
+	ErrNoFromClause   = coreErrors.New(coreErrors.ErrNL2SQLValidateFailed, "缺少FROM子句")
 )
 
 // SQLValidator SQL校验器

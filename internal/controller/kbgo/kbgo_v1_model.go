@@ -367,10 +367,15 @@ func (c *ControllerV1) SetRewriteModel(ctx context.Context, req *v1.SetRewriteMo
 			}
 		}
 
-		// 重新加载模型注册表
-		if err := model.Registry.Reload(ctx, db); err != nil {
-			g.Log().Errorf(ctx, "Failed to reload model registry: %v", err)
-		}
+		// 异步重新加载模型注册表，避免阻塞请求
+		go func() {
+			reloadCtx := context.Background()
+			if err := model.Registry.Reload(reloadCtx, db); err != nil {
+				g.Log().Errorf(reloadCtx, "Failed to reload model registry asynchronously: %v", err)
+			} else {
+				g.Log().Infof(reloadCtx, "Model registry reloaded successfully in background after clearing rewrite model")
+			}
+		}()
 
 		g.Log().Info(ctx, "Rewrite model cleared successfully")
 		return &v1.SetRewriteModelRes{
@@ -472,14 +477,15 @@ func (c *ControllerV1) SetRewriteModel(ctx context.Context, req *v1.SetRewriteMo
 		return nil, err
 	}
 
-	// 4. 重新加载模型注册表
-	if err := model.Registry.Reload(ctx, db); err != nil {
-		g.Log().Errorf(ctx, "Failed to reload model registry: %v", err)
-		return &v1.SetRewriteModelRes{
-			Success: true,
-			Message: "Rewrite model set successfully, but failed to reload registry. Please call /v1/model/reload manually.",
-		}, nil
-	}
+	// 4. 异步重新加载模型注册表，避免阻塞请求
+	go func() {
+		reloadCtx := context.Background()
+		if err := model.Registry.Reload(reloadCtx, db); err != nil {
+			g.Log().Errorf(reloadCtx, "Failed to reload model registry asynchronously: %v", err)
+		} else {
+			g.Log().Infof(reloadCtx, "Model registry reloaded successfully in background")
+		}
+	}()
 
 	g.Log().Infof(ctx, "Rewrite model set successfully: %s", req.ModelID)
 	return &v1.SetRewriteModelRes{

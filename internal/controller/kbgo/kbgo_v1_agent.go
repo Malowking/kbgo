@@ -151,7 +151,7 @@ func (c *ControllerV1) AgentChat(ctx context.Context, req *v1.AgentChatReq) (res
 		MCPResults:       chatRes.MCPResults,
 	}
 
-	// 转换References
+	// 转换References TODO废弃代码
 	if len(chatRes.References) > 0 {
 		res.References = make([]*v1.AgentDoc, 0, len(chatRes.References))
 		for _, ref := range chatRes.References {

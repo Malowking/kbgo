@@ -6,7 +6,7 @@ import (
 	"github.com/Malowking/kbgo/core/client"
 	"github.com/Malowking/kbgo/core/errors"
 	formatterPkg "github.com/Malowking/kbgo/core/formatter"
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/sashabaranov/go-openai"
 )
 

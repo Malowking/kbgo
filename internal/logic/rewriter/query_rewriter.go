@@ -11,9 +11,10 @@ import (
 
 	"github.com/Malowking/kbgo/core/formatter"
 	coreModel "github.com/Malowking/kbgo/core/model"
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gcache"
+	"github.com/sashabaranov/go-openai"
 )
 
 // QueryRewriter 查询重写器
@@ -250,21 +251,31 @@ AI: 学习深度学习需要掌握数学基础、Python编程...
 	// 创建模型服务
 	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
 
-	// 调用模型
-	resp, err := modelService.ChatCompletion(ctx, coreModel.ChatCompletionParams{
-		ModelName:           mc.Name,
-		Messages:            messages,
-		Temperature:         config.Temperature,
-		MaxCompletionTokens: 200,
+	// 使用重试机制调用模型
+	retryConfig := coreModel.DefaultSingleModelRetryConfig()
+	result, err := coreModel.RetryWithSameModel(ctx, mc.Name, retryConfig, func(ctx context.Context) (interface{}, error) {
+		resp, err := modelService.ChatCompletion(ctx, coreModel.ChatCompletionParams{
+			ModelName:           mc.Name,
+			Messages:            messages,
+			Temperature:         config.Temperature,
+			MaxCompletionTokens: 200,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		if len(resp.Choices) == 0 {
+			return nil, errors.New(errors.ErrLLMCallFailed, "模型返回空响应")
+		}
+
+		return resp, nil
 	})
 
 	if err != nil {
 		return "", errors.Newf(errors.ErrLLMCallFailed, "调用模型失败: %v", err)
 	}
 
-	if len(resp.Choices) == 0 {
-		return "", errors.New(errors.ErrLLMCallFailed, "模型返回空响应")
-	}
+	resp := result.(*openai.ChatCompletionResponse)
 
 	// 提取重写后的问题
 	rewrittenQuery := strings.TrimSpace(resp.Choices[0].Message.Content)

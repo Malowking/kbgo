@@ -69,7 +69,7 @@ func (r *StreamReader[T]) Recv() (T, error) {
 	return item.value, item.err
 }
 
-// Close 关闭读取器
+// Close 关闭读取器 TODO 错误返回
 func (r *StreamReader[T]) Close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

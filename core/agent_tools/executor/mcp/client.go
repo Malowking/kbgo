@@ -1,4 +1,4 @@
-package client
+package mcp
 
 import (
 	"bufio"
@@ -599,6 +599,19 @@ func (c *MCPClient) Initialize(ctx context.Context, clientInfo map[string]interf
 
 // ParseToolName 解析带服务前缀的工具名，返回 (serviceName, toolName)
 func ParseToolName(fullToolName string) (string, string) {
+	if strings.HasPrefix(fullToolName, "mcp_") {
+		trimmed := strings.TrimPrefix(fullToolName, "mcp_")
+		parts := strings.SplitN(trimmed, "__", 2)
+		if len(parts) == 2 {
+			return parts[0], parts[1]
+		}
+		parts = strings.SplitN(trimmed, "_", 2)
+		if len(parts) == 2 {
+			return parts[0], parts[1]
+		}
+		return "", trimmed
+	}
+
 	parts := strings.SplitN(fullToolName, "__", 2)
 	if len(parts) == 2 {
 		return parts[0], parts[1]

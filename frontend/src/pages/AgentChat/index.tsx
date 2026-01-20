@@ -9,10 +9,12 @@ import ReferencesList from '@/components/ReferencesList';
 import ToolCallStatus from '@/components/ToolCallStatus';
 import ThinkingProcess from '@/components/ThinkingProcess';
 import MultiTurnDisplay from '@/components/MultiTurnDisplay';
+import ToolExecutionProgress from '@/components/ToolExecutionProgress';
 import { ToolCallInfo, LLMIterationInfo } from '@/lib/sse-client';
 import { logger } from '@/lib/logger';
 import { showError, showWarning } from '@/lib/toast';
 import { USER } from '@/config/constants';
+import { useConfirm } from '@/hooks/useConfirm';
 
 interface Message {
   id: number;
@@ -25,6 +27,12 @@ interface Message {
   toolCalls?: ToolCallInfo[];
   iteration?: LLMIterationInfo;
   thinking?: string;
+  tool_plan?: {
+    reasoning?: string;
+    steps: import('@/types').ToolExecutionStep[];
+    steps_count?: number;
+    need_tools?: boolean;
+  };
 }
 
 interface Conversation {
@@ -41,6 +49,7 @@ interface Conversation {
 
 export default function AgentChat() {
   const navigate = useNavigate();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [presets, setPresets] = useState<AgentPresetItem[]>([]);
   const [selectedPreset, setSelectedPreset] = useState<string>('');
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -217,6 +226,29 @@ export default function AgentChat() {
       let accumulatedReasoning = '';
       // 工具调用状态管理
       const toolCallsMap = new Map<string, ToolCallInfo>();
+      // 工具执行计划状态管理
+      let toolPlanReasoning = '';
+      const toolPlanMeta: { steps_count?: number; need_tools?: boolean } = {};
+      const toolStepsMap = new Map<string, import('@/types').ToolExecutionStep>();
+
+      const updateToolPlan = () => {
+        const toolPlan = {
+          reasoning: toolPlanReasoning || undefined,
+          steps: Array.from(toolStepsMap.values()),
+          steps_count: toolPlanMeta.steps_count,
+          need_tools: toolPlanMeta.need_tools,
+        };
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? {
+                  ...msg,
+                  tool_plan: toolPlan,
+                }
+              : msg
+          )
+        );
+      };
 
       setMessages(prev => [
         ...prev,
@@ -279,6 +311,82 @@ export default function AgentChat() {
           );
         },
         {
+          onToolPlanStart: () => {
+            toolPlanReasoning = '';
+            toolPlanMeta.steps_count = undefined;
+            toolPlanMeta.need_tools = undefined;
+            toolStepsMap.clear();
+            updateToolPlan();
+          },
+          onToolPlanThinking: (_messageId, content) => {
+            toolPlanReasoning += content || '';
+            updateToolPlan();
+          },
+          onToolPlanComplete: (info) => {
+            toolPlanMeta.steps_count = info.steps_count;
+            toolPlanMeta.need_tools = info.need_tools;
+            updateToolPlan();
+          },
+          onToolExecutionStart: (info) => {
+            toolStepsMap.set(info.step_id, {
+              step_id: info.step_id,
+              tool_name: info.tool_name,
+              status: 'running',
+              reason: info.reason,
+            });
+            updateToolPlan();
+          },
+          onToolExecutionProgress: (info) => {
+            const step = toolStepsMap.get(info.step_id);
+            if (step) {
+              step.status = 'running';
+              step.progress = info.progress;
+            } else {
+              toolStepsMap.set(info.step_id, {
+                step_id: info.step_id,
+                tool_name: info.tool_name,
+                status: 'running',
+                progress: info.progress,
+              });
+            }
+            updateToolPlan();
+          },
+          onToolExecutionComplete: (info) => {
+            const step = toolStepsMap.get(info.step_id);
+            if (step) {
+              step.status = 'completed';
+              step.result_summary = info.result_summary;
+            } else {
+              toolStepsMap.set(info.step_id, {
+                step_id: info.step_id,
+                tool_name: info.tool_name,
+                status: 'completed',
+                result_summary: info.result_summary,
+              });
+            }
+            updateToolPlan();
+          },
+          onToolExecutionError: (info) => {
+            const step = toolStepsMap.get(info.step_id);
+            if (step) {
+              step.status = 'failed';
+              step.error = info.error;
+            } else {
+              toolStepsMap.set(info.step_id, {
+                step_id: info.step_id,
+                tool_name: info.tool_name,
+                status: 'failed',
+                error: info.error,
+              });
+            }
+            updateToolPlan();
+          },
+          onFinalAnswerStart: () => {
+            // 可以在这里添加最终答案开始的处理逻辑
+          },
+          onFinalAnswerComplete: () => {
+            // 可以在这里添加最终答案完成的处理逻辑
+          },
           onToolCallStart: (toolCall: ToolCallInfo) => {
             toolCallsMap.set(toolCall.tool_id, toolCall);
             setMessages(prev =>
@@ -373,7 +481,11 @@ export default function AgentChat() {
 
   const handleDeleteConversation = async (e: React.MouseEvent, convId: string) => {
     e.stopPropagation();
-    if (!confirm('确定要删除这个对话吗?')) return;
+    const confirmed = await confirm({
+      message: '确定要删除这个对话吗？\n\n删除后将无法恢复该对话的所有消息记录。',
+      type: 'danger',
+    });
+    if (!confirmed) return;
 
     try {
       await conversationApi.delete(convId);
@@ -393,7 +505,8 @@ export default function AgentChat() {
   const selectedPresetName = presets.find(p => p.preset_id === selectedPreset)?.preset_name || 'Agent';
 
   return (
-    <div className="h-screen flex bg-gray-50">
+    <>
+      <div className="h-screen flex bg-gray-50">
       {/* Sidebar */}
       <div className="w-64 border-r bg-white flex flex-col">
         {/* Header */}
@@ -450,20 +563,29 @@ export default function AgentChat() {
                   // 从后端加载该对话的消息历史
                   try {
                     const detail = await conversationApi.get(conv.conv_id);
-                    // 转换消息格式 - 过滤掉 tool 角色的消息，因为它们会被附加到 assistant 消息的 extra 字段中
+                    // 转换消息格式 - 不过滤 tool 角色，因为后端已经合并了
                     const loadedMessages: Message[] = detail.messages
-                      .filter((msg: any) => msg.role !== 'tool')
                       .map((msg: any, index: number) => {
-                        // 解析 extra 字段中的工具调用信息
+                        // 解析工具调用信息
                         let toolCalls: ToolCallInfo[] | undefined;
-                        if (msg.extra && msg.extra.tool && Array.isArray(msg.extra.tool)) {
-                          toolCalls = msg.extra.tool.map((tool: any) => ({
-                            tool_id: tool.tool_call_id || `tool_${index}`,
-                            tool_name: tool.tool_name || 'unknown',
-                            arguments: tool.tool_args,
-                            result: tool.content,
-                            status: 'success' as const,
-                          }));
+
+                        // 1. 从 tool_calls 字段获取工具调用信息（包含工具名称）
+                        if (msg.tool_calls && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+                          // 2. 从 extra.tool 字段获取工具执行结果
+                          const toolResults = msg.extra?.tool || [];
+
+                          // 合并工具调用和结果
+                          toolCalls = msg.tool_calls.map((tc: any, idx: number) => {
+                            const toolResult = toolResults.find((tr: any) => tr.tool_call_id === tc.id) || toolResults[idx];
+
+                            return {
+                              tool_id: tc.id,
+                              tool_name: tc.function?.name || 'unknown',
+                              arguments: tc.function?.arguments ? JSON.parse(tc.function.arguments) : undefined,
+                              result: toolResult?.content,
+                              status: 'success' as const,
+                            };
+                          });
                         }
 
                         return {
@@ -586,38 +708,52 @@ export default function AgentChat() {
                       <div className="whitespace-pre-wrap break-words">{message.content}</div>
                     ) : (
                       <>
+                        {/* 工具执行计划显示 */}
+                        {message.tool_plan && (
+                          <ToolExecutionProgress
+                            reasoning={message.tool_plan.reasoning}
+                            steps={message.tool_plan.steps || []}
+                            stepsCount={message.tool_plan.steps_count}
+                            needTools={message.tool_plan.need_tools}
+                          />
+                        )}
+
+                        {/* 多轮迭代显示 */}
+                        {message.iteration && (
+                          <MultiTurnDisplay iteration={message.iteration} />
+                        )}
+
+                        {/* 思考过程显示 */}
+                        {message.thinking && !message.content && (
+                          <ThinkingProcess content={message.thinking} typewriter={false} />
+                        )}
+
+                        {/* 工具调用状态显示 */}
+                        {message.toolCalls && message.toolCalls.length > 0 && (
+                          <ToolCallStatus
+                            toolCalls={message.toolCalls}
+                          />
+                        )}
+
                         {/* 如果是最后一条消息且正在加载且没有内容，显示加载动画 */}
                         {loading && messages[messages.length - 1]?.id === message.id && !message.content ? (
                           <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
                         ) : (
-                          <MessageContent
-                            content={message.content}
-                            reasoningContent={message.reasoning_content}
-                            isStreaming={loading && messages[messages.length - 1]?.id === message.id}
-                          />
+                          <>
+                            {message.content && (
+                              <MessageContent
+                                content={message.content}
+                                reasoningContent={message.reasoning_content}
+                                isStreaming={loading && messages[messages.length - 1]?.id === message.id}
+                              />
+                            )}
+                          </>
                         )}
                       </>
                     )}
 
                     {message.references && message.references.length > 0 && (
                       <ReferencesList references={message.references} />
-                    )}
-
-                    {/* 多轮迭代显示 */}
-                    {message.role === 'assistant' && message.iteration && (
-                      <MultiTurnDisplay iteration={message.iteration} />
-                    )}
-
-                    {/* 思考过程显示 */}
-                    {message.role === 'assistant' && message.thinking && !message.content && (
-                      <ThinkingProcess content={message.thinking} typewriter={false} />
-                    )}
-
-                    {/* 工具调用状态显示 */}
-                    {message.role === 'assistant' && message.toolCalls && message.toolCalls.length > 0 && (
-                      <ToolCallStatus
-                        toolCalls={message.toolCalls}
-                      />
                     )}
 
                     {message.mcp_results && message.mcp_results.length > 0 && (
@@ -743,5 +879,9 @@ export default function AgentChat() {
         </div>
       </div>
     </div>
+
+      {/* 确认对话框 */}
+      <ConfirmDialog />
+    </>
   );
 }

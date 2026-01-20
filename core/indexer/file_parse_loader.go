@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/Malowking/kbgo/core/errors"
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/gclient"
 )

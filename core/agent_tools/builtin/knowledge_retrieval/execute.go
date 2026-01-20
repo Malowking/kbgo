@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/Malowking/kbgo/internal/logic/retriever"
-	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -103,49 +103,4 @@ func (t *KnowledgeRetrievalTool) Execute(ctx context.Context, config *KnowledgeR
 	g.Log().Infof(ctx, "Knowledge retrieval completed: Retrieved %d documents", len(retrieverRes.Document))
 
 	return result, nil
-}
-
-// ParseConfig 从map[string]interface{}解析配置
-func ParseConfig(configMap map[string]interface{}) *KnowledgeRetrievalConfig {
-	config := &KnowledgeRetrievalConfig{
-		EnableRewrite: true, // 默认启用查询重写
-	}
-
-	if knowledgeID, ok := configMap["knowledge_id"].(string); ok {
-		config.KnowledgeID = knowledgeID
-	}
-
-	if topK, ok := configMap["top_k"].(float64); ok {
-		config.TopK = int(topK)
-	} else if topK, ok := configMap["top_k"].(int); ok {
-		config.TopK = topK
-	}
-
-	if score, ok := configMap["score"].(float64); ok {
-		config.Score = score
-	}
-
-	if retrieveMode, ok := configMap["retrieve_mode"].(string); ok {
-		config.RetrieveMode = retrieveMode
-	}
-
-	if enableRewrite, ok := configMap["enable_rewrite"].(bool); ok {
-		config.EnableRewrite = enableRewrite
-	}
-
-	if rewriteAttempts, ok := configMap["rewrite_attempts"].(float64); ok {
-		config.RewriteAttempts = int(rewriteAttempts)
-	} else if rewriteAttempts, ok := configMap["rewrite_attempts"].(int); ok {
-		config.RewriteAttempts = rewriteAttempts
-	}
-
-	if rerankWeight, ok := configMap["rerank_weight"].(float64); ok {
-		config.RerankWeight = &rerankWeight
-	}
-
-	if rerankModelID, ok := configMap["rerank_model_id"].(string); ok {
-		config.RerankModelID = rerankModelID
-	}
-
-	return config
 }

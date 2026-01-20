@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/Malowking/kbgo/core/vector_store"
 	dbgorm "github.com/Malowking/kbgo/internal/model/gorm"
-	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"gorm.io/gorm"
 )

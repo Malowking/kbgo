@@ -32,14 +32,8 @@ export interface Document {
   status: number; // 0=pending, 1=indexing, 2=active, 3=failed
   CreateTime: string;
   UpdateTime: string;
-
-  // 兼容旧字段名（可选）
-  name?: string; // alias for fileName
-  file_type?: string; // alias for fileExtension
   file_size?: number;
   chunk_count?: number;
-  created_at?: string; // alias for CreateTime
-  updated_at?: string; // alias for UpdateTime
 }
 
 export interface Chunk {
@@ -81,6 +75,12 @@ export interface Message {
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   reasoning_content?: string;
+  tool_plan?: {
+    reasoning?: string;
+    steps: ToolExecutionStep[];
+    steps_count?: number;
+    need_tools?: boolean;
+  };
   references?: Document[];
   metadata?: ToolMessageMetadata | Record<string, any>;
   create_time: string;
@@ -97,11 +97,22 @@ export interface Message {
   };
 }
 
+export type ToolExecutionStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+export interface ToolExecutionStep {
+  step_id: string;
+  tool_name: string;
+  status: ToolExecutionStatus;
+  reason?: string;
+  progress?: string;
+  result_summary?: string;
+  error?: string;
+}
+
 // 工具配置类型
 export interface ToolConfig {
   type: string; // "local_tools" or "mcp"
   enabled: boolean; // 是否启用该类型的工具
-  priority?: number; // 工具优先级（可选），数字越小优先级越高
   config: Record<string, any>; // 工具配置参数
 }
 

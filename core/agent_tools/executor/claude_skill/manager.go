@@ -1,11 +1,11 @@
-package claude_skills
+package claude_skill
 
 import (
 	"context"
 	"fmt"
 	"time"
 
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/Malowking/kbgo/core/schema"
 )
 
 // SkillManager Skill 管理器
@@ -88,8 +88,8 @@ func (m *SkillManager) convertSkillToToolInfo(skill *Skill) *schema.ToolInfo {
 		}
 	}
 
-	// 使用 skill__前缀避免与其他工具冲突
-	toolName := fmt.Sprintf("skill__%s", skill.Tool.Name)
+	// 使用 skill_ 前缀避免与其他工具冲突
+	toolName := fmt.Sprintf("skill_%s", skill.Tool.Name)
 
 	return &schema.ToolInfo{
 		Name:        toolName,

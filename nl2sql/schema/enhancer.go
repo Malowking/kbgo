@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/Malowking/kbgo/core/model"
+	pkgSchema "github.com/Malowking/kbgo/core/schema"
 	dbgorm "github.com/Malowking/kbgo/internal/model/gorm"
-	pkgSchema "github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"gorm.io/gorm"
 )

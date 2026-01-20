@@ -132,13 +132,6 @@ export default function AgentBuilder() {
 
           switch (tool.type) {
             case 'local_tools':
-              // 恢复优先级
-              if (tool.priority !== undefined) {
-                restoredConfig.knowledge_retrieval_priority = tool.priority;
-                restoredConfig.nl2sql_priority = tool.priority;
-                restoredConfig.file_export_priority = tool.priority;
-              }
-
               // 恢复知识库检索配置
               if (tool.config.knowledge_retrieval) {
                 const kr = tool.config.knowledge_retrieval;
@@ -155,7 +148,7 @@ export default function AgentBuilder() {
               if (tool.config.nl2sql) {
                 const nl2sql = tool.config.nl2sql;
                 restoredConfig.enable_nl2sql = true;
-                restoredConfig.nl2sql_datasource_id = nl2sql.datasource;
+                restoredConfig.nl2sql_datasource_id = nl2sql.datasource_id || nl2sql.datasource; // 兼容旧数据
               }
 
               // 恢复文件导出配置
@@ -165,11 +158,6 @@ export default function AgentBuilder() {
               break;
 
             case 'mcp':
-              // 恢复 MCP 优先级
-              if (tool.priority !== undefined) {
-                restoredConfig.mcp_priority = tool.priority;
-              }
-
               // 恢复 MCP 配置
               if (tool.config.service_tools) {
                 restoredConfig.use_mcp = true;
@@ -248,7 +236,7 @@ export default function AgentBuilder() {
       // NL2SQL 工具
       if (config.enable_nl2sql && config.nl2sql_datasource_id) {
         localToolsConfig.nl2sql = {
-          datasource: config.nl2sql_datasource_id,
+          datasource_id: config.nl2sql_datasource_id,
         };
       }
 
@@ -261,11 +249,9 @@ export default function AgentBuilder() {
 
       // 如果有本地工具配置，添加到 tools 数组
       if (Object.keys(localToolsConfig).length > 0) {
-        const localToolPriority = config.knowledge_retrieval_priority || config.nl2sql_priority || config.file_export_priority;
         tools.push({
           type: 'local_tools',
           enabled: true,
-          priority: localToolPriority,
           config: localToolsConfig,
         });
       }
@@ -275,7 +261,6 @@ export default function AgentBuilder() {
         tools.push({
           type: 'mcp',
           enabled: true,
-          priority: config.mcp_priority,
           config: {
             service_tools: config.mcp_service_tools,
           }

@@ -257,27 +257,6 @@ export default function ToolConfigurationPanel({
 
         {expandedTools.knowledge && enableKnowledgeRetrieval && (
           <div className="p-4 space-y-4 border-t">
-            {/* 优先级配置 */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                工具优先级
-                <span className="text-xs text-gray-500 ml-2">（数字越小优先级越高，留空则不设置优先级）</span>
-              </label>
-              <input
-                type="number"
-                value={config.knowledge_retrieval_priority ?? ''}
-                onChange={(e) =>
-                  onConfigChange({
-                    ...config,
-                    knowledge_retrieval_priority: e.target.value ? parseInt(e.target.value) : undefined,
-                  })
-                }
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="例如：1（最高优先级）"
-                min={1}
-              />
-            </div>
-
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">知识库 *</label>
               <select
@@ -437,27 +416,6 @@ export default function ToolConfigurationPanel({
 
         {expandedTools.nl2sql && enableNL2SQL && (
           <div className="p-4 space-y-4 border-t">
-            {/* 优先级配置 */}
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                工具优先级
-                <span className="text-xs text-gray-500 ml-2">（数字越小优先级越高，留空则不设置优先级）</span>
-              </label>
-              <input
-                type="number"
-                value={config.nl2sql_priority ?? ''}
-                onChange={(e) =>
-                  onConfigChange({
-                    ...config,
-                    nl2sql_priority: e.target.value ? parseInt(e.target.value) : undefined,
-                  })
-                }
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                placeholder="例如：2"
-                min={1}
-              />
-            </div>
-
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">数据源 *</label>
               <select
@@ -522,27 +480,6 @@ export default function ToolConfigurationPanel({
 
         {expandedTools.mcp && enableMCP && (
           <div className="p-4 space-y-4 border-t">
-            {/* 优先级配置 */}
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                工具优先级
-                <span className="text-xs text-gray-500 ml-2">（数字越小优先级越高，留空则不设置优先级）</span>
-              </label>
-              <input
-                type="number"
-                value={config.mcp_priority ?? ''}
-                onChange={(e) =>
-                  onConfigChange({
-                    ...config,
-                    mcp_priority: e.target.value ? parseInt(e.target.value) : undefined,
-                  })
-                }
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="例如：3"
-                min={1}
-              />
-            </div>
-
             {mcpServices.length > 0 ? (
               <>
                 <div className="flex items-center justify-between">
@@ -693,27 +630,6 @@ export default function ToolConfigurationPanel({
 
         {expandedTools.fileExport && enableFileExport && (
           <div className="p-4 space-y-4 border-t">
-            {/* 优先级配置 */}
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                工具优先级
-                <span className="text-xs text-gray-500 ml-2">（数字越小优先级越高，留空则不设置优先级）</span>
-              </label>
-              <input
-                type="number"
-                value={config.file_export_priority ?? ''}
-                onChange={(e) =>
-                  onConfigChange({
-                    ...config,
-                    file_export_priority: e.target.value ? parseInt(e.target.value) : undefined,
-                  })
-                }
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                placeholder="例如：4"
-                min={1}
-              />
-            </div>
-
             <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
               <h5 className="text-sm font-medium text-gray-700 mb-2">支持的导出格式</h5>
               <ul className="text-xs text-gray-600 space-y-1">
@@ -776,27 +692,6 @@ export default function ToolConfigurationPanel({
 
         {expandedTools.claudeSkills && enableClaudeSkills && (
           <div className="p-4 space-y-4 border-t">
-            {/* 优先级配置 */}
-            <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                工具优先级
-                <span className="text-xs text-gray-500 ml-2">（数字越小优先级越高，留空则不设置优先级）</span>
-              </label>
-              <input
-                type="number"
-                value={config.claude_skills_priority ?? ''}
-                onChange={(e) =>
-                  onConfigChange({
-                    ...config,
-                    claude_skills_priority: e.target.value ? parseInt(e.target.value) : undefined,
-                  })
-                }
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="例如：5"
-                min={1}
-              />
-            </div>
-
             {loadingSkills ? (
               <div className="text-center py-8">
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>

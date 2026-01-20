@@ -40,7 +40,24 @@ export const ToolCallStatus: React.FC<ToolCallStatusProps> = ({
       nl2sql: 'NL2SQL查询',
       file_export: '文件导出',
     };
-    return nameMap[toolName] || toolName;
+    if (nameMap[toolName]) {
+      return nameMap[toolName];
+    }
+
+    if (toolName.startsWith('skill_')) {
+      return `Skill: ${toolName.replace(/^skill_/, '')}`;
+    }
+
+    if (toolName.startsWith('mcp_')) {
+      const trimmed = toolName.replace(/^mcp_/, '');
+      const parts = trimmed.includes('__') ? trimmed.split('__', 2) : trimmed.split('_', 2);
+      if (parts.length === 2) {
+        return `MCP: ${parts[0]}/${parts[1]}`;
+      }
+      return `MCP: ${trimmed}`;
+    }
+
+    return toolName;
   };
 
   // 获取工具类型的显示文本

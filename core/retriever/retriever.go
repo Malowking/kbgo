@@ -9,7 +9,7 @@ import (
 	"github.com/Malowking/kbgo/core/config"
 	"github.com/Malowking/kbgo/core/formatter"
 	"github.com/Malowking/kbgo/core/model"
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
 

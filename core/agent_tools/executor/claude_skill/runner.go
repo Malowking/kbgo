@@ -1,4 +1,4 @@
-package claude_skills
+package claude_skill
 
 import (
 	"context"

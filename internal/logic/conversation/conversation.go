@@ -8,15 +8,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Malowking/kbgo/core/errors"
+	coreErrors "github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/core/formatter"
 
 	coreModel "github.com/Malowking/kbgo/core/model"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/history"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
-	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/sashabaranov/go-openai"
 )
 
 // Manager 会话管理器
@@ -61,14 +62,14 @@ func (m *Manager) GetConversationDetail(ctx context.Context, convID string) (*Co
 		return nil, err
 	}
 	if conv == nil {
-		return nil, errors.Newf(errors.ErrConversationNotFound, "会话不存在: %s", convID)
+		return nil, coreErrors.Newf(coreErrors.ErrConversationNotFound, "会话不存在: %s", convID)
 	}
 
-	// 查询消息列表
-	messages, err := m.historyManager.GetHistory(convID, 1000) // 最多返回1000条消息
+	// 查询原始消息列表（从数据库获取，包含trace_id）
+	rawMessages, _, err := dao.Message.ListByConvID(ctx, convID, 1, 1000)
 	if err != nil {
 		g.Log().Warningf(ctx, "查询会话消息失败: %v", err)
-		messages = []*schema.Message{} // 返回空列表而不是报错
+		rawMessages = []*gormModel.Message{} // 返回空列表而不是报错
 	}
 
 	// 解析元数据
@@ -89,38 +90,192 @@ func (m *Manager) GetConversationDetail(ctx context.Context, convID string) (*Co
 		}
 	}
 
-	// 转换消息格式为OpenAI格式
-	messageItems := make([]*MessageItem, 0, len(messages))
-	for _, msg := range messages {
-		createTime := time.Now().Format(time.RFC3339) // 默认使用当前时间
+	// 根据 trace_id 分组消息（用于 agent 对话）
+	messageItems := m.groupMessagesByTraceID(ctx, rawMessages, conv.ConversationType == "agent")
 
-		// 从Extra字段中获取实际的创建时间
-		if msg.Extra != nil {
-			if timeStr, ok := msg.Extra["create_time"].(string); ok {
-				createTime = timeStr
-			}
+	return &ConversationDetail{
+		ConvID:           conv.ConvID,
+		UserID:           conv.UserID,
+		Title:            conv.Title,
+		ModelID:          conv.ModelID,
+		ConversationType: conv.ConversationType,
+		Status:           conv.Status,
+		MessageCount:     len(messageItems),
+		Messages:         messageItems,
+		CreateTime:       conv.CreateTime.Format(time.RFC3339),
+		UpdateTime:       conv.UpdateTime.Format(time.RFC3339),
+		Tags:             tags,
+		Metadata:         metadata,
+	}, nil
+}
+
+// groupMessagesByTraceID 根据 trace_id 分组消息
+func (m *Manager) groupMessagesByTraceID(ctx context.Context, rawMessages []*gormModel.Message, isAgentConv bool) []*MessageItem {
+	if !isAgentConv || len(rawMessages) == 0 {
+		// 非 agent 对话，直接转换消息
+		return m.convertMessagesToItems(ctx, rawMessages)
+	}
+
+	// Agent 对话：根据 trace_id 分组
+	// 1. 先按 trace_id 分组
+	traceGroups := make(map[string][]*gormModel.Message)
+	var noTraceMessages []*gormModel.Message
+
+	for _, msg := range rawMessages {
+		if msg.TraceID != "" {
+			traceGroups[msg.TraceID] = append(traceGroups[msg.TraceID], msg)
+		} else {
+			noTraceMessages = append(noTraceMessages, msg)
+		}
+	}
+
+	// 2. 构建最终的消息列表
+	messageItems := make([]*MessageItem, 0, len(rawMessages))
+	processedTraces := make(map[string]bool)
+
+	// 按原始顺序遍历消息
+	for _, msg := range rawMessages {
+		// 如果是没有 trace_id 的消息，直接添加
+		if msg.TraceID == "" {
+			items := m.convertMessagesToItems(ctx, []*gormModel.Message{msg})
+			messageItems = append(messageItems, items...)
+			continue
 		}
 
-		// 从Extra字段中获取msg_id
-		var msgID string
-		if msg.Extra != nil {
-			if id, ok := msg.Extra["msg_id"].(string); ok {
-				msgID = id
+		// 如果这个 trace_id 已经处理过，跳过
+		if processedTraces[msg.TraceID] {
+			continue
+		}
+
+		// 标记为已处理
+		processedTraces[msg.TraceID] = true
+
+		// 获取这个 trace_id 的所有消息
+		groupMessages := traceGroups[msg.TraceID]
+
+		// 将这组消息合并为一个 MessageItem
+		mergedItem := m.mergeTraceMessages(ctx, groupMessages)
+		if mergedItem != nil {
+			messageItems = append(messageItems, mergedItem)
+		}
+	}
+
+	return messageItems
+}
+
+// mergeTraceMessages 将同一个 trace_id 的消息合并为一个 MessageItem
+func (m *Manager) mergeTraceMessages(ctx context.Context, messages []*gormModel.Message) *MessageItem {
+	if len(messages) == 0 {
+		return nil
+	}
+
+	// 按创建时间排序（确保顺序正确）
+	// messages 已经是按时间排序的，所以不需要额外排序
+
+	// 找到第一个 assistant 消息作为基础
+	var baseMsg *gormModel.Message
+	var toolMessages []*gormModel.Message
+	var finalAssistantMsg *gormModel.Message
+
+	for _, msg := range messages {
+		if msg.Role == string(schema.Assistant) {
+			if baseMsg == nil {
+				baseMsg = msg // 第一个 assistant 消息（可能包含 tool_calls）
+			} else {
+				finalAssistantMsg = msg // 最后一个 assistant 消息（最终回复）
 			}
+		} else if msg.Role == string(schema.Tool) {
+			toolMessages = append(toolMessages, msg)
+		}
+	}
+
+	// 如果没有 assistant 消息，返回 nil
+	if baseMsg == nil {
+		return nil
+	}
+
+	// 构建合并后的消息
+	createTime := time.Now().Format(time.RFC3339)
+	if baseMsg.CreateTime != nil {
+		createTime = baseMsg.CreateTime.Format(time.RFC3339)
+	}
+
+	// 构建 tool_calls
+	var toolCalls []ToolCall
+	if len(baseMsg.ToolCalls) > 0 {
+		var schemaToolCalls []schema.ToolCall
+		if err := json.Unmarshal(baseMsg.ToolCalls, &schemaToolCalls); err == nil {
+			for _, tc := range schemaToolCalls {
+				toolCalls = append(toolCalls, ToolCall{
+					ID:   tc.ID,
+					Type: "function",
+					Function: FunctionCall{
+						Name:      tc.Function.Name,
+						Arguments: tc.Function.Arguments,
+					},
+				})
+			}
+		}
+	}
+
+	// 构建 Extra 字段，包含 tool 执行结果
+	extra := make(map[string]any)
+	extra["msg_id"] = baseMsg.MsgID
+	extra["create_time"] = createTime
+	extra["trace_id"] = baseMsg.TraceID
+
+	// 添加 tool 执行结果到 Extra.tool
+	if len(toolMessages) > 0 {
+		toolResults := make([]map[string]interface{}, 0, len(toolMessages))
+		for _, toolMsg := range toolMessages {
+			toolResults = append(toolResults, map[string]interface{}{
+				"content":      toolMsg.Content,
+				"tool_call_id": toolMsg.ToolCallID,
+			})
+		}
+		extra["tool"] = toolResults
+	}
+
+	// 使用最终的 assistant 消息内容（如果有）
+	var content *string
+	if finalAssistantMsg != nil && finalAssistantMsg.Content != "" {
+		content = &finalAssistantMsg.Content
+	} else if baseMsg.Content != "" {
+		content = &baseMsg.Content
+	}
+
+	return &MessageItem{
+		MsgID:            baseMsg.MsgID,
+		Role:             string(schema.Assistant),
+		Content:          content,
+		ToolCalls:        toolCalls,
+		ReasoningContent: baseMsg.Content, // 将第一个 assistant 的内容作为 reasoning_content
+		CreateTime:       createTime,
+		Extra:            extra,
+	}
+}
+
+// convertMessagesToItems 将原始消息转换为 MessageItem
+func (m *Manager) convertMessagesToItems(ctx context.Context, rawMessages []*gormModel.Message) []*MessageItem {
+	messageItems := make([]*MessageItem, 0, len(rawMessages))
+
+	for _, msg := range rawMessages {
+		createTime := time.Now().Format(time.RFC3339)
+		if msg.CreateTime != nil {
+			createTime = msg.CreateTime.Format(time.RFC3339)
 		}
 
 		// 根据角色构建不同的消息格式
-		switch msg.Role {
+		switch schema.RoleType(msg.Role) {
 		case schema.User, schema.System:
 			// user和system角色：直接使用content字段
 			content := msg.Content
 			messageItems = append(messageItems, &MessageItem{
-				MsgID:            msgID,
-				Role:             string(msg.Role),
-				Content:          &content,
-				ReasoningContent: msg.ReasoningContent,
-				CreateTime:       createTime,
-				Extra:            msg.Extra,
+				MsgID:      msg.MsgID,
+				Role:       msg.Role,
+				Content:    &content,
+				CreateTime: createTime,
+				Extra:      map[string]any{"msg_id": msg.MsgID, "create_time": createTime},
 			})
 
 		case schema.Assistant:
@@ -133,75 +288,45 @@ func (m *Manager) GetConversationDetail(ctx context.Context, convID string) (*Co
 			// 构建tool_calls
 			var toolCalls []ToolCall
 			if len(msg.ToolCalls) > 0 {
-				for _, tc := range msg.ToolCalls {
-					toolCalls = append(toolCalls, ToolCall{
-						ID:   tc.ID,
-						Type: "function",
-						Function: FunctionCall{
-							Name:      tc.Function.Name,
-							Arguments: tc.Function.Arguments,
-						},
-					})
+				var schemaToolCalls []schema.ToolCall
+				if err := json.Unmarshal(msg.ToolCalls, &schemaToolCalls); err == nil {
+					for _, tc := range schemaToolCalls {
+						toolCalls = append(toolCalls, ToolCall{
+							ID:   tc.ID,
+							Type: "function",
+							Function: FunctionCall{
+								Name:      tc.Function.Name,
+								Arguments: tc.Function.Arguments,
+							},
+						})
+					}
 				}
 			}
 
 			messageItems = append(messageItems, &MessageItem{
-				MsgID:            msgID,
-				Role:             string(msg.Role),
-				Content:          content,
-				ToolCalls:        toolCalls,
-				ReasoningContent: msg.ReasoningContent,
-				CreateTime:       createTime,
-				Extra:            msg.Extra,
+				MsgID:      msg.MsgID,
+				Role:       msg.Role,
+				Content:    content,
+				ToolCalls:  toolCalls,
+				CreateTime: createTime,
+				Extra:      map[string]any{"msg_id": msg.MsgID, "create_time": createTime},
 			})
 
 		case schema.Tool:
 			// tool角色：需要tool_call_id和content
-			// 从Extra.tool中提取tool结果
-			if msg.Extra != nil {
-				if toolResults, ok := msg.Extra["tool"].([]interface{}); ok {
-					for _, toolResultRaw := range toolResults {
-						if toolResult, ok := toolResultRaw.(map[string]interface{}); ok {
-							content := ""
-							toolCallID := ""
-
-							if toolContent, ok := toolResult["content"].(string); ok {
-								content = toolContent
-							}
-							if tcID, ok := toolResult["tool_call_id"].(string); ok {
-								toolCallID = tcID
-							}
-
-							messageItems = append(messageItems, &MessageItem{
-								MsgID:            msgID,
-								Role:             "tool",
-								Content:          &content,
-								ToolCallID:       toolCallID,
-								ReasoningContent: msg.ReasoningContent,
-								CreateTime:       createTime,
-								Extra:            msg.Extra,
-							})
-						}
-					}
-				}
-			}
+			content := msg.Content
+			messageItems = append(messageItems, &MessageItem{
+				MsgID:      msg.MsgID,
+				Role:       "tool",
+				Content:    &content,
+				ToolCallID: msg.ToolCallID,
+				CreateTime: createTime,
+				Extra:      map[string]any{"msg_id": msg.MsgID, "create_time": createTime},
+			})
 		}
 	}
 
-	return &ConversationDetail{
-		ConvID:           conv.ConvID,
-		UserID:           conv.UserID,
-		Title:            conv.Title,
-		ModelID:          conv.ModelID,
-		ConversationType: conv.ConversationType,
-		Status:           conv.Status,
-		MessageCount:     len(messages),
-		Messages:         messageItems,
-		CreateTime:       conv.CreateTime.Format(time.RFC3339),
-		UpdateTime:       conv.UpdateTime.Format(time.RFC3339),
-		Tags:             tags,
-		Metadata:         metadata,
-	}, nil
+	return messageItems
 }
 
 // UpdateConversation 更新会话
@@ -212,7 +337,7 @@ func (m *Manager) UpdateConversation(ctx context.Context, convID string, title, 
 		return err
 	}
 	if conv == nil {
-		return errors.Newf(errors.ErrConversationNotFound, "会话不存在: %s", convID)
+		return coreErrors.Newf(coreErrors.ErrConversationNotFound, "会话不存在: %s", convID)
 	}
 
 	// 准备更新字段
@@ -253,7 +378,7 @@ func (m *Manager) UpdateConversation(ctx context.Context, convID string, title, 
 		// 序列化元数据
 		metadataJSON, err := json.Marshal(existingMetadata)
 		if err != nil {
-			return errors.Newf(errors.ErrInternalError, "序列化元数据失败: %v", err)
+			return coreErrors.Newf(coreErrors.ErrInternalError, "序列化元数据失败: %v", err)
 		}
 		updates["metadata"] = metadataJSON
 	}
@@ -302,7 +427,7 @@ func (m *Manager) GenerateSummary(ctx context.Context, convID, modelID, length s
 	// 查询会话消息
 	historyMessages, err := m.historyManager.GetHistory(convID, 50)
 	if err != nil {
-		return "", errors.Newf(errors.ErrDatabaseQuery, "查询会话消息失败: %v", err)
+		return "", coreErrors.Newf(coreErrors.ErrDatabaseQuery, "查询会话消息失败: %v", err)
 	}
 
 	if len(historyMessages) == 0 {
@@ -332,7 +457,7 @@ func (m *Manager) GenerateSummary(ctx context.Context, convID, modelID, length s
 	// 调用LLM生成摘要
 	mc := coreModel.Registry.GetChatModel(modelID)
 	if mc == nil {
-		return "", errors.Newf(errors.ErrModelNotFound, "模型不存在: %s", modelID)
+		return "", coreErrors.Newf(coreErrors.ErrModelNotFound, "模型不存在: %s", modelID)
 	}
 
 	// 检查模型是否启用
@@ -352,12 +477,24 @@ func (m *Manager) GenerateSummary(ctx context.Context, convID, modelID, length s
 		},
 	}
 
-	// 调用模型生成摘要
-	resp, err := modelService.ChatCompletion(ctx, coreModel.ChatCompletionParams{
-		ModelName:           mc.Name,
-		Messages:            messages,
-		Temperature:         0.3, // 较低温度以获得更稳定的摘要
-		MaxCompletionTokens: 200, // 限制摘要长度
+	// 使用重试机制调用模型生成摘要
+	retryConfig := coreModel.DefaultSingleModelRetryConfig()
+	result, err := coreModel.RetryWithSameModel(ctx, mc.Name, retryConfig, func(ctx context.Context) (interface{}, error) {
+		resp, err := modelService.ChatCompletion(ctx, coreModel.ChatCompletionParams{
+			ModelName:           mc.Name,
+			Messages:            messages,
+			Temperature:         0.3, // 较低温度以获得更稳定的摘要
+			MaxCompletionTokens: 200, // 限制摘要长度
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		if len(resp.Choices) == 0 {
+			return nil, coreErrors.New(coreErrors.ErrLLMCallFailed, "模型返回为空")
+		}
+
+		return resp, nil
 	})
 
 	if err != nil {
@@ -365,10 +502,7 @@ func (m *Manager) GenerateSummary(ctx context.Context, convID, modelID, length s
 		return fmt.Sprintf("包含 %d 条消息的对话", len(historyMessages)), nil
 	}
 
-	if len(resp.Choices) == 0 {
-		g.Log().Warningf(ctx, "模型返回为空，使用默认摘要")
-		return fmt.Sprintf("包含 %d 条消息的对话", len(historyMessages)), nil
-	}
+	resp := result.(*openai.ChatCompletionResponse)
 
 	summary := strings.TrimSpace(resp.Choices[0].Message.Content)
 	if summary == "" {
@@ -392,7 +526,7 @@ func (m *Manager) ExportConversation(ctx context.Context, convID, format string)
 	case "json":
 		data, err := json.MarshalIndent(detail, "", "  ")
 		if err != nil {
-			return "", "", errors.Newf(errors.ErrInternalError, "JSON序列化失败: %v", err)
+			return "", "", coreErrors.Newf(coreErrors.ErrInternalError, "JSON序列化失败: %v", err)
 		}
 		return string(data), filename, nil
 
@@ -447,7 +581,7 @@ func (m *Manager) ExportConversation(ctx context.Context, convID, format string)
 		return txt.String(), filename, nil
 
 	default:
-		return "", "", errors.Newf(errors.ErrInvalidParameter, "不支持的导出格式: %s", format)
+		return "", "", coreErrors.Newf(coreErrors.ErrInvalidParameter, "不支持的导出格式: %s", format)
 	}
 }
 
@@ -456,10 +590,10 @@ func (m *Manager) CreateAgentConversation(ctx context.Context, convID, presetID,
 	// 获取Agent预设信息
 	preset, err := dao.AgentPreset.GetByPresetID(ctx, presetID)
 	if err != nil {
-		return errors.Newf(errors.ErrDatabaseQuery, "查询Agent预设失败: %v", err)
+		return coreErrors.Newf(coreErrors.ErrDatabaseQuery, "查询Agent预设失败: %v", err)
 	}
 	if preset == nil {
-		return errors.Newf(errors.ErrNotFound, "Agent预设不存在: %s", presetID)
+		return coreErrors.Newf(coreErrors.ErrNotFound, "Agent预设不存在: %s", presetID)
 	}
 
 	// 如果没有提供标题，使用预设名称

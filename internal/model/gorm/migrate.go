@@ -45,7 +45,6 @@ func Migrate(db *gorm.DB) error {
 		&User{},
 		&Conversation{},
 		&Message{},
-		&MessageContent{},
 		&KnowledgeBase{},
 		&KnowledgeDocuments{},
 		&KnowledgeChunks{},

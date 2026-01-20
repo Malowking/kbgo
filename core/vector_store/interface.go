@@ -3,7 +3,7 @@ package vector_store
 import (
 	"context"
 
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/Malowking/kbgo/core/schema"
 )
 
 // 向量存储字段名常量

@@ -13,12 +13,15 @@ type Message struct {
 	MsgID      string     `gorm:"primaryKey;column:msg_id;type:varchar(64)"`      // 消息ID（主键，格式：uuid_timestamp）
 	ConvID     string     `gorm:"column:conv_id;type:varchar(64);not null;index"` // 会话ID
 	Role       string     `gorm:"column:role;type:varchar(20);not null"`          // 角色
+	Content    string     `gorm:"column:content;type:text"`                       // 文本内容
+	ToolCallID string     `gorm:"column:tool_call_id;type:varchar(64)"`           // 工具调用ID（Tool角色使用）
 	ToolCalls  JSON       `gorm:"column:tool_calls;type:json"`                    // 工具调用
+	Tools      JSON       `gorm:"column:tools;type:json"`                         // 工具定义（预留字段）
 	Skills     JSON       `gorm:"column:skills;type:json"`                        // Skill调用信息
 	TokensUsed int        `gorm:"column:tokens_used;type:int"`                    // 使用的token数
 	LatencyMs  int        `gorm:"column:latency_ms;type:int"`                     // 延迟毫秒数
 	TraceID    string     `gorm:"column:trace_id;type:varchar(64)"`               // 链路追踪ID
-	Metadata   JSON       `gorm:"column:metadata;type:json"`                      // 自定义扩展
+	Metadata   JSON       `gorm:"column:metadata;type:json"`                      // 元数据（存储文件路径等）
 	CreateTime *time.Time `gorm:"column:create_time;autoCreateTime"`              // 创建时间
 }
 

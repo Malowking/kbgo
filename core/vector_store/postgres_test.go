@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/gogf/gf/v2/os/gctx"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"

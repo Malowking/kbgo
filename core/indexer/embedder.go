@@ -7,8 +7,8 @@ import (
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/errors"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/Malowking/kbgo/core/vector_store"
-	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
