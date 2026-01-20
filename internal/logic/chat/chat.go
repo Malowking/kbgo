@@ -149,8 +149,6 @@ func (x *Chat) GetAnswer(ctx context.Context, modelID string, convID string, mes
 }
 
 // GetAnswerStream 使用指定模型流式生成答案
-// messages: 完整的消息列表，包括系统提示词、历史消息、用户问题等，可以直接传给模型
-// traceID: 可选的追踪ID，用于关联工具调用和最终回复
 func (x *Chat) GetAnswerStream(ctx context.Context, modelID string, convID string, messages []*schema.Message, jsonFormat bool, traceID ...string) (answer schema.StreamReaderInterface[*schema.Message], err error) {
 	// 获取模型配置
 	mc := coreModel.Registry.GetChatModel(modelID)

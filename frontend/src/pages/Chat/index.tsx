@@ -207,7 +207,9 @@ export default function Chat() {
         },
         (chunk, reasoningChunk, references) => {
           // 累积内容和思考过程
-          accumulatedContent += chunk;
+          if (chunk) {
+            accumulatedContent += chunk;
+          }
           if (reasoningChunk) {
             accumulatedReasoning += reasoningChunk;
           }
@@ -271,7 +273,12 @@ export default function Chat() {
       setLoading(true);
       const conversation = await conversationApi.get(convId);
       setCurrentConvId(convId);
-      setMessages(conversation.messages || []);
+      // 历史消息不展示思考过程
+      const messages = (conversation.messages || []).map((msg: any) => ({
+        ...msg,
+        reasoning_content: undefined,
+      }));
+      setMessages(messages);
     } catch (error) {
       logger.error('Failed to load conversation:', error);
       showError('加载对话失败: ' + (error as Error).message);

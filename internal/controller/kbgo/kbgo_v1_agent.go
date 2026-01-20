@@ -148,30 +148,7 @@ func (c *ControllerV1) AgentChat(ctx context.Context, req *v1.AgentChatReq) (res
 		ConvID:           convID,
 		Answer:           chatRes.Answer,
 		ReasoningContent: chatRes.ReasoningContent,
-		MCPResults:       chatRes.MCPResults,
 	}
-
-	// 转换References TODO废弃代码
-	if len(chatRes.References) > 0 {
-		res.References = make([]*v1.AgentDoc, 0, len(chatRes.References))
-		for _, ref := range chatRes.References {
-			doc := &v1.AgentDoc{
-				Content: ref.Content,
-				Score:   float64(ref.Score),
-			}
-			// 从metadata中提取document_id和chunk_id
-			if ref.MetaData != nil {
-				if docID, ok := ref.MetaData["document_id"].(string); ok {
-					doc.DocumentID = docID
-				}
-				if chunkID, ok := ref.MetaData["chunk_id"].(string); ok {
-					doc.ChunkID = chunkID
-				}
-			}
-			res.References = append(res.References, doc)
-		}
-	}
-
 	return res, nil
 }
 

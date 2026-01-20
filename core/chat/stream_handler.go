@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -327,18 +328,18 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 				}
 			}
 
-			//g.Log().Infof(ctx, "Tool execution completed, got %d results", len(toolMessages))
-			//// JSON格式化打印toolResults
-			//if len(toolMessages) > 0 {
-			//	for i, result := range toolMessages {
-			//		resultJSON, err := json.Marshal(result)
-			//		if err != nil {
-			//			g.Log().Errorf(ctx, "Failed to marshal tool result %d to JSON: %v", i, err)
-			//		} else {
-			//			g.Log().Infof(ctx, "Tool message--------------------------- %d: %s", i, string(resultJSON))
-			//		}
-			//	}
-			//}
+			g.Log().Infof(ctx, "Tool execution completed, got %d results", len(toolMessages))
+			// JSON格式化打印toolResults
+			if len(toolMessages) > 0 {
+				for i, result := range toolMessages {
+					resultJSON, err := json.Marshal(result)
+					if err != nil {
+						g.Log().Errorf(ctx, "Failed to marshal tool result %d to JSON: %v", i, err)
+					} else {
+						g.Log().Infof(ctx, "Tool message--------------------------- %d: %s", i, string(resultJSON))
+					}
+				}
+			}
 		} else {
 			g.Log().Infof(ctx, "No tools needed according to plan")
 		}
@@ -387,18 +388,22 @@ func (h *StreamHandler) StreamChat(ctx context.Context, req *v1.ChatReq, uploade
 		messages = chat.BuildMessagesForChat(ctx, req.SystemPrompt, finalHistory, retrievalDocuments)
 	} else {
 		g.Log().Infof(ctx, "No tool execution, using %d messages from history", len(fullChatHistory))
-		messages = chat.BuildMessagesForChat(ctx, req.SystemPrompt, fullChatHistory, retrievalDocuments)
+		finalHistory := append(fullChatHistory, &schema.Message{
+			Role:    schema.User,
+			Content: req.Question,
+		})
+		messages = chat.BuildMessagesForChat(ctx, req.SystemPrompt, finalHistory, retrievalDocuments)
 	}
 
 	g.Log().Infof(ctx, "Final messages count: %d", len(messages))
-	//for i, result := range messages {
-	//	resultJSON, err := json.Marshal(result)
-	//	if err != nil {
-	//		g.Log().Errorf(ctx, "Failed to marshal tool result %d to JSON: %v", i, err)
-	//	} else {
-	//		g.Log().Infof(ctx, "============================Tool result %d: %s", i, string(resultJSON))
-	//	}
-	//}
+	for i, result := range messages {
+		resultJSON, err := json.Marshal(result)
+		if err != nil {
+			g.Log().Errorf(ctx, "Failed to marshal tool result %d to JSON: %v", i, err)
+		} else {
+			g.Log().Infof(ctx, "============================Tool result %d: %s", i, string(resultJSON))
+		}
+	}
 	// 获取流式响应
 	var streamReader schema.StreamReaderInterface[*schema.Message]
 	if len(multimodalFiles) > 0 {

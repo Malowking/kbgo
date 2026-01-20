@@ -221,7 +221,7 @@ func (tc *MCPToolCaller) CallSingleTool(
 	toolName string,
 	arguments map[string]interface{},
 	convID string,
-) (*schema.Document, *v1.MCPResult, error) {
+) (*schema.Document, error) {
 	return tc.callSingleTool(ctx, serviceName, toolName, arguments, convID)
 }
 
@@ -232,11 +232,11 @@ func (tc *MCPToolCaller) callSingleTool(
 	toolName string,
 	arguments map[string]interface{},
 	convID string,
-) (*schema.Document, *v1.MCPResult, error) {
+) (*schema.Document, error) {
 	// 查找服务
 	service, exists := tc.services[serviceName]
 	if !exists {
-		return nil, nil, errors.Newf(errors.ErrMCPServerNotFound, "服务 %s 不存在", serviceName)
+		return nil, errors.Newf(errors.ErrMCPServerNotFound, "服务 %s 不存在", serviceName)
 	}
 
 	startTime := time.Now()
@@ -288,7 +288,7 @@ func (tc *MCPToolCaller) callSingleTool(
 	}
 
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// 提取文本内容
@@ -320,14 +320,7 @@ func (tc *MCPToolCaller) callSingleTool(
 		}
 	}
 
-	// 构建 MCP 结果
-	mcpResult := &v1.MCPResult{
-		ServiceName: serviceName,
-		ToolName:    toolName,
-		Content:     content,
-	}
-
-	return doc, mcpResult, nil
+	return doc, nil
 }
 
 // Execute 实现 ToolExecutor 接口，执行 MCP 工具
@@ -350,7 +343,7 @@ func (tc *MCPToolCaller) Execute(
 	g.Log().Infof(ctx.Context, "[MCPToolCaller] 执行工具 %s.%s", serviceName, toolName)
 
 	// 调用 MCP 工具
-	doc, _, err := tc.CallSingleTool(ctx.Context, serviceName, toolName, input, ctx.SessionID)
+	doc, err := tc.CallSingleTool(ctx.Context, serviceName, toolName, input, ctx.SessionID)
 	if err != nil {
 		return schema.NewToolResultFromError(
 			schema.NewExecutionError(fmt.Sprintf("MCP工具调用失败: %v", err), ""),

@@ -592,7 +592,8 @@ export default function AgentChat() {
                           id: Date.now() + index,
                           role: msg.role,
                           content: msg.content,
-                          reasoning_content: msg.reasoning_content,
+                          // 历史消息不展示思考过程
+                          reasoning_content: undefined,
                           references: msg.references,
                           timestamp: msg.create_time || new Date().toISOString(),
                           toolCalls,

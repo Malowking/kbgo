@@ -21,7 +21,7 @@ type StreamData struct {
 	Type             string                 `json:"type,omitempty"`              // 事件类型: content, tool_call_start, tool_call_end, llm_iteration, thinking
 	Content          string                 `json:"content"`                     // 消息具体内容
 	ReasoningContent string                 `json:"reasoning_content,omitempty"` // 思考内容（用于思考模型）
-	Document         []*schema.Document     `json:"document,omitempty"`          // 知识库检索结果（用于知识检索）
+	References       []*schema.Document     `json:"references,omitempty"`        // 知识库检索结果（用于知识检索）
 	ToolResults      []*schema.ToolResult   `json:"tool_results,omitempty"`      // 工具调用结果
 	Metadata         map[string]interface{} `json:"metadata,omitempty"`          // 元数据（用于工具调用、LLM迭代等信息）
 }
@@ -76,12 +76,12 @@ func SteamResponse(ctx context.Context, streamReader schema.StreamReaderInterfac
 	}
 	if len(retrievalDocs) > 0 || len(toolResults) > 0 {
 		sd.Type = ""
-		sd.Document = retrievalDocs
+		sd.References = retrievalDocs
 		sd.ToolResults = toolResults
 		sd.Content = ""
 		sd.ReasoningContent = ""
 		marshal, _ := sonic.Marshal(sd)
-		writeSSEDocuments(httpResp, string(marshal))
+		writeSSEData(httpResp, string(marshal))
 	}
 
 	// 发送结束事件

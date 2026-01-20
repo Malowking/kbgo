@@ -40,7 +40,6 @@ type ChatRes struct {
 	Answer           string             `json:"answer"`
 	ReasoningContent string             `json:"reasoning_content,omitempty"` // 思考内容（用于思考模型）
 	References       []*schema.Document `json:"references"`
-	MCPResults       []*MCPResult       `json:"mcp_results,omitempty"`
 	NL2SQLResult     *NL2SQLChatResult  `json:"nl2sql_result,omitempty"` // NL2SQL查询结果（如果启用）
 }
 
@@ -61,12 +60,6 @@ type NL2SQLChatResult struct {
 	FileURL         string                   `json:"file_url,omitempty"` // TODO: 大结果集文件下载URL
 }
 
-type MCPResult struct {
-	ServiceName string `json:"service_name"`
-	ToolName    string `json:"tool_name"`
-	Content     string `json:"content"`
-}
-
 // ChatStreamReq 流式输出请求
 type ChatStreamReq struct {
 	g.Meta      `path:"/v1/chat/stream" method:"post" tags:"retriever"`
@@ -80,5 +73,4 @@ type ChatStreamReq struct {
 // ChatStreamRes Streaming output response
 type ChatStreamRes struct {
 	g.Meta `mime:"text/event-stream"`
-	// Streaming output does not need to return specific content, content is returned via HTTP response stream
 }

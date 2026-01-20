@@ -128,17 +128,7 @@ type AgentChatReq struct {
 
 // AgentChatRes Agent对话响应
 type AgentChatRes struct {
-	ConvID           string       `json:"conv_id"`                     // 会话ID（新会话会返回创建的conv_id）
-	Answer           string       `json:"answer"`                      // 回答内容
-	ReasoningContent string       `json:"reasoning_content,omitempty"` // 思考内容（用于思考模型）
-	References       []*AgentDoc  `json:"references,omitempty"`        // 引用文档
-	MCPResults       []*MCPResult `json:"mcp_results,omitempty"`       // MCP调用结果
-}
-
-// AgentDoc 引用文档结构
-type AgentDoc struct {
-	DocumentID string  `json:"document_id"` // 文档ID
-	ChunkID    string  `json:"chunk_id"`    // 片段ID
-	Content    string  `json:"content"`     // 内容
-	Score      float64 `json:"score"`       // 相似度分数
+	ConvID           string `json:"conv_id"`                     // 会话ID（新会话会返回创建的conv_id）
+	Answer           string `json:"answer"`                      // 回答内容
+	ReasoningContent string `json:"reasoning_content,omitempty"` // 思考内容（用于思考模型）
 }
