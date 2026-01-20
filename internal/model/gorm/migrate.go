@@ -54,8 +54,8 @@ func Migrate(db *gorm.DB) error {
 		&AgentPreset{},
 
 		// Claude Skills 模型
-		&ClaudeSkill{},
-		&ClaudeSkillCallLog{},
+		//&ClaudeSkill{},
+		//&ClaudeSkillCallLog{},
 
 		// NL2SQL 模型
 		&NL2SQLDataSource{}, // 数据源
