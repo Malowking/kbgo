@@ -16,6 +16,7 @@ type EmbeddingConfig interface {
 	GetAPIKey() string
 	GetBaseURL() string
 	GetEmbeddingModel() string
+	GetDimension() int
 }
 
 // CustomEmbedder 自定义embedding客户端
@@ -23,6 +24,7 @@ type CustomEmbedder struct {
 	apiKey     string
 	baseURL    string
 	model      string
+	dim        int
 	httpClient *http.Client
 }
 
@@ -61,6 +63,7 @@ func NewEmbedding(ctx context.Context, conf EmbeddingConfig) (*CustomEmbedder, e
 	apiKey := conf.GetAPIKey()
 	baseURL := conf.GetBaseURL()
 	model := conf.GetEmbeddingModel()
+	dim := conf.GetDimension()
 
 	if apiKey == "" {
 		return nil, errors.Newf(errors.ErrInvalidParameter, "embedding apiKey is required")
@@ -93,12 +96,13 @@ func NewEmbedding(ctx context.Context, conf EmbeddingConfig) (*CustomEmbedder, e
 		apiKey:     apiKey,
 		baseURL:    baseURL,
 		model:      model,
+		dim:        dim,
 		httpClient: httpClient,
 	}, nil
 }
 
 // EmbedStrings 实现字符串数组的向量化
-func (e *CustomEmbedder) EmbedStrings(ctx context.Context, texts []string, dimensions int) ([][]float32, error) {
+func (e *CustomEmbedder) EmbedStrings(ctx context.Context, texts []string) ([][]float32, error) {
 	if len(texts) == 0 {
 		return [][]float32{}, nil
 	}
@@ -106,7 +110,7 @@ func (e *CustomEmbedder) EmbedStrings(ctx context.Context, texts []string, dimen
 	req := EmbeddingRequest{
 		Input:      texts,
 		Model:      e.model,
-		Dimensions: &dimensions,
+		Dimensions: &e.dim,
 	}
 
 	// 序列化请求

@@ -1,9 +1,10 @@
 package dao
 
 import (
-	"context"
 	"fmt"
 	"time"
+
+	"github.com/gogf/gf/v2/os/gctx"
 
 	"github.com/Malowking/kbgo/core/errors"
 	"github.com/gogf/gf/v2/frame/g"
@@ -27,7 +28,7 @@ type DBConfig struct {
 // getDBConfig 从配置文件中获取数据库配置
 // 支持通过环境变量覆盖配置文件中的值
 func getDBConfig() *DBConfig {
-	ctx := context.Background()
+	ctx := gctx.New()
 
 	// 先从配置文件读取
 	dbType := g.Cfg().MustGet(ctx, "database.default.type").String()
@@ -81,7 +82,7 @@ func initDatabase() (*gorm.DB, error) {
 	}
 
 	// 打印 DSN 用于调试
-	g.Log().Infof(context.Background(), "DSN: %s", dsn)
+	g.Log().Infof(gctx.New(), "DSN: %s", dsn)
 
 	// GORM 配置
 	gormConfig := &gorm.Config{

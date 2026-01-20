@@ -92,8 +92,19 @@ export default function CreateModelModal({ model, onClose, onSuccess }: CreateMo
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // 验证必填字段
     if (!formData.model_name.trim()) {
       showWarning('请输入模型名称');
+      return;
+    }
+
+    if (!formData.base_url.trim()) {
+      showWarning('请输入Base URL');
+      return;
+    }
+
+    if (!formData.api_key.trim()) {
+      showWarning('请输入API Key');
       return;
     }
 
@@ -233,7 +244,7 @@ export default function CreateModelModal({ model, onClose, onSuccess }: CreateMo
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Base URL
+              Base URL *
             </label>
             <input
               type="url"
@@ -241,12 +252,13 @@ export default function CreateModelModal({ model, onClose, onSuccess }: CreateMo
               onChange={(e) => setFormData({ ...formData, base_url: e.target.value })}
               className="input"
               placeholder="https://api.openai.com/v1"
+              required
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              API Key
+              API Key *
             </label>
             <input
               type="password"
@@ -254,6 +266,7 @@ export default function CreateModelModal({ model, onClose, onSuccess }: CreateMo
               onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
               className="input"
               placeholder="sk-..."
+              required
             />
           </div>
 

@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/agent_tools/executor/mcp"
 	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/internal/dao"
-	"github.com/Malowking/kbgo/internal/mcp/client"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/google/uuid"
@@ -230,7 +230,7 @@ func (c *ControllerV1) MCPRegistryTest(ctx context.Context, req *v1.MCPRegistryT
 	}
 
 	// 创建客户端并测试连接
-	mcpClient := client.NewMCPClient(registry)
+	mcpClient := mcp.NewMCPClient(registry)
 
 	// 初始化连接
 	err = mcpClient.Initialize(ctx, map[string]interface{}{
@@ -277,7 +277,7 @@ func (c *ControllerV1) MCPListTools(ctx context.Context, req *v1.MCPListToolsReq
 	}
 
 	// 创建客户端
-	mcpClient := client.NewMCPClient(registry)
+	mcpClient := mcp.NewMCPClient(registry)
 
 	// 初始化连接
 	err = mcpClient.Initialize(ctx, map[string]interface{}{
@@ -341,7 +341,7 @@ func (c *ControllerV1) MCPCallTool(ctx context.Context, req *v1.MCPCallToolReq) 
 	}
 
 	// 创建客户端
-	mcpClient := client.NewMCPClient(registry)
+	mcpClient := mcp.NewMCPClient(registry)
 
 	// 初始化连接
 	err = mcpClient.Initialize(ctx, map[string]interface{}{

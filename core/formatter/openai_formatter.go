@@ -1,19 +1,19 @@
 package formatter
 
 import (
-	"context"
 	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/gogf/gf/v2/os/gctx"
+
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/sashabaranov/go-openai"
 )
 
 // OpenAIFormatter OpenAI标准消息格式适配器
-// 负责将消息转换为OpenAI标准格式
 type OpenAIFormatter struct{}
 
 // NewOpenAIFormatter 创建OpenAI格式适配器
@@ -28,10 +28,38 @@ func (f *OpenAIFormatter) FormatMessages(messages []*schema.Message) ([]openai.C
 	for _, msg := range messages {
 		openaiMsg, err := f.formatSingleMessage(msg)
 		if err != nil {
-			g.Log().Errorf(context.Background(), "Failed to convert message: %v", err)
+			g.Log().Errorf(gctx.New(), "Failed to convert message: %v", err)
 			continue
 		}
 		result = append(result, openaiMsg)
+
+		// 如果 assistant 消息有 tool_calls，检查 Extra["tool"] 字段
+		// 将其转换为独立的 tool 角色消息
+		if msg.Role == schema.Assistant && len(msg.ToolCalls) > 0 {
+			if msg.Extra != nil {
+				if toolData, exists := msg.Extra["tool"]; exists {
+					toolResults := toolData.([]map[string]interface{})
+					// 处理 tool 结果
+					for _, toolResult := range toolResults {
+						toolMsg := openai.ChatCompletionMessage{
+							Role: "tool",
+						}
+
+						// 提取 content
+						if content, ok := toolResult["content"].(string); ok {
+							toolMsg.Content = content
+						}
+
+						// 提取 tool_call_id
+						if toolCallID, ok := toolResult["tool_call_id"].(string); ok {
+							toolMsg.ToolCallID = toolCallID
+						}
+
+						result = append(result, toolMsg)
+					}
+				}
+			}
+		}
 	}
 
 	return result, nil
@@ -140,7 +168,7 @@ func (f *OpenAIFormatter) buildImageURL(image *schema.MessageInputImage) string 
 func (f *OpenAIFormatter) filePathToDataURI(filePath, mimeType string) string {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		g.Log().Warningf(context.Background(), "Failed to read image file %s: %v, skipping", filePath, err)
+		g.Log().Warningf(gctx.New(), "Failed to read image file %s: %v, skipping", filePath, err)
 		return ""
 	}
 

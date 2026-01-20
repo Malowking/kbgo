@@ -2,6 +2,7 @@ package kbgo
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
@@ -24,12 +25,24 @@ func getConversationManager() *conversation.Manager {
 
 // ConversationList 获取会话列表
 func (c *ControllerV1) ConversationList(ctx context.Context, req *v1.ConversationListReq) (res *v1.ConversationListRes, err error) {
-	g.Log().Infof(ctx, "ConversationList request - KnowledgeID: %s, Page: %d, PageSize: %d", req.KnowledgeID, req.Page, req.PageSize)
+	g.Log().Infof(ctx, "ConversationList request - KnowledgeID: %s, ConversationType: %s, AgentPresetID: %s, Page: %d, PageSize: %d", req.KnowledgeID, req.ConversationType, req.AgentPresetID, req.Page, req.PageSize)
+
+	// 验证：agent_preset_id 只能在 conversation_type 为 agent 时使用
+	if req.AgentPresetID != "" && req.ConversationType != "agent" {
+		g.Log().Warningf(ctx, "agent_preset_id 参数只能在 conversation_type=agent 时使用，当前 conversation_type=%s", req.ConversationType)
+		return nil, errors.New("agent_preset_id 参数只能在 conversation_type 为 agent 时使用")
+	}
 
 	// 构建筛选条件
 	filters := make(map[string]interface{})
 	if req.KnowledgeID != "" {
 		filters["knowledge_id"] = req.KnowledgeID
+	}
+	if req.ConversationType != "" {
+		filters["conversation_type"] = req.ConversationType
+	}
+	if req.AgentPresetID != "" {
+		filters["agent_preset_id"] = req.AgentPresetID
 	}
 	if req.Status != "" {
 		filters["status"] = req.Status
@@ -48,7 +61,7 @@ func (c *ControllerV1) ConversationList(ctx context.Context, req *v1.Conversatio
 		conversations = append(conversations, &v1.ConversationItem{
 			ConvID:           item.ConvID,
 			Title:            item.Title,
-			ModelName:        item.ModelName,
+			ModelID:          item.ModelID,
 			ConversationType: item.ConversationType,
 			Status:           item.Status,
 			MessageCount:     item.MessageCount,
@@ -56,6 +69,7 @@ func (c *ControllerV1) ConversationList(ctx context.Context, req *v1.Conversatio
 			LastMessageTime:  item.LastMessageTime,
 			CreateTime:       item.CreateTime,
 			UpdateTime:       item.UpdateTime,
+			AgentPresetID:    item.AgentPresetID,
 			Tags:             item.Tags,
 			Metadata:         item.Metadata,
 		})
@@ -82,13 +96,28 @@ func (c *ControllerV1) ConversationDetail(ctx context.Context, req *v1.Conversat
 	// 转换消息格式
 	messages := make([]*v1.MessageItem, 0, len(detail.Messages))
 	for _, msg := range detail.Messages {
+		// 转换ToolCalls
+		var toolCalls []v1.ToolCall
+		for _, tc := range msg.ToolCalls {
+			toolCalls = append(toolCalls, v1.ToolCall{
+				ID:   tc.ID,
+				Type: tc.Type,
+				Function: v1.FunctionCall{
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				},
+			})
+		}
+
 		messages = append(messages, &v1.MessageItem{
+			MsgID:            msg.MsgID,
 			Role:             msg.Role,
 			Content:          msg.Content,
+			ToolCalls:        toolCalls,
+			ToolCallID:       msg.ToolCallID,
 			ReasoningContent: msg.ReasoningContent,
 			CreateTime:       msg.CreateTime,
-			TokensUsed:       msg.TokensUsed,
-			LatencyMs:        msg.LatencyMs,
+			Extra:            msg.Extra,
 		})
 	}
 
@@ -96,7 +125,7 @@ func (c *ControllerV1) ConversationDetail(ctx context.Context, req *v1.Conversat
 		ConvID:           detail.ConvID,
 		UserID:           detail.UserID,
 		Title:            detail.Title,
-		ModelName:        detail.ModelName,
+		ModelID:          detail.ModelID,
 		ConversationType: detail.ConversationType,
 		Status:           detail.Status,
 		MessageCount:     detail.MessageCount,
@@ -186,5 +215,20 @@ func (c *ControllerV1) ConversationBatchDelete(ctx context.Context, req *v1.Conv
 		DeletedCount: deletedCount,
 		FailedConvs:  failed,
 		Message:      message,
+	}, nil
+}
+
+// CreateAgentConversation 创建Agent对话
+func (c *ControllerV1) CreateAgentConversation(ctx context.Context, req *v1.CreateAgentConversationReq) (res *v1.CreateAgentConversationRes, err error) {
+	g.Log().Infof(ctx, "CreateAgentConversation request - ConvID: %s, PresetID: %s, UserID: %s", req.ConvID, req.PresetID, req.UserID)
+
+	// 创建会话记录
+	if err := getConversationManager().CreateAgentConversation(ctx, req.ConvID, req.PresetID, req.UserID, req.Title); err != nil {
+		g.Log().Errorf(ctx, "创建Agent对话失败: %v", err)
+		return nil, err
+	}
+
+	return &v1.CreateAgentConversationRes{
+		ConvID: req.ConvID,
 	}, nil
 }

@@ -6,13 +6,15 @@ import (
 
 // ConversationListReq 会话列表请求
 type ConversationListReq struct {
-	g.Meta      `path:"/v1/conversations" method:"get" tags:"conversation"`
-	KnowledgeID string `json:"knowledge_id" v:""`       // 知识库ID（可选，用于筛选）
-	Page        int    `json:"page" d:"1"`              // 页码，默认1
-	PageSize    int    `json:"page_size" d:"20"`        // 每页数量，默认20
-	Status      string `json:"status" v:""`             // 状态筛选：active/archived
-	SortBy      string `json:"sort_by" d:"update_time"` // 排序字段：create_time/update_time/message_count
-	Order       string `json:"order" d:"desc"`          // 排序方向：asc/desc
+	g.Meta           `path:"/v1/conversations" method:"get" tags:"conversation"`
+	KnowledgeID      string `json:"knowledge_id" v:""`       // 知识库ID（可选，用于筛选）
+	ConversationType string `json:"conversation_type" v:""`  // 会话类型（可选，用于筛选）：text/agent
+	AgentPresetID    string `json:"agent_preset_id" v:""`    // Agent预设ID（可选，用于筛选Agent对话）
+	Page             int    `json:"page" d:"1"`              // 页码，默认1
+	PageSize         int    `json:"page_size" d:"20"`        // 每页数量，默认20
+	Status           string `json:"status" v:""`             // 状态筛选：active/archived
+	SortBy           string `json:"sort_by" d:"update_time"` // 排序字段：create_time/update_time/message_count
+	Order            string `json:"order" d:"desc"`          // 排序方向：asc/desc
 }
 
 // ConversationListRes 会话列表响应
@@ -28,7 +30,7 @@ type ConversationListRes struct {
 type ConversationItem struct {
 	ConvID           string         `json:"conv_id"`
 	Title            string         `json:"title"`
-	ModelName        string         `json:"model_name"`
+	ModelID          string         `json:"model_id"`
 	ConversationType string         `json:"conversation_type"`
 	Status           string         `json:"status"`
 	MessageCount     int            `json:"message_count"`     // 消息数量
@@ -36,6 +38,7 @@ type ConversationItem struct {
 	LastMessageTime  string         `json:"last_message_time"` // 最后消息时间
 	CreateTime       string         `json:"create_time"`
 	UpdateTime       string         `json:"update_time"`
+	AgentPresetID    string         `json:"agent_preset_id"`    // Agent预设ID
 	Tags             []string       `json:"tags,omitempty"`     // 标签
 	Metadata         map[string]any `json:"metadata,omitempty"` // 元数据
 }
@@ -52,7 +55,7 @@ type ConversationDetailRes struct {
 	ConvID           string         `json:"conv_id"`
 	UserID           string         `json:"user_id"`
 	Title            string         `json:"title"`
-	ModelName        string         `json:"model_name"`
+	ModelID          string         `json:"model_id"`
 	ConversationType string         `json:"conversation_type"`
 	Status           string         `json:"status"`
 	MessageCount     int            `json:"message_count"`
@@ -65,13 +68,27 @@ type ConversationDetailRes struct {
 
 // MessageItem 消息项
 type MessageItem struct {
-	ID               uint64 `json:"id"`
-	Role             string `json:"role"` // user/assistant/system
-	Content          string `json:"content"`
-	ReasoningContent string `json:"reasoning_content,omitempty"` // 思考内容
-	CreateTime       string `json:"create_time"`
-	TokensUsed       int    `json:"tokens_used,omitempty"`
-	LatencyMs        int    `json:"latency_ms,omitempty"`
+	MsgID            string         `json:"msg_id"`                      // 消息ID
+	Role             string         `json:"role"`                        // 角色：user/assistant/system/tool
+	Content          *string        `json:"content"`                     // 文本内容（可为null）
+	ToolCalls        []ToolCall     `json:"tool_calls,omitempty"`        // 工具调用列表
+	ToolCallID       string         `json:"tool_call_id,omitempty"`      // 工具调用ID（tool角色使用）
+	ReasoningContent string         `json:"reasoning_content,omitempty"` // 思考内容
+	CreateTime       string         `json:"create_time"`                 // 创建时间
+	Extra            map[string]any `json:"extra,omitempty"`             // 扩展字段
+}
+
+// ToolCall 工具调用
+type ToolCall struct {
+	ID       string       `json:"id"`       // 工具调用ID
+	Type     string       `json:"type"`     // 类型，通常为 "function"
+	Function FunctionCall `json:"function"` // 函数调用信息
+}
+
+// FunctionCall 函数调用
+type FunctionCall struct {
+	Name      string `json:"name"`      // 函数名称
+	Arguments string `json:"arguments"` // 函数参数（JSON字符串）
 }
 
 // ConversationDeleteReq 删除会话请求
@@ -143,4 +160,19 @@ type ConversationBatchDeleteRes struct {
 	DeletedCount int      `json:"deleted_count"`
 	FailedConvs  []string `json:"failed_convs,omitempty"` // 删除失败的会话ID
 	Message      string   `json:"message"`
+}
+
+// CreateAgentConversationReq 创建Agent对话请求
+type CreateAgentConversationReq struct {
+	g.Meta   `path:"/v1/conversations/agent" method:"post" tags:"conversation" summary:"创建Agent对话"`
+	ConvID   string `json:"conv_id" v:"required#会话ID不能为空"`   // 会话ID（由前端生成）
+	PresetID string `json:"preset_id" v:"required#预设ID不能为空"` // Agent预设ID
+	UserID   string `json:"user_id" v:"required#用户ID不能为空"`   // 用户ID
+	Title    string `json:"title"`                           // 对话标题（可选，默认使用Agent名称）
+}
+
+// CreateAgentConversationRes 创建Agent对话响应
+type CreateAgentConversationRes struct {
+	g.Meta `mime:"application/json"`
+	ConvID string `json:"conv_id"` // 会话ID
 }

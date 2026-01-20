@@ -34,7 +34,7 @@ func SaveDocumentsInfoWithTx(ctx context.Context, tx *gorm.DB, documents gormMod
 		RustfsBucket:   documents.RustfsBucket,
 		RustfsLocation: documents.RustfsLocation,
 		LocalFilePath:  documents.LocalFilePath, // 添加本地文件路径
-		Status:         int8(documents.Status),
+		Status:         documents.Status,
 	}
 
 	// 如果没有提供事务，则使用默认的数据库连接

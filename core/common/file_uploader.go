@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/gogf/gf/v2/os/gctx"
+
 	"github.com/Malowking/kbgo/core/errors"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gfile"
@@ -72,7 +74,7 @@ func NewFileUploader(baseDir string, workerPool int) *FileUploader {
 		workerPool = 10 // 默认10个worker
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(gctx.New())
 	fu := &FileUploader{
 		baseDir:    baseDir,
 		taskQueue:  make(chan *FileUploadTask, 100), // 缓冲队列

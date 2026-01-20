@@ -32,14 +32,8 @@ export interface Document {
   status: number; // 0=pending, 1=indexing, 2=active, 3=failed
   CreateTime: string;
   UpdateTime: string;
-
-  // 兼容旧字段名（可选）
-  name?: string; // alias for fileName
-  file_type?: string; // alias for fileExtension
   file_size?: number;
   chunk_count?: number;
-  created_at?: string; // alias for CreateTime
-  updated_at?: string; // alias for UpdateTime
 }
 
 export interface Chunk {
@@ -57,7 +51,7 @@ export interface Chunk {
 export interface Conversation {
   conv_id: string;
   title: string;
-  model_name: string;
+  model_id: string;
   conversation_type: string;
   status: string;
   message_count: number;
@@ -69,22 +63,64 @@ export interface Conversation {
   metadata?: Record<string, any>;
 }
 
+// 工具消息的 metadata 结构
+export interface ToolMessageMetadata {
+  tool_name: string;
+  tool_args?: any;
+  tool_call_id: string;
+}
+
 export interface Message {
   id: number;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   reasoning_content?: string;
+  tool_plan?: {
+    reasoning?: string;
+    steps: ToolExecutionStep[];
+    steps_count?: number;
+    need_tools?: boolean;
+  };
   references?: Document[];
+  metadata?: ToolMessageMetadata | Record<string, any>;
   create_time: string;
   tokens_used?: number;
   latency_ms?: number;
+  extra?: {
+    tool?: Array<{
+      content: string;
+      tool_call_id?: string;
+      tool_name?: string;
+      tool_args?: any;
+    }>;
+    [key: string]: any;
+  };
+}
+
+export type ToolExecutionStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+export interface ToolExecutionStep {
+  step_id: string;
+  tool_name: string;
+  status: ToolExecutionStatus;
+  reason?: string;
+  progress?: string;
+  result_summary?: string;
+  error?: string;
+}
+
+// 工具配置类型
+export interface ToolConfig {
+  type: string; // "local_tools" or "mcp"
+  enabled: boolean; // 是否启用该类型的工具
+  config: Record<string, any>; // 工具配置参数
 }
 
 export interface ChatRequest {
   conv_id: string;
   question: string;
   model_id: string;
-  embedding_model_id?: string;
+  system_prompt?: string;
   rerank_model_id?: string;
   knowledge_id?: string;
   enable_retriever?: boolean;
@@ -92,8 +128,10 @@ export interface ChatRequest {
   score?: number;
   retrieve_mode?: 'simple' | 'rerank' | 'rrf';
   rerank_weight?: number;
-  use_mcp?: boolean;
-  mcp_service_tools?: Record<string, string[]>;
+
+  // 新的统一工具配置
+  tools?: ToolConfig[];
+
   stream?: boolean;
   jsonformat?: boolean;
 }
@@ -175,7 +213,7 @@ export interface ConversationDetailRes {
   conv_id: string;
   user_id: string;
   title: string;
-  model_name: string;
+  model_id: string;
   conversation_type: string;
   status: string;
   message_count: number;
@@ -250,7 +288,6 @@ export interface MCPStats {
 export interface AgentConfig {
   model_id: string;
   system_prompt?: string;
-  embedding_model_id?: string;
   rerank_model_id?: string;
   knowledge_id?: string;
   enable_retriever?: boolean;
@@ -264,7 +301,17 @@ export interface AgentConfig {
   // NL2SQL相关配置
   enable_nl2sql?: boolean;
   nl2sql_datasource_id?: string;
-  nl2sql_embedding_model_id?: string; // NL2SQL Schema向量化使用的embedding模型
+  // 文件导出相关配置
+  enable_file_export?: boolean;
+  // Claude Skills 相关配置
+  enable_claude_skills?: boolean;
+  claude_skill_ids?: string[]; // 选中的 Skills IDs
+  // 工具优先级配置
+  knowledge_retrieval_priority?: number;
+  nl2sql_priority?: number;
+  mcp_priority?: number;
+  file_export_priority?: number;
+  claude_skills_priority?: number;
 }
 
 export interface AgentPreset {
@@ -273,6 +320,7 @@ export interface AgentPreset {
   preset_name: string;
   description: string;
   config: AgentConfig;
+  tools?: ToolConfig[]; // 工具配置数组
   is_public: boolean;
   create_time: string;
   update_time: string;
@@ -283,6 +331,7 @@ export interface CreateAgentPresetRequest {
   preset_name: string;
   description: string;
   config: AgentConfig;
+  tools?: ToolConfig[]; // 工具配置数组
   is_public: boolean;
 }
 
@@ -292,6 +341,7 @@ export interface UpdateAgentPresetRequest {
   preset_name?: string;
   description?: string;
   config?: AgentConfig;
+  tools?: ToolConfig[]; // 工具配置数组
   is_public?: boolean;
 }
 
@@ -325,4 +375,135 @@ export interface AgentChatResponse {
   reasoning_content?: string;
   references?: AgentDoc[];
   mcp_results?: MCPResult[];
+}
+
+// Claude Skills 相关类型
+export interface SkillToolParameterDef {
+  type: 'string' | 'number' | 'boolean' | 'array' | 'object';
+  required: boolean;
+  description: string;
+  default?: any;
+}
+
+export interface ClaudeSkill {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  author: string;
+  category: string;
+  tags: string;
+  runtime_type: 'python' | 'node' | 'shell';
+  runtime_version: string;
+  requirements: string[];
+  tool_name: string;
+  tool_description: string;
+  tool_parameters: Record<string, SkillToolParameterDef>;
+  script: string;
+  script_hash: string;
+  metadata?: Record<string, any>;
+  call_count: number;
+  success_count: number;
+  fail_count: number;
+  avg_duration: number;
+  last_used_at?: string;
+  status: 0 | 1; // 0-disabled, 1-enabled
+  is_public: boolean;
+  owner_id: string;
+  create_time: string;
+  update_time: string;
+}
+
+export interface SkillItem {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  author: string;
+  category: string;
+  tags: string;
+  runtime_type: 'python' | 'node' | 'shell';
+  requirements: string[];
+  tool_name: string;
+  tool_description: string;
+  call_count: number;
+  success_count: number;
+  avg_duration: number;
+  last_used_at?: string;
+  status: 0 | 1;
+  is_public: boolean;
+  owner_id: string;
+  create_time: string;
+  update_time: string;
+}
+
+export interface CreateSkillRequest {
+  name: string;
+  description: string;
+  version?: string;
+  author?: string;
+  category?: string;
+  tags?: string;
+  runtime_type: 'python' | 'node' | 'shell';
+  runtime_version?: string;
+  requirements?: string[];
+  tool_name: string;
+  tool_description: string;
+  tool_parameters?: Record<string, SkillToolParameterDef>;
+  script: string;
+  is_public?: boolean;
+  metadata?: Record<string, any>;
+}
+
+export interface UpdateSkillRequest {
+  id: string;
+  name?: string;
+  description?: string;
+  version?: string;
+  author?: string;
+  category?: string;
+  tags?: string;
+  runtime_type?: 'python' | 'node' | 'shell';
+  runtime_version?: string;
+  requirements?: string[];
+  tool_name?: string;
+  tool_description?: string;
+  tool_parameters?: Record<string, SkillToolParameterDef>;
+  script?: string;
+  status?: 0 | 1;
+  is_public?: boolean;
+  metadata?: Record<string, any>;
+}
+
+export interface SkillExecuteRequest {
+  id: string;
+  arguments: Record<string, any>;
+}
+
+export interface SkillExecuteResponse {
+  success: boolean;
+  output?: string;
+  error?: string;
+  duration: number;
+}
+
+export interface SkillCallLogItem {
+  id: string;
+  skill_id: string;
+  skill_name: string;
+  conversation_id?: string;
+  message_id?: string;
+  request_payload: string;
+  response_payload?: string;
+  success: boolean;
+  error_message?: string;
+  duration: number;
+  venv_hash?: string;
+  venv_cache_hit: boolean;
+  create_time: string;
+}
+
+export interface SkillCategoryItem {
+  name: string;
+  count: number;
 }

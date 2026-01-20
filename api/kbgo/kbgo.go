@@ -49,4 +49,14 @@ type IKbgoV1 interface {
 	GetModel(ctx context.Context, req *v1.GetModelReq) (res *v1.GetModelRes, err error)
 	ChatCompletion(ctx context.Context, req *v1.ChatCompletionReq) (res *v1.ChatCompletionRes, err error)
 	EmbeddingCompletion(ctx context.Context, req *v1.EmbeddingReq) (res *v1.EmbeddingRes, err error)
+
+	// NL2SQL related interfaces
+	NL2SQLCreateDataSource(ctx context.Context, req *v1.NL2SQLCreateDataSourceReq) (res *v1.NL2SQLCreateDataSourceRes, err error)
+	NL2SQLParseSchema(ctx context.Context, req *v1.NL2SQLParseSchemaReq) (res *v1.NL2SQLParseSchemaRes, err error)
+	NL2SQLGetTask(ctx context.Context, req *v1.NL2SQLGetTaskReq) (res *v1.NL2SQLGetTaskRes, err error)
+	NL2SQLListDataSources(ctx context.Context, req *v1.NL2SQLListDataSourcesReq) (res *v1.NL2SQLListDataSourcesRes, err error)
+	NL2SQLDeleteDataSource(ctx context.Context, req *v1.NL2SQLDeleteDataSourceReq) (res *v1.NL2SQLDeleteDataSourceRes, err error)
+	NL2SQLQuery(ctx context.Context, req *v1.NL2SQLQueryReq) (res *v1.NL2SQLQueryRes, err error)
+	NL2SQLFeedback(ctx context.Context, req *v1.NL2SQLFeedbackReq) (res *v1.NL2SQLFeedbackRes, err error)
+	NL2SQLGetSchema(ctx context.Context, req *v1.NL2SQLGetSchemaReq) (res *v1.NL2SQLGetSchemaRes, err error)
 }

@@ -66,10 +66,7 @@ export default function DocumentsTab({ kbId }: DocumentsTabProps) {
     }
   }, [fetchDocuments, confirm]);
 
-  const handleUploadSuccess = (documentIds: string[]) => {
-    // 上传成功后，打开索引模态框
-    setPendingDocumentIds(documentIds);
-    setShowIndexModal(true);
+  const handleUploadSuccess = () => {
     fetchDocuments();
   };
 

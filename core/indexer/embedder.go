@@ -2,14 +2,13 @@ package indexer
 
 import (
 	"context"
-	"encoding/json"
 	"sync"
 	"time"
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/errors"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/Malowking/kbgo/core/vector_store"
-	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -17,11 +16,11 @@ import (
 type VectorStoreEmbedder struct {
 	embedding   *common.CustomEmbedder
 	vectorStore vector_store.VectorStore
-	modelConfig interface{} // 保存模型配置，用于提取维度信息
+	dim         int
 }
 
 // NewVectorStoreEmbedder 创建向量存储嵌入器
-func NewVectorStoreEmbedder(ctx context.Context, conf common.EmbeddingConfig, vectorStore vector_store.VectorStore, modelConfig interface{}) (*VectorStoreEmbedder, error) {
+func NewVectorStoreEmbedder(ctx context.Context, conf common.EmbeddingConfig, vectorStore vector_store.VectorStore) (*VectorStoreEmbedder, error) {
 	// Create embedding instance
 	embeddingIns, err := common.NewEmbedding(ctx, conf)
 	if err != nil {
@@ -31,7 +30,7 @@ func NewVectorStoreEmbedder(ctx context.Context, conf common.EmbeddingConfig, ve
 	return &VectorStoreEmbedder{
 		embedding:   embeddingIns,
 		vectorStore: vectorStore,
-		modelConfig: modelConfig,
+		dim:         conf.GetDimension(),
 	}, nil
 }
 
@@ -109,10 +108,6 @@ func (v *VectorStoreEmbedder) EmbedAndStore(ctx context.Context, collectionName 
 				Vector:  vector,
 				Error:   nil,
 			}
-
-			if (index+1)%10 == 0 || index == len(chunks)-1 {
-				g.Log().Infof(ctx, "Progress: %d/%d chunks completed", index+1, len(chunks))
-			}
 		}(i, chunk)
 	}
 
@@ -137,7 +132,6 @@ func (v *VectorStoreEmbedder) EmbedAndStore(ctx context.Context, collectionName 
 		allChunkIds[i] = result.ChunkID
 	}
 
-	g.Log().Infof(ctx, "Single-chunk concurrent vectorization completed, total chunks: %d", len(allChunkIds))
 	return allChunkIds, nil
 }
 
@@ -145,9 +139,6 @@ func (v *VectorStoreEmbedder) EmbedAndStore(ctx context.Context, collectionName 
 func (v *VectorStoreEmbedder) embedSingleChunkWithRetry(ctx context.Context, text string, maxRetries int, initialDelay, maxDelay time.Duration, multiplier float64) ([]float32, error) {
 	var lastErr error
 	delay := initialDelay
-
-	// 获取维度
-	dimensions := v.getDimension(ctx)
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
@@ -167,7 +158,7 @@ func (v *VectorStoreEmbedder) embedSingleChunkWithRetry(ctx context.Context, tex
 		}
 
 		// 单条调用embedding API
-		vectors, err := v.embedding.EmbedStrings(ctx, []string{text}, dimensions)
+		vectors, err := v.embedding.EmbedStrings(ctx, []string{text})
 		if err != nil {
 			lastErr = err
 			g.Log().Warningf(ctx, "Single chunk embedding attempt %d failed: %v", attempt+1, err)
@@ -184,39 +175,4 @@ func (v *VectorStoreEmbedder) embedSingleChunkWithRetry(ctx context.Context, tex
 	}
 
 	return nil, errors.Newf(errors.ErrEmbeddingFailed, "single chunk embedding failed after %d retries, last error: %v", maxRetries, lastErr)
-}
-
-// getDimension 获取embedding维度
-func (v *VectorStoreEmbedder) getDimension(ctx context.Context) int {
-	// 尝试从模型配置的extra字段中提取dimension
-	if v.modelConfig != nil {
-		// 尝试将modelConfig转换为map类型
-		if configMap, ok := v.modelConfig.(map[string]any); ok {
-			if extra, exists := configMap["Extra"]; exists {
-				if extraMap, ok := extra.(map[string]any); ok {
-					if dim, exists := extraMap["dimension"]; exists {
-						if dimInt, ok := dim.(int); ok {
-							return dimInt
-						}
-						if dimFloat, ok := dim.(float64); ok {
-							return int(dimFloat)
-						}
-					}
-				} else if extraStr, ok := extra.(string); ok && extraStr != "" {
-					// 尝试解析字符串形式的JSON
-					var extraMap map[string]any
-					if err := json.Unmarshal([]byte(extraStr), &extraMap); err == nil {
-						if dim, exists := extraMap["dimension"]; exists {
-							if dimFloat, ok := dim.(float64); ok {
-								return int(dimFloat)
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	// 默认值
-	g.Log().Warningf(ctx, "No dimension found in model config or config file, using default: 1024")
-	return 1024
 }

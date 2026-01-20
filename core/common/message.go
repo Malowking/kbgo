@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/Malowking/kbgo/core/schema"
 )
 
 const systemTemplate = `你非常擅长于使用rag进行数据检索，你的目标是在充分理解用户的问题后进行向量化检索

@@ -6,9 +6,10 @@ import (
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/agent"
+	"github.com/Malowking/kbgo/core/chat"
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/internal/dao"
-	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
+	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -89,14 +90,70 @@ func (c *ControllerV1) AgentChat(ctx context.Context, req *v1.AgentChatReq) (res
 		return nil, c.handleAgentStreamChat(ctx, req, uploadedFiles)
 	}
 
+	// 获取Agent预设配置
 	agentService := agent.NewAgentService()
-	return agentService.AgentChat(ctx, req, uploadedFiles)
+	preset, err := agentService.GetPreset(ctx, req.PresetID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 验证conv_id：前端必须传递conv_id
+	convID := req.ConvID
+	if convID == "" {
+		g.Log().Errorf(ctx, "conv_id不能为空")
+		return nil, gerror.New("会话ID不能为空")
+	}
+
+	// 检查对话是否存在
+	existingConv, err := dao.Conversation.GetByConvID(ctx, convID)
+	if err != nil {
+		g.Log().Errorf(ctx, "查询会话失败: %v", err)
+		return nil, gerror.Newf("查询会话失败: %v", err)
+	}
+
+	// 如果对话不存在，返回错误
+	if existingConv == nil {
+		g.Log().Errorf(ctx, "会话不存在: %s", convID)
+		return nil, gerror.Newf("会话不存在")
+	}
+
+	g.Log().Infof(ctx, "使用会话: %s, type: %s", convID, existingConv.ConversationType)
+
+	// 构造ChatReq
+	chatReq := &v1.ChatReq{
+		ConvID:          convID,
+		Question:        req.Question,
+		ModelID:         preset.Config.ModelID,
+		SystemPrompt:    preset.Config.SystemPrompt,
+		RerankModelID:   preset.Config.RerankModelID,
+		KnowledgeId:     preset.Config.KnowledgeId,
+		EnableRetriever: preset.Config.EnableRetriever,
+		TopK:            preset.Config.TopK,
+		Score:           preset.Config.Score,
+		RetrieveMode:    preset.Config.RetrieveMode,
+		Stream:          req.Stream,
+		JsonFormat:      preset.Config.JsonFormat,
+		Tools:           preset.Tools,
+	}
+
+	// 调用Chat处理器
+	chatHandler := chat.NewChatHandler()
+	chatRes, err := chatHandler.Chat(ctx, chatReq, uploadedFiles)
+	if err != nil {
+		return nil, err
+	}
+
+	// 构造响应
+	res = &v1.AgentChatRes{
+		ConvID:           convID,
+		Answer:           chatRes.Answer,
+		ReasoningContent: chatRes.ReasoningContent,
+	}
+	return res, nil
 }
 
 // handleAgentStreamChat 处理Agent流式聊天请求
 func (c *ControllerV1) handleAgentStreamChat(ctx context.Context, req *v1.AgentChatReq, uploadedFiles []*common.MultimodalFile) error {
-	g.Log().Infof(ctx, "Agent流式对话请求 - PresetID: %s, ConvID: %s, Files: %d", req.PresetID, req.ConvID, len(uploadedFiles))
-
 	agentService := agent.NewAgentService()
 
 	// 获取Agent预设配置
@@ -106,53 +163,45 @@ func (c *ControllerV1) handleAgentStreamChat(ctx context.Context, req *v1.AgentC
 		return err
 	}
 
-	// 如果没有conv_id，创建新会话
+	// 验证conv_id：前端必须传递conv_id
 	convID := req.ConvID
 	if convID == "" {
-		convID = "conv_" + generateUUID()
-
-		// 创建会话记录（与AgentChat保持一致）
-		conversation := &gormModel.Conversation{
-			ConvID:        convID,
-			UserID:        req.UserID,
-			Title:         "Agent: " + preset.PresetName,
-			ModelName:     preset.Config.ModelID,
-			Status:        "active",
-			AgentPresetID: req.PresetID, // 关联Agent预设
-		}
-
-		if err := dao.Conversation.Create(ctx, conversation); err != nil {
-			g.Log().Warningf(ctx, "创建会话记录失败: %v", err)
-			// 不阻断流程，继续执行
-		}
+		g.Log().Errorf(ctx, "conv_id不能为空")
+		return gerror.New("会话ID不能为空")
 	}
+
+	// 检查对话是否存在
+	existingConv, err := dao.Conversation.GetByConvID(ctx, convID)
+	if err != nil {
+		g.Log().Errorf(ctx, "查询会话失败: %v", err)
+		return gerror.Newf("查询会话失败: %v", err)
+	}
+
+	// 如果对话不存在，返回错误
+	if existingConv == nil {
+		g.Log().Errorf(ctx, "会话不存在: %s", convID)
+		return gerror.Newf("会话不存在")
+	}
+
+	g.Log().Infof(ctx, "使用会话: %s, type: %s", convID, existingConv.ConversationType)
 
 	// 构造ChatReq
 	chatReq := &v1.ChatReq{
-		ConvID:           convID,
-		Question:         req.Question,
-		ModelID:          preset.Config.ModelID,
-		SystemPrompt:     preset.Config.SystemPrompt,
-		EmbeddingModelID: preset.Config.EmbeddingModelID,
-		RerankModelID:    preset.Config.RerankModelID,
-		KnowledgeId:      preset.Config.KnowledgeId,
-		EnableRetriever:  preset.Config.EnableRetriever,
-		TopK:             preset.Config.TopK,
-		Score:            preset.Config.Score,
-		RetrieveMode:     preset.Config.RetrieveMode,
-		UseMCP:           preset.Config.UseMCP,
-		MCPServiceTools:  preset.Config.MCPServiceTools,
-		Stream:           true,
-		JsonFormat:       preset.Config.JsonFormat,
+		ConvID:          convID,
+		Question:        req.Question,
+		ModelID:         preset.Config.ModelID,
+		SystemPrompt:    preset.Config.SystemPrompt,
+		RerankModelID:   preset.Config.RerankModelID,
+		KnowledgeId:     preset.Config.KnowledgeId,
+		EnableRetriever: preset.Config.EnableRetriever,
+		TopK:            preset.Config.TopK,
+		Score:           preset.Config.Score,
+		RetrieveMode:    preset.Config.RetrieveMode,
+		Stream:          true,
+		JsonFormat:      preset.Config.JsonFormat,
+		Tools:           preset.Tools,
 	}
 
 	// 调用原有的流式Chat处理器，传递上传的文件
 	return c.handleStreamChat(ctx, chatReq, uploadedFiles)
-}
-
-// generateUUID 生成UUID
-func generateUUID() string {
-	// 这里可以使用uuid库生成
-	// 为了简化，暂时返回时间戳
-	return "temp_uuid"
 }

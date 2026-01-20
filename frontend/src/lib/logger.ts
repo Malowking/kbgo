@@ -52,14 +52,7 @@ export const logger = {
     // }
   },
 
-  /**
-   * 调试日志 - 仅在开发环境输出
-   */
-  debug: (...args: any[]) => {
-    if (isDev) {
-      console.debug('[DEBUG]', ...args);
-    }
-  },
+
 };
 
 /**

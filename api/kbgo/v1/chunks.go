@@ -5,6 +5,12 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
+const (
+	ChunkStatusDisable Status = 0
+	ChunkStatusActive  Status = 1
+	ChunkStatusFailed  Status = 2
+)
+
 type ChunksListReq struct {
 	g.Meta         `path:"/v1/chunks" method:"get" tags:"retriever"`
 	KnowledgeDocId string `p:"knowledge_doc_id" dc:"knowledge_doc_id" v:"required"`

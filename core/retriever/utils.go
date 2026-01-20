@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/Malowking/kbgo/core/config"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/Malowking/kbgo/core/vector_store"
-	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -31,7 +31,7 @@ func retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 	vectorStore := conf.VectorStore
 
 	// 使用通用的 NewRetriever 方法
-	r, err := vectorStore.NewRetriever(ctx, conf, collectionName)
+	r, err := vectorStore.NewRetriever(ctx, collectionName)
 	if err != nil {
 		g.Log().Errorf(ctx, "failed to create retriever for collection %s, err=%v", collectionName, err)
 		return nil, err
@@ -52,6 +52,11 @@ func retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 	// 执行检索
 	var options []vector_store.Option
 	options = append(options, vector_store.WithTopK(realTopK))
+
+	// 添加分数阈值选项
+	if req.Score != nil {
+		options = append(options, vector_store.WithScoreThreshold(*req.Score))
+	}
 
 	// 只有在有过滤条件时才添加 filter
 	if filter != "" {

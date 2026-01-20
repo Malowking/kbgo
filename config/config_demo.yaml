@@ -24,6 +24,7 @@ database:
      name: "kbgo"
      type: "pgsql"
      maxLifeTime: 3600
+     extra: "TimeZone=UTC"  # 设置数据库连接时区为 UTC
 
 # 向量数据库配置
 # 支持的类型: "milvus" 或 "pgvector"
@@ -48,6 +49,7 @@ postgres:
   database: "kbgo"             # PostgreSQL 数据库名称
   metricType: "COSINE"         # 向量距离度量类型,COSINE(余弦相似度), L2(欧式距离), IP(内积), 默认 COSINE
   sslmode: "disable"           # SSL 模式: disable, require, verify-ca, verify-full
+  timezone: "UTC"              # 时区设置
 
 # 文件存储配置
 storage:
@@ -85,3 +87,11 @@ streaming:
   memoryBufferSize: 100                # 内存 channel 缓冲区大小（默认 100）
   redisBufferSize: 1000                # Redis Stream 最大长度（默认 1000）
   redisStreamTTL: 300                  # Redis Stream 过期时间（秒），默认 5分钟
+
+# Claude Skills 配置
+skills:
+  venvBaseDir: "/data/kbgo_venvs"     # 虚拟环境存储目录
+  scriptsDir: "/data/kbgo_skills"     # Skill 脚本存储目录
+  maxExecutionTime: 300                # 最大执行时间（秒），默认 5分钟
+  cleanupInterval: 86400               # 清理间隔（秒），默认 24小时
+  cleanupMaxAge: 604800                # 虚拟环境最大未使用时间（秒），默认 7天

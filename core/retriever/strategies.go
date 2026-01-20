@@ -8,7 +8,7 @@ import (
 
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/config"
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -136,9 +136,6 @@ func retrieveWithRerank(ctx context.Context, conf *config.RetrieverConfig, req *
 		// 加权融合：hybridScore = rerankWeight * rerankScore + bm25Weight * bm25Score
 		hybridScore := rerankWeight*rerankScore + bm25Weight*bm25Score
 		doc.Score = float32(hybridScore)
-
-		g.Log().Debugf(ctx, "Doc %s: rerank=%.4f, bm25=%.4f, hybrid=%.4f",
-			doc.ID[:8], rerankScore, bm25Score, hybridScore)
 	}
 
 	// 5. 按混合分数排序
@@ -194,6 +191,7 @@ func retrieveWithPureRerank(ctx context.Context, conf *config.RetrieverConfig, r
 	// 转换回 schema.Document
 	docs = convertFromRerankDocs(rerankResults, docs)
 
+	g.Log().Infof(ctx, "After rerank: %d documents with scores", len(docs))
 	// 过滤低分文档
 	var relatedDocs []*schema.Document
 	for _, doc := range docs {

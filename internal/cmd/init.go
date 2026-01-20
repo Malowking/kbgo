@@ -1,24 +1,24 @@
 package cmd
 
 import (
-	"context"
+	"github.com/Malowking/kbgo/core/model"
+	"github.com/gogf/gf/v2/os/gctx"
 
 	"github.com/Malowking/kbgo/core/cache"
 	"github.com/Malowking/kbgo/core/config"
 	"github.com/Malowking/kbgo/core/file_store"
-	"github.com/Malowking/kbgo/core/model"
+	"github.com/Malowking/kbgo/core/vector_store"
 	internalCache "github.com/Malowking/kbgo/internal/cache"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/chat"
 	"github.com/Malowking/kbgo/internal/logic/index"
 	"github.com/Malowking/kbgo/internal/logic/retriever"
-	"github.com/Malowking/kbgo/internal/service"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
 // InitAll initializes all components of the application
 func init() {
-	ctx := context.Background()
+	ctx := gctx.New()
 
 	// Validate configuration before initializing components
 	g.Log().Info(ctx, "Validating application configuration...")
@@ -65,19 +65,10 @@ func init() {
 	file_store.InitStorage()
 
 	// Initialize vector database
-	_, err = service.GetVectorStore()
+	_, err = vector_store.GetVectorStore()
 	if err != nil {
 		g.Log().Fatalf(ctx, "Vector store initialization failed: %v", err)
 	}
-
-	// Initialize document indexer
-	index.InitDocumentIndexer()
-
-	// Initialize retriever configuration
-	retriever.InitRetrieverConfig()
-
-	// Initialize chat history manager
-	chat.InitHistory()
 
 	// Initialize model registry from database
 	g.Log().Info(ctx, "Initializing model registry...")
@@ -88,6 +79,15 @@ func init() {
 	} else {
 		g.Log().Infof(ctx, "✓ Model registry initialized successfully with %d models", model.Registry.Count())
 	}
+
+	// Initialize document indexer
+	index.InitDocumentIndexer()
+
+	// Initialize retriever configuration
+	retriever.InitRetrieverConfig()
+
+	// Initialize chat history manager
+	chat.InitHistory()
 
 	g.Log().Info(ctx, "✓ All components initialized successfully")
 }

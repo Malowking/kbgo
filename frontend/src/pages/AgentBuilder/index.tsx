@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Edit2, Trash2, Save, X, Bot, Settings, Database, MessageSquare, ChevronDown } from 'lucide-react';
-import { agentApi, knowledgeBaseApi, modelApi, mcpApi, conversationApi } from '@/services';
+import { Plus, Edit2, Trash2, Save, X, Bot, Settings, ChevronDown, Wrench } from 'lucide-react';
+import { agentApi, knowledgeBaseApi, modelApi, mcpApi, conversationApi, nl2sqlApi } from '@/services';
 import type { AgentPresetItem, AgentConfig, KnowledgeBase, Model, MCPRegistry } from '@/types';
 import ModelSelectorModal from '@/components/ModelSelectorModal';
+import ToolConfigurationModal from '@/components/ToolConfigurationModal';
 import { logger } from '@/lib/logger';
 import { showError, showWarning, showSuccess } from '@/lib/toast';
 import { USER } from '@/config/constants';
@@ -15,6 +16,7 @@ export default function AgentBuilder() {
   const [showForm, setShowForm] = useState(false);
   const [editingPresetId, setEditingPresetId] = useState<string>('');
   const [showModelSelector, setShowModelSelector] = useState(false);
+  const [showToolConfig, setShowToolConfig] = useState(false);
   const { confirm, ConfirmDialog } = useConfirm();
 
   // Form state
@@ -37,28 +39,15 @@ export default function AgentBuilder() {
   const [models, setModels] = useState<Model[]>([]);
   const [rerankModels, setRerankModels] = useState<Model[]>([]);
   const [mcpServices, setMcpServices] = useState<MCPRegistry[]>([]);
-  const [selectedMcpTools, setSelectedMcpTools] = useState<Record<string, string[]>>({});
+  const [nl2sqlDatasources, setNl2sqlDatasources] = useState<any[]>([]);
 
   useEffect(() => {
     fetchPresets();
     fetchKBList();
     fetchModels();
     fetchMcpServices();
+    fetchNL2SQLDatasources();
   }, []);
-
-  // 当选择知识库时，自动启用知识检索
-  useEffect(() => {
-    if (config.knowledge_id) {
-      setConfig(prev => ({ ...prev, enable_retriever: true }));
-    }
-  }, [config.knowledge_id]);
-
-  // 当选择MCP工具时，自动启用MCP
-  useEffect(() => {
-    if (Object.keys(selectedMcpTools).length > 0) {
-      setConfig(prev => ({ ...prev, use_mcp: true }));
-    }
-  }, [selectedMcpTools]);
 
   const fetchPresets = useCallback(async () => {
     try {
@@ -86,7 +75,7 @@ export default function AgentBuilder() {
     try {
       const response = await modelApi.list();
 
-      // 使用工具函数获取 LLM 和多模态模型（仅显用的模型）
+      // 使用工具函数获取 LLM 和多模态模型
       const llmAndMultimodalModels = getLLMModels(response.models || [], true);
       const rerankModelsList = getRerankModels(response.models || [], true);
 
@@ -111,6 +100,15 @@ export default function AgentBuilder() {
     }
   }, []);
 
+  const fetchNL2SQLDatasources = useCallback(async () => {
+    try {
+      const response = await nl2sqlApi.listDatasources();
+      setNl2sqlDatasources(response.list || []);
+    } catch (error) {
+      logger.error('Failed to fetch NL2SQL datasources:', error);
+    }
+  }, []);
+
   const handleCreate = () => {
     setShowForm(true);
     setEditingPresetId('');
@@ -124,13 +122,53 @@ export default function AgentBuilder() {
       setPresetName(preset.preset_name);
       setDescription(preset.description);
       setIsPublic(preset.is_public);
-      setConfig(preset.config);
 
-      // Set selected MCP tools if any
-      if (preset.config.mcp_service_tools) {
-        setSelectedMcpTools(preset.config.mcp_service_tools);
+      // 从 tools 数组恢复配置到 config
+      const restoredConfig = { ...preset.config };
+
+      if (preset.tools && preset.tools.length > 0) {
+        for (const tool of preset.tools) {
+          if (!tool.enabled) continue;
+
+          switch (tool.type) {
+            case 'local_tools':
+              // 恢复知识库检索配置
+              if (tool.config.knowledge_retrieval) {
+                const kr = tool.config.knowledge_retrieval;
+                restoredConfig.enable_retriever = true;
+                restoredConfig.knowledge_id = kr.knowledge_id;
+                restoredConfig.rerank_model_id = kr.rerank_model_id;
+                restoredConfig.top_k = kr.top_k || 5;
+                restoredConfig.score = kr.score || 0.3;
+                restoredConfig.retrieve_mode = kr.retrieve_mode || 'rerank';
+                restoredConfig.rerank_weight = kr.rerank_weight;
+              }
+
+              // 恢复 NL2SQL 配置
+              if (tool.config.nl2sql) {
+                const nl2sql = tool.config.nl2sql;
+                restoredConfig.enable_nl2sql = true;
+                restoredConfig.nl2sql_datasource_id = nl2sql.datasource_id || nl2sql.datasource; // 兼容旧数据
+              }
+
+              // 恢复文件导出配置
+              if (tool.config.file_export) {
+                restoredConfig.enable_file_export = true;
+              }
+              break;
+
+            case 'mcp':
+              // 恢复 MCP 配置
+              if (tool.config.service_tools) {
+                restoredConfig.use_mcp = true;
+                restoredConfig.mcp_service_tools = tool.config.service_tools;
+              }
+              break;
+          }
+        }
       }
 
+      setConfig(restoredConfig);
       setShowForm(true);
     } catch (error) {
       logger.error('Failed to fetch preset:', error);
@@ -177,17 +215,65 @@ export default function AgentBuilder() {
     try {
       setLoading(true);
 
-      const configData: AgentConfig = {
-        ...config,
-        mcp_service_tools: config.use_mcp ? selectedMcpTools : undefined,
-      };
+      // 构造 tools 数组
+      const tools = [];
+
+      // 1. 构造 local_tools 配置（包含知识库检索、NL2SQL、文件导出等本地工具）
+      const localToolsConfig: Record<string, any> = {};
+
+      // 知识库检索工具
+      if (config.enable_retriever && config.knowledge_id) {
+        localToolsConfig.knowledge_retrieval = {
+          knowledge_id: config.knowledge_id,
+          rerank_model_id: config.rerank_model_id,
+          top_k: config.top_k,
+          score: config.score,
+          retrieve_mode: config.retrieve_mode,
+          rerank_weight: config.rerank_weight,
+        };
+      }
+
+      // NL2SQL 工具
+      if (config.enable_nl2sql && config.nl2sql_datasource_id) {
+        localToolsConfig.nl2sql = {
+          datasource_id: config.nl2sql_datasource_id,
+        };
+      }
+
+      // 文件导出工具
+      if (config.enable_file_export) {
+        localToolsConfig.file_export = {
+          enabled: true,
+        };
+      }
+
+      // 如果有本地工具配置，添加到 tools 数组
+      if (Object.keys(localToolsConfig).length > 0) {
+        tools.push({
+          type: 'local_tools',
+          enabled: true,
+          config: localToolsConfig,
+        });
+      }
+
+      // 2. MCP 工具（独立的工具类型）
+      if (config.use_mcp && config.mcp_service_tools && Object.keys(config.mcp_service_tools).length > 0) {
+        tools.push({
+          type: 'mcp',
+          enabled: true,
+          config: {
+            service_tools: config.mcp_service_tools,
+          }
+        });
+      }
 
       if (editingPresetId) {
         await agentApi.update(editingPresetId, {
           user_id: USER.ID,
           preset_name: presetName,
           description,
-          config: configData,
+          config,
+          tools: tools, // 直接传递 tools 数组，即使为空也要传递
           is_public: isPublic,
         });
 
@@ -205,7 +291,8 @@ export default function AgentBuilder() {
           user_id: USER.ID,
           preset_name: presetName,
           description,
-          config: configData,
+          config,
+          tools: tools.length > 0 ? tools : undefined, // 创建时如果没有工具可以不传
           is_public: isPublic,
         });
         showSuccess('创建成功');
@@ -219,7 +306,7 @@ export default function AgentBuilder() {
     } finally {
       setLoading(false);
     }
-  }, [presetName, config, editingPresetId, selectedMcpTools, description, isPublic, fetchPresets, confirm]);
+  }, [presetName, config, editingPresetId, description, isPublic, fetchPresets, confirm]);
 
   const handleCancel = () => {
     setShowForm(false);
@@ -238,23 +325,6 @@ export default function AgentBuilder() {
       retrieve_mode: 'rerank',
       use_mcp: false,
     });
-    setSelectedMcpTools({});
-  };
-
-  const toggleMcpTool = (serviceName: string, toolName: string) => {
-    setSelectedMcpTools(prev => {
-      const serviceTools = prev[serviceName] || [];
-      const newServiceTools = serviceTools.includes(toolName)
-        ? serviceTools.filter(t => t !== toolName)
-        : [...serviceTools, toolName];
-
-      if (newServiceTools.length === 0) {
-        const { [serviceName]: _, ...rest} = prev;
-        return rest;
-      }
-
-      return { ...prev, [serviceName]: newServiceTools };
-    });
   };
 
   const handleModelSelect = (model: Model) => {
@@ -264,6 +334,34 @@ export default function AgentBuilder() {
   const getSelectedModelName = (): string => {
     const model = models.find(m => m.model_id === config.model_id);
     return model ? model.name : '选择模型';
+  };
+
+  // 获取已配置的工具列表
+  const getConfiguredTools = (): string[] => {
+    const tools: string[] = [];
+
+    if (config.enable_retriever && config.knowledge_id) {
+      const kb = kbList.find(k => k.id === config.knowledge_id);
+      tools.push(`知识库检索 (${kb?.name || '未知'})`);
+    }
+
+    if (config.enable_nl2sql && config.nl2sql_datasource_id) {
+      const ds = nl2sqlDatasources.find(d => d.id === config.nl2sql_datasource_id);
+      tools.push(`NL2SQL (${ds?.name || '未知'})`);
+    }
+
+    if (config.enable_file_export) {
+      tools.push('文件导出');
+    }
+
+    if (config.use_mcp && config.mcp_service_tools) {
+      const mcpCount = Object.keys(config.mcp_service_tools).length;
+      if (mcpCount > 0) {
+        tools.push(`MCP 工具 (${mcpCount}个服务)`);
+      }
+    }
+
+    return tools;
   };
 
   // 删除 Agent 的所有对话记录
@@ -277,11 +375,9 @@ export default function AgentBuilder() {
         page_size: 1000, // 假设最多1000条对话
       });
 
-      // 2. 从元数据中筛选出属于该 Agent 的对话
+      // 2. 从 agent_preset_id 字段筛选出属于该 Agent 的对话
       const agentConvs = listResponse.conversations.filter((conv: any) => {
-        // 检查元数据中是否有 agent_preset_id
-        return conv.metadata?.agent_preset_id === presetId ||
-               conv.agent_preset_id === presetId; // 兼容直接字段和元数据字段
+        return conv.agent_preset_id === presetId;
       });
 
       if (agentConvs.length === 0) {
@@ -428,237 +524,61 @@ export default function AgentBuilder() {
                 </div>
               </div>
 
-              {/* Retriever Configuration */}
+              {/* Tool Configuration Button */}
               <div className="border-t pt-6">
                 <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
-                  <Database className="w-5 h-5" />
-                  知识检索配置
+                  <Wrench className="w-5 h-5" />
+                  工具配置
                 </h3>
+                {(() => {
+                  const configuredTools = getConfiguredTools();
+                  const hasTools = configuredTools.length > 0;
 
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      知识库
-                    </label>
-                    <select
-                      value={config.knowledge_id || ''}
-                      onChange={(e) => setConfig(prev => ({ ...prev, knowledge_id: e.target.value }))}
-                      className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">不使用知识库</option>
-                      {kbList.map((kb) => (
-                        <option key={kb.id} value={kb.id}>
-                          {kb.name}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-gray-500 mt-1">选择知识库后将自动启用知识检索</p>
-                  </div>
-
-                  {config.enable_retriever && config.knowledge_id && (
+                  return (
                     <>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            检索模式
-                          </label>
-                          <select
-                            value={config.retrieve_mode || 'rerank'}
-                            onChange={(e) => setConfig(prev => ({ ...prev, retrieve_mode: e.target.value as any }))}
-                            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            <option value="milvus">Milvus</option>
-                            <option value="rerank">Rerank</option>
-                            <option value="rrf">RRF</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Top K
-                          </label>
-                          <input
-                            type="number"
-                            value={config.top_k || 5}
-                            onChange={(e) => setConfig(prev => ({ ...prev, top_k: parseInt(e.target.value) }))}
-                            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            min={1}
-                            max={20}
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          相似度阈值: {config.score || 0.3}
-                        </label>
-                        <input
-                          type="range"
-                          value={config.score || 0.3}
-                          onChange={(e) => setConfig(prev => ({ ...prev, score: parseFloat(e.target.value) }))}
-                          className="w-full"
-                          min={0}
-                          max={1}
-                          step={0.1}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Rerank 模型
-                        </label>
-                        <select
-                          value={config.rerank_model_id || ''}
-                          onChange={(e) => setConfig(prev => ({ ...prev, rerank_model_id: e.target.value }))}
-                          className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="">选择模型</option>
-                          {rerankModels.map((model) => (
-                            <option key={model.model_id} value={model.model_id}>
-                              {model.name}
-                            </option>
-                          ))}
-                        </select>
-                        <p className="mt-1 text-xs text-gray-500">
-                          Embedding 模型将自动使用知识库绑定的模型
+                      <button
+                        type="button"
+                        onClick={() => setShowToolConfig(true)}
+                        className={`w-full px-4 py-3 rounded-lg transition-colors text-left ${
+                          hasTools
+                            ? 'bg-purple-50 border border-purple-200 hover:bg-purple-100'
+                            : 'border border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {hasTools ? (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium text-purple-900">
+                                已配置 {configuredTools.length} 个工具
+                              </span>
+                              <Wrench className="w-4 h-4 text-purple-600" />
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {configuredTools.map((tool, index) => (
+                                <span
+                                  key={index}
+                                  className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded"
+                                >
+                                  {tool}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center gap-2 text-gray-600">
+                            <Wrench className="w-5 h-5" />
+                            <span>配置 Agent 工具</span>
+                          </div>
+                        )}
+                      </button>
+                      {!hasTools && (
+                        <p className="mt-2 text-xs text-gray-500">
+                          点击配置知识库检索、NL2SQL、MCP 外部工具等
                         </p>
-                      </div>
-
-                      {/* Rerank权重配置 - 只在rerank模式下显示 */}
-                      {config.retrieve_mode === 'rerank' && (
-                        <div className="pt-4 border-t border-gray-100">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Rerank 权重: {((config.rerank_weight ?? 1.0) * 100).toFixed(0)}%
-                            <span className="text-xs text-gray-500 ml-2">
-                              (BM25: {((1 - (config.rerank_weight ?? 1.0)) * 100).toFixed(0)}%)
-                            </span>
-                          </label>
-                          <input
-                            type="range"
-                            value={config.rerank_weight ?? 1.0}
-                            onChange={(e) => setConfig(prev => ({ ...prev, rerank_weight: parseFloat(e.target.value) }))}
-                            min={0}
-                            max={1}
-                            step={0.05}
-                            className="w-full"
-                          />
-                          <div className="flex justify-between text-xs text-gray-500 mt-1">
-                            <span>纯BM25</span>
-                            <span>混合</span>
-                            <span>纯Rerank</span>
-                          </div>
-                          <div className="mt-2 text-xs text-gray-600 bg-gray-50 rounded p-2">
-                            {(config.rerank_weight ?? 1.0) === 1.0 && '🔹 当前使用纯 Rerank 语义检索'}
-                            {(config.rerank_weight ?? 1.0) === 0.0 && '🔹 当前使用纯 BM25 关键词检索'}
-                            {(config.rerank_weight ?? 1.0) > 0 && (config.rerank_weight ?? 1.0) < 1 && `🔹 混合检索：${((config.rerank_weight ?? 1.0) * 100).toFixed(0)}% Rerank + ${((1 - (config.rerank_weight ?? 1.0)) * 100).toFixed(0)}% BM25`}
-                          </div>
-                        </div>
                       )}
                     </>
-                  )}
-                </div>
-              </div>
-
-              {/* MCP Configuration */}
-              <div className="border-t pt-6">
-                <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
-                  <MessageSquare className="w-5 h-5" />
-                  MCP 工具配置
-                </h3>
-
-                <div className="space-y-4">
-                  {mcpServices.length > 0 ? (
-                    <>
-                      <p className="text-sm text-gray-600">选择要使用的 MCP 工具，选择后将自动启用</p>
-                      <div className="space-y-4">
-                        {mcpServices.map((service) => (
-                          <div key={service.id} className="border rounded-lg p-4">
-                            <h4 className="font-medium mb-2">{service.name}</h4>
-                            <p className="text-sm text-gray-600 mb-3">{service.description}</p>
-                            {service.tools && service.tools.length > 0 && (
-                              <div className="space-y-2">
-                                <p className="text-sm font-medium text-gray-700">可用工具：</p>
-                                <div className="space-y-3">
-                                  {service.tools.map((tool) => {
-                                    const isSelected = selectedMcpTools[service.name]?.includes(tool.name) || false;
-                                    const requiredParams = tool.inputSchema?.required || [];
-                                    const allParams = tool.inputSchema?.properties || {};
-                                    const paramNames = Object.keys(allParams);
-
-                                    return (
-                                      <label
-                                        key={tool.name}
-                                        className={`block p-3 border rounded-lg cursor-pointer transition-all ${
-                                          isSelected
-                                            ? 'bg-blue-50 border-blue-300 shadow-sm'
-                                            : 'bg-white border-gray-200 hover:bg-gray-50'
-                                        }`}
-                                      >
-                                        <div className="flex items-start gap-3">
-                                          <input
-                                            type="checkbox"
-                                            checked={isSelected}
-                                            onChange={() => toggleMcpTool(service.name, tool.name)}
-                                            className="mt-1 w-4 h-4 text-blue-500 rounded focus:ring-2 focus:ring-blue-500"
-                                          />
-                                          <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2 mb-1">
-                                              <span className="font-medium text-gray-900">{tool.name}</span>
-                                              {paramNames.length > 0 && (
-                                                <span className="text-xs text-gray-500">
-                                                  ({paramNames.length} 参数)
-                                                </span>
-                                              )}
-                                            </div>
-                                            {tool.description && (
-                                              <p className="text-sm text-gray-600 mb-2">{tool.description}</p>
-                                            )}
-                                            {paramNames.length > 0 && (
-                                              <div className="mt-2 space-y-1">
-                                                <p className="text-xs font-medium text-gray-700">参数：</p>
-                                                <div className="flex flex-wrap gap-1">
-                                                  {paramNames.map((paramName) => {
-                                                    const paramInfo = allParams[paramName];
-                                                    const isRequired = requiredParams.includes(paramName);
-                                                    return (
-                                                      <span
-                                                        key={paramName}
-                                                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
-                                                          isRequired
-                                                            ? 'bg-red-100 text-red-700'
-                                                            : 'bg-gray-100 text-gray-700'
-                                                        }`}
-                                                        title={paramInfo?.description || paramInfo?.type}
-                                                      >
-                                                        {paramName}
-                                                        {isRequired && <span className="ml-1">*</span>}
-                                                        {paramInfo?.type && (
-                                                          <span className="ml-1 text-gray-500">
-                                                            :{paramInfo.type}
-                                                          </span>
-                                                        )}
-                                                      </span>
-                                                    );
-                                                  })}
-                                                </div>
-                                              </div>
-                                            )}
-                                          </div>
-                                        </div>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    <p className="text-sm text-gray-500">暂无可用的 MCP 服务，请先在 MCP 服务页面添加服务</p>
-                  )}
-                </div>
+                  );
+                })()}
               </div>
 
               {/* Submit Buttons */}
@@ -754,6 +674,19 @@ export default function AgentBuilder() {
           onSelect={handleModelSelect}
           currentModelId={config.model_id}
           modelTypes={['llm', 'multimodal']}
+        />
+      )}
+
+      {/* Tool Configuration Modal */}
+      {showToolConfig && (
+        <ToolConfigurationModal
+          config={config}
+          onConfigChange={setConfig}
+          kbList={kbList}
+          rerankModels={rerankModels}
+          mcpServices={mcpServices}
+          nl2sqlDatasources={nl2sqlDatasources}
+          onClose={() => setShowToolConfig(false)}
         />
       )}
 

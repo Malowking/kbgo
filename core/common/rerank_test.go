@@ -1,8 +1,9 @@
 package common
 
 import (
-	"context"
 	"testing"
+
+	"github.com/gogf/gf/v2/os/gctx"
 )
 
 // MockRerankConfig 用于测试的mock配置
@@ -25,7 +26,7 @@ func (m *MockRerankConfig) GetRerankModel() string {
 }
 
 func TestNewReranker(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 
 	tests := []struct {
 		name    string
@@ -91,7 +92,7 @@ func TestNewReranker(t *testing.T) {
 }
 
 func TestRerankEmptyDocs(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	config := &MockRerankConfig{
 		apiKey:  "test-key",
 		baseURL: "https://api.example.com/v1",
@@ -114,7 +115,7 @@ func TestRerankEmptyDocs(t *testing.T) {
 }
 
 func TestRerankTopKHandling(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	config := &MockRerankConfig{
 		apiKey:  "test-key",
 		baseURL: "https://api.example.com/v1",
@@ -175,7 +176,7 @@ func TestRerankIntegration(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	ctx := context.Background()
+	ctx := gctx.New()
 
 	// 这里需要从配置文件或环境变量读取真实配置
 	// 为了测试，我们使用mock配置，实际使用时需要替换

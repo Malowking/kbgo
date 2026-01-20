@@ -1,5 +1,12 @@
 import { apiClient } from './api';
-import { handleSSEStream, handleSSEStreamWithFormData } from '@/lib/sse-client';
+import {
+  handleSSEStream,
+  handleSSEStreamWithFormData,
+  ToolCallInfo,
+  LLMIterationInfo,
+  ToolPlanInfo,
+  ToolExecutionEventInfo,
+} from '@/lib/sse-client';
 import type {
   KnowledgeBase,
   CreateKBRequest,
@@ -102,6 +109,8 @@ export const conversationApi = {
   // 获取会话列表
   list: (params?: {
     knowledge_id?: string;
+    conversation_type?: string;
+    agent_preset_id?: string;
     page?: number;
     page_size?: number;
     status?: string;
@@ -130,6 +139,10 @@ export const conversationApi = {
   // 批量删除会话
   batchDelete: (convIds: string[]) =>
     apiClient.post<{ deleted_count: number; failed_convs?: string[]; message: string }>('/api/v1/conversations/batch/delete', { conv_ids: convIds }),
+
+  // 创建Agent对话
+  createAgentConversation: (data: { conv_id: string; preset_id: string; user_id: string; title?: string }) =>
+    apiClient.post<{ conv_id: string }>('/api/v1/conversations/agent', data),
 };
 
 // 聊天 API
@@ -142,8 +155,26 @@ export const chatApi = {
   sendStream: async (
     data: ChatRequest & { files?: File[] },
     onMessage: (chunk: string, reasoningChunk?: string, references?: any[]) => void,
-    onError?: (error: Error) => void
+    onError?: (error: Error) => void,
+    callbacks?: {
+      onToolPlanStart?: (messageId: string) => void;
+      onToolPlanThinking?: (messageId: string, content: string) => void;
+      onToolPlanComplete?: (info: ToolPlanInfo) => void;
+      onToolExecutionStart?: (info: ToolExecutionEventInfo) => void;
+      onToolExecutionProgress?: (info: ToolExecutionEventInfo) => void;
+      onToolExecutionComplete?: (info: ToolExecutionEventInfo) => void;
+      onToolExecutionError?: (info: ToolExecutionEventInfo) => void;
+      onFinalAnswerStart?: (messageId: string) => void;
+      onFinalAnswerComplete?: (messageId: string) => void;
+      onToolResults?: (toolResults: any[]) => void;
+    }
   ) => {
+    // 强制验证新代码已加载
+
+    if (!callbacks) {
+      console.error('[chatApi.sendStream] ERROR: callbacks is undefined!');
+    }
+
     const hasFiles = data.files && data.files.length > 0;
 
     // 准备回调函数
@@ -170,14 +201,14 @@ export const chatApi = {
       formData.append('model_id', data.model_id);
       formData.append('stream', 'true');
 
-      if (data.embedding_model_id) formData.append('embedding_model_id', data.embedding_model_id);
       if (data.rerank_model_id) formData.append('rerank_model_id', data.rerank_model_id);
       if (data.knowledge_id) formData.append('knowledge_id', data.knowledge_id);
       if (data.enable_retriever !== undefined) formData.append('enable_retriever', data.enable_retriever.toString());
       if (data.top_k !== undefined) formData.append('top_k', data.top_k.toString());
       if (data.score !== undefined) formData.append('score', data.score.toString());
       if (data.retrieve_mode) formData.append('retrieve_mode', data.retrieve_mode);
-      if (data.use_mcp !== undefined) formData.append('use_mcp', data.use_mcp.toString());
+      if (data.rerank_weight !== undefined) formData.append('rerank_weight', data.rerank_weight.toString());
+      if (data.tools) formData.append('tools', JSON.stringify(data.tools));
 
       // 添加文件
       data.files!.forEach(file => {
@@ -188,6 +219,16 @@ export const chatApi = {
         onChunk: handleChunk,
         onReasoning: handleReasoning,
         onReferences: handleReferences,
+        onToolPlanStart: callbacks?.onToolPlanStart,
+        onToolPlanThinking: callbacks?.onToolPlanThinking,
+        onToolPlanComplete: callbacks?.onToolPlanComplete,
+        onToolExecutionStart: callbacks?.onToolExecutionStart,
+        onToolExecutionProgress: callbacks?.onToolExecutionProgress,
+        onToolExecutionComplete: callbacks?.onToolExecutionComplete,
+        onToolExecutionError: callbacks?.onToolExecutionError,
+        onFinalAnswerStart: callbacks?.onFinalAnswerStart,
+        onFinalAnswerComplete: callbacks?.onFinalAnswerComplete,
+        onToolResults: callbacks?.onToolResults,
         onError,
       });
     } else {
@@ -196,6 +237,16 @@ export const chatApi = {
         onChunk: handleChunk,
         onReasoning: handleReasoning,
         onReferences: handleReferences,
+        onToolPlanStart: callbacks?.onToolPlanStart,
+        onToolPlanThinking: callbacks?.onToolPlanThinking,
+        onToolPlanComplete: callbacks?.onToolPlanComplete,
+        onToolExecutionStart: callbacks?.onToolExecutionStart,
+        onToolExecutionProgress: callbacks?.onToolExecutionProgress,
+        onToolExecutionComplete: callbacks?.onToolExecutionComplete,
+        onToolExecutionError: callbacks?.onToolExecutionError,
+        onFinalAnswerStart: callbacks?.onFinalAnswerStart,
+        onFinalAnswerComplete: callbacks?.onFinalAnswerComplete,
+        onToolResults: callbacks?.onToolResults,
         onError,
       });
     }
@@ -321,7 +372,23 @@ export const agentApi = {
   chatStream: async (
     data: AgentChatRequest & { files?: File[] },
     onMessage: (chunk: string, reasoningChunk?: string, references?: Document[]) => void,
-    onError?: (error: Error) => void
+    onError?: (error: Error) => void,
+    // 新增：工具调用相关回调
+    callbacks?: {
+      onToolCallStart?: (toolCall: ToolCallInfo) => void;
+      onToolCallEnd?: (toolCall: ToolCallInfo) => void;
+      onLLMIteration?: (iteration: LLMIterationInfo) => void;
+      onThinking?: (thinking: string) => void;
+      onToolPlanStart?: (messageId: string) => void;
+      onToolPlanThinking?: (messageId: string, content: string) => void;
+      onToolPlanComplete?: (info: ToolPlanInfo) => void;
+      onToolExecutionStart?: (info: ToolExecutionEventInfo) => void;
+      onToolExecutionProgress?: (info: ToolExecutionEventInfo) => void;
+      onToolExecutionComplete?: (info: ToolExecutionEventInfo) => void;
+      onToolExecutionError?: (info: ToolExecutionEventInfo) => void;
+      onFinalAnswerStart?: (messageId: string) => void;
+      onFinalAnswerComplete?: (messageId: string) => void;
+    }
   ) => {
     const hasFiles = data.files && data.files.length > 0;
 
@@ -360,6 +427,19 @@ export const agentApi = {
         onChunk: handleChunk,
         onReasoning: handleReasoning,
         onReferences: handleReferences,
+        onToolCallStart: callbacks?.onToolCallStart,
+        onToolCallEnd: callbacks?.onToolCallEnd,
+        onLLMIteration: callbacks?.onLLMIteration,
+        onThinking: callbacks?.onThinking,
+        onToolPlanStart: callbacks?.onToolPlanStart,
+        onToolPlanThinking: callbacks?.onToolPlanThinking,
+        onToolPlanComplete: callbacks?.onToolPlanComplete,
+        onToolExecutionStart: callbacks?.onToolExecutionStart,
+        onToolExecutionProgress: callbacks?.onToolExecutionProgress,
+        onToolExecutionComplete: callbacks?.onToolExecutionComplete,
+        onToolExecutionError: callbacks?.onToolExecutionError,
+        onFinalAnswerStart: callbacks?.onFinalAnswerStart,
+        onFinalAnswerComplete: callbacks?.onFinalAnswerComplete,
         onError,
       });
     } else {
@@ -368,8 +448,165 @@ export const agentApi = {
         onChunk: handleChunk,
         onReasoning: handleReasoning,
         onReferences: handleReferences,
+        onToolCallStart: callbacks?.onToolCallStart,
+        onToolCallEnd: callbacks?.onToolCallEnd,
+        onLLMIteration: callbacks?.onLLMIteration,
+        onThinking: callbacks?.onThinking,
+        onToolPlanStart: callbacks?.onToolPlanStart,
+        onToolPlanThinking: callbacks?.onToolPlanThinking,
+        onToolPlanComplete: callbacks?.onToolPlanComplete,
+        onToolExecutionStart: callbacks?.onToolExecutionStart,
+        onToolExecutionProgress: callbacks?.onToolExecutionProgress,
+        onToolExecutionComplete: callbacks?.onToolExecutionComplete,
+        onToolExecutionError: callbacks?.onToolExecutionError,
+        onFinalAnswerStart: callbacks?.onFinalAnswerStart,
+        onFinalAnswerComplete: callbacks?.onFinalAnswerComplete,
         onError,
       });
     }
   },
+};
+
+// NL2SQL API
+export const nl2sqlApi = {
+  // 获取数据源列表
+  listDatasources: () =>
+    apiClient.get<{ list: any[]; total: number }>('/api/v1/nl2sql/datasources'),
+
+  // 创建数据源
+  createDatasource: (data: {
+    name: string;
+    type: string;
+    db_type?: string;
+    config: Record<string, any>;
+    created_by?: string;
+    embedding_model_id: string;
+  }) =>
+    apiClient.post<{ id: string }>('/api/v1/nl2sql/datasources', data),
+
+  // 上传CSV/Excel文件
+  uploadFile: (file: File, name: string, createdBy: string, displayName?: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('name', name);
+    formData.append('created_by', createdBy);
+    if (displayName) {
+      formData.append('display_name', displayName);
+    }
+    return apiClient.post<{
+      datasource_id: string;
+      file_path: string;
+      status: string;
+      message: string;
+    }>('/api/v1/nl2sql/upload-file', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+  },
+
+  // 添加表到现有数据源
+  addTable: (datasourceId: string, file: File, displayName?: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('datasource_id', datasourceId);
+    if (displayName) {
+      formData.append('display_name', displayName);
+    }
+    return apiClient.post<{
+      datasource_id: string;
+      table_name: string;
+      row_count: number;
+      status: string;
+      message: string;
+    }>(`/api/v1/nl2sql/datasources/${datasourceId}/tables`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+  },
+
+  // 删除数据源
+  deleteDatasource: (id: string) =>
+    apiClient.delete<{ success: boolean }>(`/api/v1/nl2sql/datasources/${id}`),
+
+  // 删除表
+  deleteTable: (datasourceId: string, tableId: string) =>
+    apiClient.delete<{ success: boolean; message: string }>(`/api/v1/nl2sql/datasources/${datasourceId}/tables/${tableId}`),
+
+  // 解析数据源Schema
+  parseSchema: (datasourceId: string, data: { llm_model_id: string }) =>
+    apiClient.post<{ task_id: string }>(`/api/v1/nl2sql/datasources/${datasourceId}/parse`, data),
+
+  // 获取数据源Schema信息
+  getSchema: (datasourceId: string) =>
+    apiClient.get<any>(`/api/v1/nl2sql/datasources/${datasourceId}/schema`),
+
+  // 执行NL2SQL查询
+  query: (data: {
+    datasource_id: string;
+    question: string;
+    session_id?: string;
+    llm_model_id: string;
+  }) =>
+    apiClient.post<{
+      query_log_id: string;
+      sql: string;
+      result?: {
+        columns: string[];
+        data: any[];
+        row_count: number;
+      };
+      explanation?: string;
+      error?: string;
+    }>('/api/v1/nl2sql/query', data),
+};
+
+// Claude Skills API
+export const skillsApi = {
+  // 获取 Skills 列表
+  list: (params?: {
+    status?: 0 | 1;
+    category?: string;
+    include_public?: boolean;
+    public_only?: boolean;
+    keyword?: string;
+    order_by?: string;
+    page?: number;
+    page_size?: number;
+  }) =>
+    apiClient.get<{ list: import('@/types').SkillItem[]; total: number; page: number }>('/api/v1/skills', { params }),
+
+  // 获取单个 Skill
+  get: (id: string) =>
+    apiClient.get<import('@/types').ClaudeSkill>(`/api/v1/skills/${id}`),
+
+  // 创建 Skill
+  create: (data: import('@/types').CreateSkillRequest) =>
+    apiClient.post<{ id: string }>('/api/v1/skills', data),
+
+  // 更新 Skill
+  update: (id: string, data: Omit<import('@/types').UpdateSkillRequest, 'id'>) =>
+    apiClient.put<void>(`/api/v1/skills/${id}`, data),
+
+  // 删除 Skill
+  delete: (id: string) =>
+    apiClient.delete<void>(`/api/v1/skills/${id}`),
+
+  // 执行 Skill
+  execute: (id: string, args: Record<string, any>) =>
+    apiClient.post<import('@/types').SkillExecuteResponse>(`/api/v1/skills/${id}/execute`, { arguments: args }),
+
+  // 获取 Skill 调用日志
+  logs: (id: string, params?: {
+    conversation_id?: string;
+    success?: boolean;
+    page?: number;
+    page_size?: number;
+  }) =>
+    apiClient.get<{ list: import('@/types').SkillCallLogItem[]; total: number; page: number }>(`/api/v1/skills/${id}/logs`, { params }),
+
+  // 获取分类列表
+  categories: () =>
+    apiClient.get<{ categories: import('@/types').SkillCategoryItem[] }>('/api/v1/skills/categories'),
 };

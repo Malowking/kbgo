@@ -10,6 +10,11 @@ import Models from '@/pages/Models';
 import MCP from '@/pages/MCP';
 import AgentBuilder from '@/pages/AgentBuilder';
 import AgentChat from '@/pages/AgentChat';
+import AgentTools from '@/pages/AgentTools';
+import NL2SQLDataSource from '@/pages/NL2SQLDataSource';
+import NL2SQLDataSourceDetail from '@/pages/NL2SQLDataSource/Detail';
+import ClaudeSkills from '@/pages/ClaudeSkills';
+import SkillForm from '@/pages/ClaudeSkills/SkillForm';
 
 function App() {
   return (
@@ -52,10 +57,16 @@ function App() {
           <Route path="knowledge-base" element={<KnowledgeBase />} />
           <Route path="knowledge-base/:id" element={<KnowledgeBaseDetail />} />
           <Route path="kb/:kbId/document/:docId" element={<DocumentDetail />} />
+          <Route path="nl2sql-datasource" element={<NL2SQLDataSource />} />
+          <Route path="nl2sql-datasource/:id" element={<NL2SQLDataSourceDetail />} />
           <Route path="documents" element={<Documents />} />
           <Route path="models" element={<Models />} />
           <Route path="mcp" element={<MCP />} />
           <Route path="agent-builder" element={<AgentBuilder />} />
+          <Route path="agent-tools/:presetId" element={<AgentTools />} />
+          <Route path="claude-skills" element={<ClaudeSkills />} />
+          <Route path="claude-skills/create" element={<SkillForm />} />
+          <Route path="claude-skills/edit/:id" element={<SkillForm />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -153,8 +153,8 @@ type RegisterModelReq struct {
 	ModelName           string                 `json:"model_name" v:"required"`                                                        // 模型名称
 	ModelType           string                 `json:"model_type" v:"required|in:llm,embedding,reranker,multimodal,image,video,audio"` // 模型类型
 	Provider            string                 `json:"provider"`                                                                       // 提供商（openai, ollama等）（可选）
-	BaseURL             string                 `json:"base_url"`                                                                       // API基础URL（可选）
-	APIKey              string                 `json:"api_key"`                                                                        // API密钥（可选）
+	BaseURL             string                 `json:"base_url" v:"required"`                                                          // API基础URL
+	APIKey              string                 `json:"api_key" v:"required"`                                                           // API密钥
 	MaxCompletionTokens int                    `json:"max_completion_tokens"`                                                          // 最大输出token数（可选）
 	Dimension           int                    `json:"dimension"`                                                                      // 向量维度（embedding模型专用）
 	Config              map[string]interface{} `json:"config"`                                                                         // 其他配置（可选）
@@ -224,6 +224,6 @@ type GetRewriteModelReq struct {
 // GetRewriteModelRes 获取重写模型响应
 type GetRewriteModelRes struct {
 	g.Meta       `mime:"application/json"`
-	RewriteModel *model.ModelConfig `json:"rewrite_model"` // 重写模型配置，未配置时为null
-	Configured   bool               `json:"configured"`    // 是否已配置重写模型
+	RewriteModel *model.ChatModelConfig `json:"rewrite_model"` // 重写模型配置，未配置时为null
+	Configured   bool                   `json:"configured"`    // 是否已配置重写模型
 }

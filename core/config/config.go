@@ -86,6 +86,7 @@ type Config struct {
 	APIKey         string
 	BaseURL        string
 	EmbeddingModel string
+	dim            int
 	ChatModel      string
 	// retriever 配置
 	MetricType string // 向量相似度度量类型，如 "COSINE", "L2", "IP" 等，默认 "COSINE"
@@ -104,35 +105,20 @@ type IndexerConfig struct {
 	APIKey         string                   // API密钥（用于调用embedding服务）
 	BaseURL        string                   // API基础URL（用于调用embedding服务）
 	EmbeddingModel string                   // Embedding模型名称
+	Dim            int                      // Embedding模型维度
 	MetricType     string                   // 向量相似度度量类型
 }
 
-// Config 实现 embedding config 接口
-func (c *Config) GetAPIKey() string         { return c.APIKey }
-func (c *Config) GetBaseURL() string        { return c.BaseURL }
-func (c *Config) GetEmbeddingModel() string { return c.EmbeddingModel }
-
-// RetrieverConfig 实现 embedding config 接口
-func (c *RetrieverConfig) GetAPIKey() string         { return c.APIKey }
-func (c *RetrieverConfig) GetBaseURL() string        { return c.BaseURL }
-func (c *RetrieverConfig) GetEmbeddingModel() string { return c.EmbeddingModel }
-
-// RetrieverConfig 实现 rerank config 接口
+// GetRerankAPIKey RetrieverConfig 实现 rerank config 接口
 func (c *RetrieverConfig) GetRerankAPIKey() string  { return c.RerankAPIKey }
 func (c *RetrieverConfig) GetRerankBaseURL() string { return c.RerankBaseURL }
 func (c *RetrieverConfig) GetRerankModel() string   { return c.RerankModel }
 
-// RetrieverConfig 实现 GeneralRetrieverConfig 接口
-func (c *RetrieverConfig) GetTopK() int            { return c.TopK }
-func (c *RetrieverConfig) GetScore() float64       { return c.Score }
-func (c *RetrieverConfig) GetEnableRewrite() bool  { return c.EnableRewrite }
-func (c *RetrieverConfig) GetRewriteAttempts() int { return c.RewriteAttempts }
-func (c *RetrieverConfig) GetRetrieveMode() string { return c.RetrieveMode }
-
-// IndexerConfig 实现 embedding config 接口
+// GetAPIKey IndexerConfig 实现 embedding config 接口
 func (c *IndexerConfig) GetAPIKey() string         { return c.APIKey }
 func (c *IndexerConfig) GetBaseURL() string        { return c.BaseURL }
 func (c *IndexerConfig) GetEmbeddingModel() string { return c.EmbeddingModel }
+func (c *IndexerConfig) GetDimension() int         { return c.Dim }
 
 func (x *Config) Copy() *Config {
 	return &Config{
@@ -142,6 +128,7 @@ func (x *Config) Copy() *Config {
 		APIKey:         x.APIKey,
 		BaseURL:        x.BaseURL,
 		EmbeddingModel: x.EmbeddingModel,
+		dim:            x.dim,
 		ChatModel:      x.ChatModel,
 		MetricType:     x.MetricType,
 	}
