@@ -1,8 +1,14 @@
 package v1
 
 import (
-	"github.com/Malowking/kbgo/internal/model/entity"
+	"github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
+)
+
+const (
+	ChunkStatusDisable Status = 0
+	ChunkStatusActive  Status = 1
+	ChunkStatusFailed  Status = 2
 )
 
 type ChunksListReq struct {
@@ -14,10 +20,10 @@ type ChunksListReq struct {
 
 type ChunksListRes struct {
 	g.Meta `mime:"application/json"`
-	Data   []entity.KnowledgeChunks `json:"data"`
-	Total  int                      `json:"total"`
-	Page   int                      `json:"page"`
-	Size   int                      `json:"size"`
+	Data   []gorm.KnowledgeChunks `json:"data"`
+	Total  int                    `json:"total"`
+	Page   int                    `json:"page"`
+	Size   int                    `json:"size"`
 }
 
 type ChunkDeleteReq struct {

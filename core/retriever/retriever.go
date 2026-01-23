@@ -2,7 +2,6 @@ package retriever
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"sync"
 
@@ -10,11 +9,11 @@ import (
 	"github.com/Malowking/kbgo/core/config"
 	"github.com/Malowking/kbgo/core/formatter"
 	"github.com/Malowking/kbgo/core/model"
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// Retrieve 执行检索（主方法）
+// Retrieve 执行检索
 func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveReq) ([]*schema.Document, error) {
 	// 使用配置中的默认值填充请求中未提供的参数
 	if req.TopK == nil {
@@ -38,6 +37,19 @@ func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 		req.RetrieveMode = &defaultMode
 	}
 
+	// 设置默认的Rerank权重为1.0（100%使用rerank，0%使用BM25）
+	if req.RerankWeight == nil {
+		defaultWeight := 1.0
+		req.RerankWeight = &defaultWeight
+	}
+
+	// 验证权重范围
+	if *req.RerankWeight < 0.0 || *req.RerankWeight > 1.0 {
+		defaultWeight := 1.0
+		req.RerankWeight = &defaultWeight
+		g.Log().Warningf(ctx, "RerankWeight must be in [0.0, 1.0], reset to default 1.0")
+	}
+
 	// 根据 EnableRewrite 参数决定是否启用查询重写
 	if !*req.EnableRewrite {
 		// 不启用查询重写，直接使用原始查询进行检索
@@ -51,19 +63,25 @@ func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 		used        = ""          // 记录已经使用过的关键词
 	)
 
-	// 从注册表获取 LLM 模型配置
-	llmModels := model.Registry.GetByType(model.ModelTypeLLM)
-	if len(llmModels) == 0 {
-		return nil, fmt.Errorf("no LLM models registered in registry")
+	// 检查是否配置了重写模型
+	if !model.Registry.HasRewriteModel() {
+		// 直接使用原始查询进行检索
+		reqCopy := req.Copy()
+		reqCopy.optQuery = req.Query
+		return retrieveDoOnce(ctx, conf, reqCopy)
 	}
 
-	// 随机选择一个 LLM 模型
-	selectedModel := llmModels[0] // 简化处理，使用第一个模型
-	g.Log().Infof(ctx, "Selected LLM model for rewrite: %s (Provider: %s)", selectedModel.Name, selectedModel.Provider)
+	// 从注册表获取重写模型配置
+	rewriteModel := model.Registry.GetRewriteModel()
+	if rewriteModel == nil {
+		g.Log().Warningf(ctx, "重写模型未正确配置，跳过查询重写")
+		// 直接使用原始查询进行检索
+		reqCopy := req.Copy()
+		reqCopy.optQuery = req.Query
+		return retrieveDoOnce(ctx, conf, reqCopy)
+	}
 
-	// 创建模型服务
-	modelFormatter := formatter.NewOpenAIFormatter()
-	modelService := model.NewModelService(selectedModel.APIKey, selectedModel.BaseURL, modelFormatter)
+	g.Log().Infof(ctx, "使用重写模型: %s (ID: %s)", rewriteModel.Name, rewriteModel.ModelID)
 
 	// 确定重写次数，默认为3次
 	rewriteAttempts := *req.RewriteAttempts
@@ -71,9 +89,13 @@ func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 		rewriteAttempts = 3
 	}
 
-	// 优化策略：串行执行查询重写（保证查询多样性），并发执行检索（提高速度）
 	// 第一步：串行生成多个优化查询
 	optimizedQueries := make([]string, 0, rewriteAttempts)
+
+	// 创建模型服务
+	modelFormatter := formatter.NewOpenAIFormatter()
+	modelService := model.NewModelService(rewriteModel.APIKey, rewriteModel.BaseURL, modelFormatter)
+
 	for i := 0; i < rewriteAttempts; i++ {
 		// 生成优化查询消息
 		optMessages, err := common.GetOptimizedQueryMessages(used, req.Query, req.KnowledgeId)
@@ -82,14 +104,16 @@ func Retrieve(ctx context.Context, conf *config.RetrieverConfig, req *RetrieveRe
 			continue
 		}
 
-		// 使用 OpenAI 通用对话接口调用 LLM 进行查询重写
+		// 使用重写模型进行查询重写
+		g.Log().Infof(ctx, "使用重写模型 %s 进行查询重写，尝试 %d/%d", rewriteModel.Name, i+1, rewriteAttempts)
+
 		resp, err := modelService.ChatCompletion(ctx, model.ChatCompletionParams{
-			ModelName:   selectedModel.Name,
+			ModelName:   rewriteModel.Name,
 			Messages:    optMessages,
 			Temperature: 0.7,
 		})
 		if err != nil {
-			g.Log().Errorf(ctx, "ChatCompletion failed at attempt %d: %v", i+1, err)
+			g.Log().Errorf(ctx, "Query rewrite failed at attempt %d: %v", i+1, err)
 			continue
 		}
 
@@ -162,11 +186,11 @@ func retrieveDoOnce(ctx context.Context, conf *config.RetrieverConfig, req *Retr
 
 	// 根据检索模式选择不同的处理策略
 	switch *req.RetrieveMode {
-	case RetrieveModeMilvus:
-		// 模式1: 仅使用Milvus向量检索，直接调用VectorStore的方法
+	case RetrieveModeSimple:
+		// 模式1: 普通向量检索，直接调用VectorStore的方法
 		return conf.VectorStore.VectorSearchOnly(ctx, conf, req.optQuery, req.KnowledgeId, *req.TopK, *req.Score)
 	case RetrieveModeRerank:
-		// 模式2: Milvus + Rerank
+		// 模式2: simple + Rerank
 		return retrieveWithRerank(ctx, conf, req)
 	case RetrieveModeRRF:
 		// 模式3: RRF混合检索

@@ -2,8 +2,8 @@ package dao
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/Malowking/kbgo/core/errors"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
 )
@@ -111,14 +111,14 @@ func (d *MCPRegistryDAO) UpdateStatus(ctx context.Context, id string, status int
 func (d *MCPRegistryDAO) Exists(ctx context.Context, name string, excludeID ...string) (bool, error) {
 	query := GetDB().WithContext(ctx).Model(&gormModel.MCPRegistry{}).Where("name = ?", name)
 
-	// 如果提供了excludeID，则排除该ID（用于更新时检查重名）
+	// 如果提供了excludeID，则排除该ID
 	if len(excludeID) > 0 && excludeID[0] != "" {
 		query = query.Where("id != ?", excludeID[0])
 	}
 
 	var count int64
 	if err := query.Count(&count).Error; err != nil {
-		return false, fmt.Errorf("failed to check MCP registry existence: %v", err)
+		return false, errors.Newf(errors.ErrDatabaseQuery, "failed to check MCP registry existence: %v", err)
 	}
 
 	return count > 0, nil

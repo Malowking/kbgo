@@ -1,19 +1,19 @@
 package formatter
 
 import (
-	"context"
 	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/gogf/gf/v2/os/gctx"
+
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/sashabaranov/go-openai"
 )
 
 // QwenFormatter 通义千问消息格式适配器
-// 负责将消息转换为通义千问要求的格式，特别是多模态消息
 type QwenFormatter struct{}
 
 // NewQwenFormatter 创建Qwen格式适配器
@@ -28,10 +28,39 @@ func (f *QwenFormatter) FormatMessages(messages []*schema.Message) ([]openai.Cha
 	for _, msg := range messages {
 		openaiMsg, err := f.formatSingleMessage(msg)
 		if err != nil {
-			g.Log().Errorf(context.Background(), "Failed to convert message: %v", err)
+			g.Log().Errorf(gctx.New(), "Failed to convert message: %v", err)
 			continue
 		}
+
 		result = append(result, openaiMsg)
+
+		// 如果 assistant 消息有 tool_calls，检查 Extra["tool"] 字段
+		// 将其转换为独立的 tool 角色消息
+		if msg.Role == schema.Assistant && len(msg.ToolCalls) > 0 {
+			if msg.Extra != nil {
+				if toolData, exists := msg.Extra["tool"]; exists {
+					toolResults := toolData.([]map[string]interface{})
+					// 处理 tool 结果
+					for _, toolResult := range toolResults {
+						toolMsg := openai.ChatCompletionMessage{
+							Role: "tool",
+						}
+
+						// 提取 content
+						if content, ok := toolResult["content"].(string); ok {
+							toolMsg.Content = content
+						}
+
+						// 提取 tool_call_id
+						if toolCallID, ok := toolResult["tool_call_id"].(string); ok {
+							toolMsg.ToolCallID = toolCallID
+						}
+
+						result = append(result, toolMsg)
+					}
+				}
+			}
+		}
 	}
 
 	return result, nil
@@ -43,17 +72,35 @@ func (f *QwenFormatter) formatSingleMessage(msg *schema.Message) (openai.ChatCom
 		Role: string(msg.Role),
 	}
 
+	// 如果是 Tool 角色的消息，必须设置 ToolCallID
+	if msg.Role == schema.Tool {
+		openaiMsg.ToolCallID = msg.ToolCallID
+		openaiMsg.Content = msg.Content
+		return openaiMsg, nil
+	}
+
+	// 如果是 Assistant 角色且有 ToolCalls，需要转换
+	if msg.Role == schema.Assistant && len(msg.ToolCalls) > 0 {
+		openaiMsg.Content = msg.Content
+		openaiMsg.ToolCalls = make([]openai.ToolCall, len(msg.ToolCalls))
+		for i, tc := range msg.ToolCalls {
+			openaiMsg.ToolCalls[i] = openai.ToolCall{
+				ID:   tc.ID,
+				Type: openai.ToolType(tc.Type),
+				Function: openai.FunctionCall{
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				},
+			}
+		}
+		return openaiMsg, nil
+	}
+
 	// 检查是否有多模态内容
 	if len(msg.UserInputMultiContent) > 0 {
 		// 使用多模态内容数组格式（通义千问要求的格式）
 		contentParts := f.convertUserInputMultiContent(msg.UserInputMultiContent)
 		openaiMsg.MultiContent = contentParts
-
-	} else if len(msg.MultiContent) > 0 {
-		// 使用旧版MultiContent字段
-		contentParts := f.convertMultiContent(msg.MultiContent)
-		openaiMsg.MultiContent = contentParts
-
 	} else {
 		// 普通文本消息
 		// 对于User角色，在多模态场景下也应该使用数组格式
@@ -80,13 +127,13 @@ func (f *QwenFormatter) convertUserInputMultiContent(parts []schema.MessageInput
 
 	for _, part := range parts {
 		switch part.Type {
-		case schema.ChatMessagePartTypeText:
+		case schema.MessagePartTypeText:
 			contentParts = append(contentParts, openai.ChatMessagePart{
 				Type: openai.ChatMessagePartTypeText,
 				Text: part.Text,
 			})
 
-		case schema.ChatMessagePartTypeImageURL:
+		case schema.MessagePartTypeImageURL:
 			if part.Image != nil {
 				imageURL := f.buildImageURL(part.Image)
 				if imageURL != "" {
@@ -100,56 +147,19 @@ func (f *QwenFormatter) convertUserInputMultiContent(parts []schema.MessageInput
 				}
 			}
 
-		case schema.ChatMessagePartTypeAudioURL:
+		case schema.MessagePartTypeAudioURL:
 			// 通义千问可能不支持音频，作为文本描述
 			contentParts = append(contentParts, openai.ChatMessagePart{
 				Type: openai.ChatMessagePartTypeText,
 				Text: "[音频文件]",
 			})
 
-		case schema.ChatMessagePartTypeVideoURL:
+		case schema.MessagePartTypeVideoURL:
 			// 通义千问可能不支持视频，作为文本描述
 			contentParts = append(contentParts, openai.ChatMessagePart{
 				Type: openai.ChatMessagePartTypeText,
 				Text: "[视频文件]",
 			})
-		}
-	}
-
-	return contentParts
-}
-
-// convertMultiContent 转换旧版MultiContent
-func (f *QwenFormatter) convertMultiContent(parts []schema.ChatMessagePart) []openai.ChatMessagePart {
-	var contentParts []openai.ChatMessagePart
-
-	for _, part := range parts {
-		switch part.Type {
-		case schema.ChatMessagePartTypeText:
-			contentParts = append(contentParts, openai.ChatMessagePart{
-				Type: openai.ChatMessagePartTypeText,
-				Text: part.Text,
-			})
-
-		case schema.ChatMessagePartTypeImageURL:
-			if part.ImageURL != nil {
-				imageURL := part.ImageURL.URL
-
-				// 如果是文件路径，需要读取文件并转换为base64
-				if len(imageURL) > 0 && (imageURL[0] == '/' || imageURL[0] == '.') {
-					imageURL = f.filePathToDataURI(imageURL, "")
-				}
-
-				if imageURL != "" {
-					contentParts = append(contentParts, openai.ChatMessagePart{
-						Type: openai.ChatMessagePartTypeImageURL,
-						ImageURL: &openai.ChatMessageImageURL{
-							URL:    imageURL,
-							Detail: openai.ImageURLDetail(part.ImageURL.Detail),
-						},
-					})
-				}
-			}
 		}
 	}
 
@@ -185,7 +195,7 @@ func (f *QwenFormatter) buildImageURL(image *schema.MessageInputImage) string {
 func (f *QwenFormatter) filePathToDataURI(filePath, mimeType string) string {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		g.Log().Warningf(context.Background(), "Failed to read image file %s: %v, skipping", filePath, err)
+		g.Log().Warningf(gctx.New(), "Failed to read image file %s: %v, skipping", filePath, err)
 		return ""
 	}
 

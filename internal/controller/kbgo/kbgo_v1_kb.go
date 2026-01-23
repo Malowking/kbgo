@@ -2,18 +2,17 @@ package kbgo
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/core/file_store"
+	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/logic/index"
-	"github.com/Malowking/kbgo/internal/model/do"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
-	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gfile"
 	"github.com/google/uuid"
@@ -21,22 +20,30 @@ import (
 
 func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *v1.KBCreateRes, err error) {
 	// Log request parameters
-	g.Log().Infof(ctx, "KBCreate request received - Name: %s, Description: %s, Category: %s",
-		req.Name, req.Description, req.Category)
+	g.Log().Infof(ctx, "KBCreate request received - Name: %s, Description: %s, Category: %s, EmbeddingModelId: %s",
+		req.Name, req.Description, req.Category, req.EmbeddingModelId)
 
 	res = &v1.KBCreateRes{}
 
-	// 生成 UUID 作为知识库 ID (使用与项目其他地方相同的格式)
+	// 验证 embedding 模型是否存在且类型为 embedding
+	modelConfig := model.Registry.GetEmbeddingModel(req.EmbeddingModelId)
+	if modelConfig == nil {
+		g.Log().Errorf(ctx, "Embedding model not found: %s", req.EmbeddingModelId)
+		return nil, errors.Newf(errors.ErrModelNotFound, "embedding model not found: %s", req.EmbeddingModelId)
+	}
+
+	// 生成 UUID 作为知识库 ID
 	knowledgeId := "kb_" + strings.ReplaceAll(uuid.New().String(), "-", "")
 
 	// 使用 GORM 模型确保自动填充 CreateTime 和 UpdateTime
 	kb := &gormModel.KnowledgeBase{
-		ID:             knowledgeId,
-		Name:           req.Name,
-		Description:    req.Description,
-		Category:       req.Category,
-		CollectionName: knowledgeId, // 使用知识库ID作为默认的CollectionName
-		Status:         1,           // 默认启用
+		ID:               knowledgeId,
+		Name:             req.Name,
+		Description:      req.Description,
+		Category:         req.Category,
+		CollectionName:   knowledgeId,          // 使用知识库ID作为默认的CollectionName
+		EmbeddingModelId: req.EmbeddingModelId, // 保存绑定的 embedding 模型 ID
+		Status:           1,                    // 默认启用
 	}
 
 	err = dao.GetDB().WithContext(ctx).Create(kb).Error
@@ -44,15 +51,16 @@ func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *
 		return nil, err
 	}
 
-	// 创建 Milvus collection
+	// 创建向量库 collection，传入维度参数
 	docIndexSvr := index.GetDocIndexSvr()
-	err = docIndexSvr.GetVectorStore().CreateCollection(ctx, knowledgeId)
+	err = docIndexSvr.GetVectorStore().CreateCollection(ctx, knowledgeId, modelConfig.Dimension)
 	if err != nil {
-		// 如果创建 Milvus collection 失败，删除已创建的数据库记录并返回错误
+		// 如果创建向量库 collection 失败，删除已创建的数据库记录并返回错误
 		dao.GetDB().WithContext(ctx).Delete(&gormModel.KnowledgeBase{}, "id = ?", knowledgeId)
-		return nil, fmt.Errorf("创建 Milvus collection 失败: %w", err)
+		g.Log().Errorf(ctx, "创建向量库 collection 失败: %v", err)
+		return nil, errors.Newf(errors.ErrInternalError, "创建向量库 collection 失败: %w", err)
 	}
-	g.Log().Infof(ctx, "成功创建 Milvus collection: %s", knowledgeId)
+	g.Log().Infof(ctx, "成功创建向量库 collection: %s with dimension: %d", knowledgeId, modelConfig.Dimension)
 
 	// 如果使用本地存储，则创建对应的文件夹
 	storageType := file_store.GetStorageType()
@@ -63,7 +71,7 @@ func (c *ControllerV1) KBCreate(ctx context.Context, req *v1.KBCreateReq) (res *
 			err = os.MkdirAll(knowledgeDir, 0755)
 			if err != nil {
 				g.Log().Errorf(ctx, "创建知识库目录失败: %s, 错误: %v", knowledgeDir, err)
-				// 不返回错误，因为数据库记录和 Milvus collection 已创建成功
+				// 不返回错误，因为数据库记录和向量库 collection 已创建成功
 			} else {
 				cwd, _ := os.Getwd()
 				g.Log().Infof(ctx, "成功创建知识库目录: %s 在 %s", knowledgeDir, cwd)
@@ -86,11 +94,12 @@ func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
-			err = gerror.Newf("panic occurred during KBDelete: %v", r)
+			g.Log().Errorf(ctx, "Panic occurred during KBDelete: %v", r)
+			err = errors.Newf(errors.ErrInternalError, "panic occurred during KBDelete: %v", r)
 		}
 	}()
 
-	// 1. 获取该知识库下的所有文档信息（用于删除存储中的文件）
+	// 1. 获取该知识库下的所有文档信息
 	var documents []gormModel.KnowledgeDocuments
 	result := tx.WithContext(ctx).Where("knowledge_id = ?", req.Id).Find(&documents)
 	if result.Error != nil {
@@ -98,7 +107,7 @@ func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *
 		return nil, result.Error
 	}
 
-	// 2. 收集需要删除的文件信息（去重）
+	// 2. 收集需要删除的文件信息
 	type RustFSFile struct {
 		Bucket   string
 		Location string
@@ -170,10 +179,11 @@ func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *
 
 	// 提交事务
 	if err = tx.Commit().Error; err != nil {
-		return nil, gerror.Newf("failed to commit transaction: %v", err)
+		g.Log().Errorf(ctx, "Failed to commit transaction: %v", err)
+		return nil, errors.Newf(errors.ErrInternalError, "failed to commit transaction: %v", err)
 	}
 
-	// 7. 事务成功提交后，删除存储中的文件（这个操作失败不影响数据一致性）
+	// 7. 事务成功提交后，删除存储中的文件
 	if storageType == file_store.StorageTypeRustFS {
 		// 删除 RustFS 文件
 		if len(rustfsFiles) > 0 {
@@ -199,7 +209,7 @@ func (c *ControllerV1) KBDelete(ctx context.Context, req *v1.KBDeleteReq) (res *
 			}
 
 			if anyFilePath != "" {
-				// 获取知识库文件夹路径 (knowledge_file/{knowledge_id})
+				// 获取知识库文件夹路径
 				knowledgeDir := filepath.Dir(anyFilePath)
 				g.Log().Infof(ctx, "KBDelete: deleting knowledge directory, path=%s", knowledgeDir)
 
@@ -235,11 +245,22 @@ func (c *ControllerV1) KBGetList(ctx context.Context, req *v1.KBGetListReq) (res
 		req.Name, req.Status, req.Category)
 
 	res = &v1.KBGetListRes{}
-	err = dao.KnowledgeBase.Ctx(ctx).Where(do.KnowledgeBase{
-		Status:   req.Status,
-		Name:     req.Name,
-		Category: req.Category,
-	}).Scan(&res.List)
+
+	// Build query with GORM
+	query := dao.GetDB().WithContext(ctx).Model(&gormModel.KnowledgeBase{})
+
+	// Apply filters only if they are set
+	if req.Status != nil {
+		query = query.Where("status = ?", *req.Status)
+	}
+	if req.Name != nil {
+		query = query.Where("name = ?", *req.Name)
+	}
+	if req.Category != nil {
+		query = query.Where("category = ?", *req.Category)
+	}
+
+	err = query.Find(&res.List).Error
 	return
 }
 
@@ -248,7 +269,7 @@ func (c *ControllerV1) KBGetOne(ctx context.Context, req *v1.KBGetOneReq) (res *
 	g.Log().Infof(ctx, "KBGetOne request received - Id: %s", req.Id)
 
 	res = &v1.KBGetOneRes{}
-	err = dao.KnowledgeBase.Ctx(ctx).WherePri(req.Id).Scan(&res.KnowledgeBase)
+	err = dao.GetDB().WithContext(ctx).Model(&gormModel.KnowledgeBase{}).Where("id = ?", req.Id).First(&res.KnowledgeBase).Error
 	return
 }
 
@@ -262,7 +283,8 @@ func (c *ControllerV1) KBUpdate(ctx context.Context, req *v1.KBUpdateReq) (res *
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
-			err = gerror.Newf("panic occurred during KBUpdate: %v", r)
+			g.Log().Errorf(ctx, "Panic occurred during KBUpdate: %v", r)
+			err = errors.Newf(errors.ErrInternalError, "panic occurred during KBUpdate: %v", r)
 		}
 	}()
 
@@ -281,7 +303,8 @@ func (c *ControllerV1) KBUpdate(ctx context.Context, req *v1.KBUpdateReq) (res *
 
 	// 提交事务
 	if err = tx.Commit().Error; err != nil {
-		return nil, gerror.Newf("failed to commit transaction: %v", err)
+		g.Log().Errorf(ctx, "Failed to commit transaction: %v", err)
+		return nil, errors.Newf(errors.ErrInternalError, "failed to commit transaction: %v", err)
 	}
 
 	return &v1.KBUpdateRes{}, nil
@@ -296,7 +319,8 @@ func (c *ControllerV1) KBUpdateStatus(ctx context.Context, req *v1.KBUpdateStatu
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
-			err = gerror.Newf("panic occurred during KBUpdateStatus: %v", r)
+			g.Log().Errorf(ctx, "Panic occurred during KBUpdateStatus: %v", r)
+			err = errors.Newf(errors.ErrInternalError, "panic occurred during KBUpdateStatus: %v", r)
 		}
 	}()
 
@@ -309,7 +333,8 @@ func (c *ControllerV1) KBUpdateStatus(ctx context.Context, req *v1.KBUpdateStatu
 	}
 	if count == 0 {
 		tx.Rollback()
-		return nil, gerror.Newf("knowledge base not found: %s", req.Id)
+		g.Log().Errorf(ctx, "Knowledge base not found: %s", req.Id)
+		return nil, errors.Newf(errors.ErrKBNotFound, "knowledge base not found: %s", req.Id)
 	}
 
 	// 更新状态
@@ -321,7 +346,8 @@ func (c *ControllerV1) KBUpdateStatus(ctx context.Context, req *v1.KBUpdateStatu
 
 	// 提交事务
 	if err = tx.Commit().Error; err != nil {
-		return nil, gerror.Newf("failed to commit transaction: %v", err)
+		g.Log().Errorf(ctx, "Failed to commit transaction: %v", err)
+		return nil, errors.Newf(errors.ErrInternalError, "failed to commit transaction: %v", err)
 	}
 
 	return &v1.KBUpdateStatusRes{}, nil

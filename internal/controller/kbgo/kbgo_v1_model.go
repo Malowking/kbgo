@@ -2,17 +2,18 @@ package kbgo
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/core/model"
 	"github.com/Malowking/kbgo/internal/dao"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/encoding/gjson"
-	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// ReloadModels 重新加载模型配置（热更新）
+// ReloadModels 重新加载模型配置
 func (c *ControllerV1) ReloadModels(ctx context.Context, req *v1.ReloadModelsReq) (res *v1.ReloadModelsRes, err error) {
 	g.Log().Info(ctx, "ReloadModels request received")
 
@@ -36,7 +37,7 @@ func (c *ControllerV1) ReloadModels(ctx context.Context, req *v1.ReloadModelsReq
 func (c *ControllerV1) ListModels(ctx context.Context, req *v1.ListModelsReq) (res *v1.ListModelsRes, err error) {
 	g.Log().Info(ctx, "ListModels request received")
 
-	// 根据类型过滤（可选）
+	// 根据类型过滤
 	var models []*model.ModelConfig
 	if req.ModelType != "" {
 		models = model.Registry.GetByType(model.ModelType(req.ModelType))
@@ -57,7 +58,7 @@ func (c *ControllerV1) GetModel(ctx context.Context, req *v1.GetModelReq) (res *
 	mc := model.Registry.Get(req.ModelID)
 	if mc == nil {
 		g.Log().Errorf(ctx, "Model not found: %s", req.ModelID)
-		return nil, gerror.Newf("Model not found: %s", req.ModelID)
+		return nil, errors.Newf(errors.ErrModelNotFound, "Model not found: %s", req.ModelID)
 	}
 
 	return &v1.GetModelRes{
@@ -84,18 +85,17 @@ func (c *ControllerV1) RegisterModel(ctx context.Context, req *v1.RegisterModelR
 	}
 
 	// 序列化 Extra 为 JSON 字符串
-	// 注意：MySQL JSON字段不接受空字符串，至少要是空对象 {}
 	extraJSON := "{}"
 	if len(extra) > 0 {
 		extraBytes, err := gjson.Marshal(extra)
 		if err != nil {
 			g.Log().Errorf(ctx, "Failed to marshal extra config: %v", err)
-			return nil, gerror.Newf("Failed to marshal extra config: %v", err)
+			return nil, errors.Newf(errors.ErrInvalidParameter, "Failed to marshal extra config: %v", err)
 		}
 		extraJSON = string(extraBytes)
 	}
 
-	// 创建模型记录（ModelID将由BeforeCreate钩子自动生成）
+	// 创建模型记录
 	aiModel := &gormModel.AIModel{
 		ModelType: req.ModelType,
 		Provider:  req.Provider,
@@ -109,7 +109,7 @@ func (c *ControllerV1) RegisterModel(ctx context.Context, req *v1.RegisterModelR
 	// 保存到数据库
 	if err := dao.AIModel.Create(ctx, aiModel); err != nil {
 		g.Log().Errorf(ctx, "Failed to create model: %v", err)
-		return nil, gerror.Newf("Failed to create model: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseInsert, "Failed to create model: %v", err)
 	}
 
 	// 重新加载模型注册表
@@ -140,14 +140,14 @@ func (c *ControllerV1) UpdateModel(ctx context.Context, req *v1.UpdateModelReq) 
 	existingModel, err := dao.AIModel.GetByID(ctx, req.ModelID)
 	if err != nil {
 		g.Log().Errorf(ctx, "Failed to get model: %v", err)
-		return nil, gerror.Newf("Failed to get model: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "Failed to get model: %v", err)
 	}
 	if existingModel == nil {
 		g.Log().Errorf(ctx, "Model not found: %s", req.ModelID)
-		return nil, gerror.Newf("Model not found: %s", req.ModelID)
+		return nil, errors.Newf(errors.ErrModelNotFound, "Model not found: %s", req.ModelID)
 	}
 
-	// 只更新传入的字段（使用指针判断是否传值）
+	// 只更新传入的字段
 	if req.ModelName != nil {
 		existingModel.ModelName = *req.ModelName
 	}
@@ -174,7 +174,7 @@ func (c *ControllerV1) UpdateModel(ctx context.Context, req *v1.UpdateModelReq) 
 		var extraTest interface{}
 		if err := gjson.Unmarshal([]byte(*req.Extra), &extraTest); err != nil {
 			g.Log().Errorf(ctx, "Invalid JSON format for extra field: %v", err)
-			return nil, gerror.Newf("Invalid JSON format for extra field: %v", err)
+			return nil, errors.Newf(errors.ErrInvalidParameter, "Invalid JSON format for extra field: %v", err)
 		}
 		existingModel.Extra = *req.Extra
 	}
@@ -182,7 +182,7 @@ func (c *ControllerV1) UpdateModel(ctx context.Context, req *v1.UpdateModelReq) 
 	// 保存更新
 	if err := dao.AIModel.Update(ctx, existingModel); err != nil {
 		g.Log().Errorf(ctx, "Failed to update model: %v", err)
-		return nil, gerror.Newf("Failed to update model: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseUpdate, "Failed to update model: %v", err)
 	}
 
 	// 重新加载模型注册表
@@ -210,21 +210,95 @@ func (c *ControllerV1) DeleteModel(ctx context.Context, req *v1.DeleteModelReq) 
 	existingModel, err := dao.AIModel.GetByID(ctx, req.ModelID)
 	if err != nil {
 		g.Log().Errorf(ctx, "Failed to get model: %v", err)
-		return nil, gerror.Newf("Failed to get model: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "Failed to get model: %v", err)
 	}
 	if existingModel == nil {
 		g.Log().Errorf(ctx, "Model not found: %s", req.ModelID)
-		return nil, gerror.Newf("Model not found: %s", req.ModelID)
+		return nil, errors.Newf(errors.ErrModelNotFound, "Model not found: %s", req.ModelID)
+	}
+
+	// 根据模型类型检查绑定关系
+	db := dao.GetDB()
+	switch existingModel.ModelType {
+	case "embedding":
+		// 检查是否有知识库绑定了此embedding模型
+		var count int64
+		if err := db.Model(&gormModel.KnowledgeBase{}).
+			Where("embedding_model_id = ?", req.ModelID).
+			Count(&count).Error; err != nil {
+			g.Log().Errorf(ctx, "Failed to check knowledge base bindings: %v", err)
+			return nil, errors.Newf(errors.ErrDatabaseQuery, "Failed to check knowledge base bindings: %v", err)
+		}
+		if count > 0 {
+			g.Log().Infof(ctx, "Cannot delete embedding model %s: %d knowledge bases are using it", req.ModelID, count)
+			return &v1.DeleteModelRes{
+				Success: false,
+				Message: fmt.Sprintf("无法删除该Embedding模型，有 %d 个知识库正在使用此模型", count),
+			}, nil
+		}
+
+	case "llm", "multimodal":
+		// 检查是否有Agent预设绑定了此模型
+		var presets []gormModel.AgentPreset
+		if err := db.Find(&presets).Error; err != nil {
+			g.Log().Errorf(ctx, "Failed to query agent presets: %v", err)
+			return nil, errors.Newf(errors.ErrDatabaseQuery, "Failed to query agent presets: %v", err)
+		}
+
+		// 遍历所有预设，检查config中的model_id
+		boundCount := 0
+		for _, preset := range presets {
+			var config map[string]interface{}
+			if err := gjson.Unmarshal([]byte(preset.Config), &config); err != nil {
+				continue
+			}
+			if modelID, ok := config["model_id"].(string); ok && modelID == req.ModelID {
+				boundCount++
+			}
+		}
+		if boundCount > 0 {
+			g.Log().Infof(ctx, "Cannot delete model %s: %d agent presets are using it", req.ModelID, boundCount)
+			return &v1.DeleteModelRes{
+				Success: false,
+				Message: fmt.Sprintf("无法删除该模型，有 %d 个Agent预设正在使用此模型", boundCount),
+			}, nil
+		}
+
+	case "rerank", "reranker":
+		// 检查是否有Agent预设绑定了此rerank模型
+		var presets []gormModel.AgentPreset
+		if err := db.Find(&presets).Error; err != nil {
+			g.Log().Errorf(ctx, "Failed to query agent presets: %v", err)
+			return nil, errors.Newf(errors.ErrDatabaseQuery, "Failed to query agent presets: %v", err)
+		}
+
+		// 遍历所有预设，检查config中的rerank_model_id
+		boundCount := 0
+		for _, preset := range presets {
+			var config map[string]interface{}
+			if err := gjson.Unmarshal([]byte(preset.Config), &config); err != nil {
+				continue
+			}
+			if rerankModelID, ok := config["rerank_model_id"].(string); ok && rerankModelID == req.ModelID {
+				boundCount++
+			}
+		}
+		if boundCount > 0 {
+			g.Log().Infof(ctx, "Cannot delete rerank model %s: %d agent presets are using it", req.ModelID, boundCount)
+			return &v1.DeleteModelRes{
+				Success: false,
+				Message: fmt.Sprintf("无法删除该Rerank模型，有 %d 个Agent预设正在使用此模型", boundCount),
+			}, nil
+		}
 	}
 
 	// 删除模型
 	if err := dao.AIModel.Delete(ctx, req.ModelID); err != nil {
 		g.Log().Errorf(ctx, "Failed to delete model: %v", err)
-		return nil, gerror.Newf("Failed to delete model: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseDelete, "Failed to delete model: %v", err)
 	}
 
 	// 重新加载模型注册表
-	db := dao.GetDB()
 	if err := model.Registry.Reload(ctx, db); err != nil {
 		g.Log().Errorf(ctx, "Failed to reload model registry: %v", err)
 		return &v1.DeleteModelRes{
@@ -237,5 +311,197 @@ func (c *ControllerV1) DeleteModel(ctx context.Context, req *v1.DeleteModelReq) 
 	return &v1.DeleteModelRes{
 		Success: true,
 		Message: "Model deleted and registry reloaded successfully",
+	}, nil
+}
+
+// SetRewriteModel 设置重写模型
+func (c *ControllerV1) SetRewriteModel(ctx context.Context, req *v1.SetRewriteModelReq) (res *v1.SetRewriteModelRes, err error) {
+	g.Log().Infof(ctx, "SetRewriteModel request received - ModelID: %s", req.ModelID)
+
+	db := dao.GetDB()
+
+	// 如果 ModelID 为空，表示取消重写模型
+	if req.ModelID == "" {
+		// 清空内存中的重写模型
+		if err := model.Registry.SetRewriteModel(""); err != nil {
+			g.Log().Errorf(ctx, "Failed to clear rewrite model: %v", err)
+			return nil, err
+		}
+
+		// 从数据库中移除所有模型的 is_rewrite 标记
+		// 查询所有有 is_rewrite 标记的模型
+		var models []gormModel.AIModel
+		if err := db.Find(&models).Error; err != nil {
+			g.Log().Errorf(ctx, "Failed to query models: %v", err)
+			return nil, errors.Newf(errors.ErrDatabaseQuery, "Failed to query models: %v", err)
+		}
+
+		// 逐个移除 is_rewrite 标记
+		for _, m := range models {
+			if m.Extra == "" || m.Extra == "{}" {
+				continue
+			}
+
+			var extra map[string]interface{}
+			if err := gjson.Unmarshal([]byte(m.Extra), &extra); err != nil {
+				continue
+			}
+
+			// 检查是否有 is_rewrite 标记
+			if _, exists := extra["is_rewrite"]; exists {
+				// 删除 is_rewrite 标记
+				delete(extra, "is_rewrite")
+
+				// 序列化回 JSON
+				extraBytes, err := gjson.Marshal(extra)
+				if err != nil {
+					g.Log().Warningf(ctx, "Failed to marshal extra for model %s: %v", m.ModelID, err)
+					continue
+				}
+
+				// 更新数据库
+				if err := db.Model(&gormModel.AIModel{}).Where("model_id = ?", m.ModelID).
+					Update("extra", string(extraBytes)).Error; err != nil {
+					g.Log().Warningf(ctx, "Failed to update model %s: %v", m.ModelID, err)
+				}
+			}
+		}
+
+		// 异步重新加载模型注册表，避免阻塞请求
+		go func() {
+			reloadCtx := context.Background()
+			if err := model.Registry.Reload(reloadCtx, db); err != nil {
+				g.Log().Errorf(reloadCtx, "Failed to reload model registry asynchronously: %v", err)
+			} else {
+				g.Log().Infof(reloadCtx, "Model registry reloaded successfully in background after clearing rewrite model")
+			}
+		}()
+
+		g.Log().Info(ctx, "Rewrite model cleared successfully")
+		return &v1.SetRewriteModelRes{
+			Success: true,
+			Message: "Rewrite model cleared successfully",
+		}, nil
+	}
+
+	// 检查模型是否存在
+	existingModel, err := dao.AIModel.GetByID(ctx, req.ModelID)
+	if err != nil {
+		g.Log().Errorf(ctx, "Failed to get model: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "Failed to get model: %v", err)
+	}
+	if existingModel == nil {
+		g.Log().Errorf(ctx, "Model not found: %s", req.ModelID)
+		return nil, errors.Newf(errors.ErrModelNotFound, "Model not found: %s", req.ModelID)
+	}
+
+	// 检查模型类型是否为 LLM
+	if existingModel.ModelType != "llm" {
+		return nil, errors.New(errors.ErrInvalidParameter, "Rewrite model must be LLM type")
+	}
+
+	// 检查模型是否启用
+	if !existingModel.Enabled {
+		return nil, errors.New(errors.ErrInvalidParameter, "Cannot set disabled model as rewrite model")
+	}
+
+	// 1. 先移除所有模型的 is_rewrite 标记
+	var models []gormModel.AIModel
+	if err := db.Find(&models).Error; err != nil {
+		g.Log().Errorf(ctx, "Failed to query models: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "Failed to query models: %v", err)
+	}
+
+	for _, m := range models {
+		if m.Extra == "" || m.Extra == "{}" {
+			continue
+		}
+
+		var extra map[string]interface{}
+		if err := gjson.Unmarshal([]byte(m.Extra), &extra); err != nil {
+			continue
+		}
+
+		// 检查是否有 is_rewrite 标记
+		if _, exists := extra["is_rewrite"]; exists {
+			// 删除 is_rewrite 标记
+			delete(extra, "is_rewrite")
+
+			// 序列化回 JSON
+			extraBytes, err := gjson.Marshal(extra)
+			if err != nil {
+				g.Log().Warningf(ctx, "Failed to marshal extra for model %s: %v", m.ModelID, err)
+				continue
+			}
+
+			// 更新数据库
+			if err := db.Model(&gormModel.AIModel{}).Where("model_id = ?", m.ModelID).
+				Update("extra", string(extraBytes)).Error; err != nil {
+				g.Log().Warningf(ctx, "Failed to update model %s: %v", m.ModelID, err)
+			}
+		}
+	}
+
+	// 2. 为指定模型添加 is_rewrite 标记
+	// 解析现有的 extra JSON
+	var extra map[string]interface{}
+	if existingModel.Extra != "" && existingModel.Extra != "{}" {
+		if err := gjson.Unmarshal([]byte(existingModel.Extra), &extra); err != nil {
+			g.Log().Warningf(ctx, "Failed to parse existing extra: %v, using empty map", err)
+			extra = make(map[string]interface{})
+		}
+	} else {
+		extra = make(map[string]interface{})
+	}
+
+	// 添加 is_rewrite 标记
+	extra["is_rewrite"] = true
+
+	// 序列化回 JSON
+	extraBytes, err := gjson.Marshal(extra)
+	if err != nil {
+		g.Log().Errorf(ctx, "Failed to marshal extra: %v", err)
+		return nil, errors.Newf(errors.ErrInvalidParameter, "Failed to marshal extra: %v", err)
+	}
+	existingModel.Extra = string(extraBytes)
+
+	// 更新数据库
+	if err := dao.AIModel.Update(ctx, existingModel); err != nil {
+		g.Log().Errorf(ctx, "Failed to update model: %v", err)
+		return nil, errors.Newf(errors.ErrDatabaseUpdate, "Failed to update model: %v", err)
+	}
+
+	// 3. 更新内存中的重写模型
+	if err := model.Registry.SetRewriteModel(req.ModelID); err != nil {
+		g.Log().Errorf(ctx, "Failed to set rewrite model in registry: %v", err)
+		return nil, err
+	}
+
+	// 4. 异步重新加载模型注册表，避免阻塞请求
+	go func() {
+		reloadCtx := context.Background()
+		if err := model.Registry.Reload(reloadCtx, db); err != nil {
+			g.Log().Errorf(reloadCtx, "Failed to reload model registry asynchronously: %v", err)
+		} else {
+			g.Log().Infof(reloadCtx, "Model registry reloaded successfully in background")
+		}
+	}()
+
+	g.Log().Infof(ctx, "Rewrite model set successfully: %s", req.ModelID)
+	return &v1.SetRewriteModelRes{
+		Success: true,
+		Message: "Rewrite model set successfully",
+	}, nil
+}
+
+// GetRewriteModel 获取当前重写模型
+func (c *ControllerV1) GetRewriteModel(ctx context.Context, req *v1.GetRewriteModelReq) (res *v1.GetRewriteModelRes, err error) {
+	g.Log().Info(ctx, "GetRewriteModel request received")
+
+	rewriteModel := model.Registry.GetRewriteModel()
+
+	return &v1.GetRewriteModelRes{
+		RewriteModel: rewriteModel,
+		Configured:   rewriteModel != nil,
 	}, nil
 }

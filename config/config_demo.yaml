@@ -1,6 +1,7 @@
 server:
   address:     ":8000"
   openapiPath: "/api.json"
+  clientMaxBodySize: "500MB"
   swaggerPath: "/swagger"
 
 logger:
@@ -14,19 +15,6 @@ logger:
   rotateBackupCompress: 9   # 日志压缩级别 (0-9)
 
 # 主数据库配置（用于存储知识库元数据、文档信息等）
-# 支持 MySQL 和 PostgreSQL
-#database:
-#  default:
-#    host: "localhost" # 地址
-#    port: "3306" # MySQL端口: 3306, PostgreSQL端口: 5432
-#    user: "root" # MySQL默认用户: root, PostgreSQL默认用户: postgres
-#    pass: "your_password" # 密码
-#    name: "kbgo" # 数据库名称
-#    type: "mysql" # 数据库类型: mysql 或 pgsql
-#    charset: "utf8mb4" # 数据库编码
-#    maxLifeTime: 3600 # 连接最大生命周期(秒)
-
-# === 使用 PostgreSQL 作为主数据库的示例配置 ===
 database:
   default:
      host: "kbgo-postgres"
@@ -35,8 +23,8 @@ database:
      pass: "kbgo123"
      name: "kbgo"
      type: "pgsql"
-     charset: "utf8mb4"
      maxLifeTime: 3600
+     extra: "TimeZone=UTC"  # 设置数据库连接时区为 UTC
 
 # 向量数据库配置
 # 支持的类型: "milvus" 或 "pgvector"
@@ -44,11 +32,12 @@ database:
 vectorStore:
   type: "pgvector"
 
+
 # Milvus 向量数据库配置
-milvus:
-  address: "localhost:19530"  # Milvus 服务地址
-  database: "kbgo"             # Milvus 数据库名称
-  dim: 1024                    # 向量维度
+#milvus:
+#  address: "localhost:19530"   # Milvus 服务地址
+#  database: "kbgo"             # Milvus 数据库名称
+#  metricType: "COSINE"         # 向量距离度量类型,COSINE(余弦相似度), L2(欧式距离), IP(内积), 默认 COSINE
 
 # PostgreSQL 向量数据库配置 (pgvector)
 # 使用前需要先安装 pgvector 扩展: CREATE EXTENSION vector;
@@ -58,7 +47,9 @@ postgres:
   user: "kbgo"                 # PostgreSQL 用户名
   password: "kbgo123"          # PostgreSQL 密码
   database: "kbgo"             # PostgreSQL 数据库名称
+  metricType: "COSINE"         # 向量距离度量类型,COSINE(余弦相似度), L2(欧式距离), IP(内积), 默认 COSINE
   sslmode: "disable"           # SSL 模式: disable, require, verify-ca, verify-full
+  timezone: "UTC"              # 时区设置
 
 # 文件存储配置
 storage:
@@ -73,13 +64,34 @@ rustfs:
   bucketName: ""
   ssl: false
 
-# 知识库检索默认参数配置
-retriever:
-  enableRewrite: false       # 是否启用查询重写（默认 false）
-  rewriteAttempts: 3         # 查询重写尝试次数（默认 3）
-  retrieveMode: "rerank"     # 检索模式: milvus/rerank/rrf（默认 rerank）
-
 # 文档解析服务配置（Python file_parse 服务）
 fileParse:
   url: "http://kbgo-file-parse:8002"  # file_parse 服务地址
-  timeout: 120                         # 请求超时时间（秒），默认 120 秒
+  timeout: 600                        # 请求超时时间（秒），默认 600 秒（10分钟）
+                                      # 对于大文件（30MB+），建议设置为600秒或更长
+
+# Redis 缓存配置
+redis:
+  address: "kbgo-redis:6379"          # Redis 服务地址
+  db: 0                                # Redis 数据库编号 (0-15)
+  password: "kbgo123"                  # Redis 密码
+  maxRetries: 3                        # 最大重试次数
+  poolSize: 10                         # 连接池大小
+  minIdleConns: 2                      # 最小空闲连接数
+  cache:
+    agentPresetTTL: 300                # Agent预设缓存过期时间（秒），默认 5分钟
+
+# 流式响应缓冲配置
+streaming:
+  useRedis: false                      # 是否使用 Redis Stream 作为流式消息缓冲（默认 false，使用内存 channel）
+  memoryBufferSize: 100                # 内存 channel 缓冲区大小（默认 100）
+  redisBufferSize: 1000                # Redis Stream 最大长度（默认 1000）
+  redisStreamTTL: 300                  # Redis Stream 过期时间（秒），默认 5分钟
+
+# Claude Skills 配置
+skills:
+  venvBaseDir: "/data/kbgo_venvs"     # 虚拟环境存储目录
+  scriptsDir: "/data/kbgo_skills"     # Skill 脚本存储目录
+  maxExecutionTime: 300                # 最大执行时间（秒），默认 5分钟
+  cleanupInterval: 86400               # 清理间隔（秒），默认 24小时
+  cleanupMaxAge: 604800                # 虚拟环境最大未使用时间（秒），默认 7天

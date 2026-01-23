@@ -1,7 +1,7 @@
 package v1
 
 import (
-	"github.com/Malowking/kbgo/internal/model/entity"
+	"github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -14,10 +14,11 @@ const (
 )
 
 type KBCreateReq struct {
-	g.Meta      `path:"/v1/kb" method:"post" tags:"kb" summary:"Create kb"`
-	Name        string `v:"required|length:3,50" dc:"kb name"`
-	Description string `v:"required|length:3,200" dc:"kb description"`
-	Category    string `v:"length:3,50" dc:"kb category"`
+	g.Meta           `path:"/v1/kb" method:"post" tags:"kb" summary:"Create kb"`
+	Name             string `v:"required|length:1,50" dc:"kb name"`
+	Description      string `dc:"kb description"`
+	Category         string `dc:"kb category"`
+	EmbeddingModelId string `v:"required" dc:"embedding model id"`
 }
 
 type KBCreateRes struct {
@@ -27,9 +28,9 @@ type KBCreateRes struct {
 type KBUpdateReq struct {
 	g.Meta      `path:"/v1/kb/{id}" method:"put" tags:"kb" summary:"Update kb"`
 	Id          string  `v:"required" dc:"kb id"`
-	Name        *string `v:"length:3,50" dc:"kb name"`
-	Description *string `v:"length:3,200" dc:"kb description"`
-	Category    *string `v:"length:3,50" dc:"kb category"`
+	Name        *string `v:"length:1,50" dc:"kb name"`
+	Description *string `dc:"kb description"`
+	Category    *string `dc:"kb category"`
 	Status      *Status `v:"in:1,2" dc:"kb status"`
 }
 type KBUpdateRes struct{}
@@ -45,18 +46,18 @@ type KBGetOneReq struct {
 	Id     string `v:"required" dc:"kb id"`
 }
 type KBGetOneRes struct {
-	*entity.KnowledgeBase `dc:"kb"`
+	*gorm.KnowledgeBase `dc:"kb"`
 }
 
 type KBGetListReq struct {
 	g.Meta   `path:"/v1/kb" method:"get" tags:"kb" summary:"Get kbs"`
-	Name     *string `v:"length:3,50" dc:"kb name"`
+	Name     *string `dc:"kb name"`
 	Status   *Status `v:"in:1,2" dc:"kb age"`
-	Category *string `v:"length:3,50" dc:"kb category"`
+	Category *string `dc:"kb category"`
 }
 
 type KBGetListRes struct {
-	List []*entity.KnowledgeBase `json:"list" dc:"kb list"`
+	List []*gorm.KnowledgeBase `json:"list" dc:"kb list"`
 }
 
 type KBUpdateStatusReq struct {

@@ -1,9 +1,8 @@
 package dao
 
 import (
-	"context"
+	"github.com/gogf/gf/v2/os/gctx"
 
-	_ "github.com/gogf/gf/contrib/drivers/mysql/v2"
 	_ "github.com/gogf/gf/contrib/drivers/pgsql/v2"
 	"github.com/gogf/gf/v2/frame/g"
 	"gorm.io/gorm"
@@ -24,7 +23,7 @@ func InitDB() error {
 // GetDB 获取数据库实例
 func GetDB() *gorm.DB {
 	if db == nil {
-		g.Log().Fatal(context.Background(), "database connection not initialized")
+		g.Log().Fatal(gctx.New(), "database connection not initialized")
 	}
 	return db
 }

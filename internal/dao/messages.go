@@ -22,28 +22,6 @@ func (d *MessageDAO) Create(ctx context.Context, message *gormModel.Message) err
 	return nil
 }
 
-// CreateWithContents 创建消息及内容块
-func (d *MessageDAO) CreateWithContents(ctx context.Context, message *gormModel.Message, contents []*gormModel.MessageContent) error {
-	return GetDB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// 创建消息
-		if err := tx.Create(message).Error; err != nil {
-			g.Log().Errorf(ctx, "创建消息失败: %v", err)
-			return err
-		}
-
-		// 创建内容块
-		for _, content := range contents {
-			content.MsgID = message.MsgID
-			if err := tx.Create(content).Error; err != nil {
-				g.Log().Errorf(ctx, "创建消息内容块失败: %v", err)
-				return err
-			}
-		}
-
-		return nil
-	})
-}
-
 // GetByMsgID 根据消息ID获取消息
 func (d *MessageDAO) GetByMsgID(ctx context.Context, msgID string) (*gormModel.Message, error) {
 	var message gormModel.Message
@@ -70,7 +48,7 @@ func (d *MessageDAO) ListByConvID(ctx context.Context, convID string, page, page
 		return nil, 0, err
 	}
 
-	// 分页查询
+	// 分页查询 - 使用 create_time 升序排序
 	offset := (page - 1) * pageSize
 	if err := query.Offset(offset).Limit(pageSize).Order("create_time ASC").Find(&messages).Error; err != nil {
 		g.Log().Errorf(ctx, "查询消息列表失败: %v", err)
@@ -78,29 +56,6 @@ func (d *MessageDAO) ListByConvID(ctx context.Context, convID string, page, page
 	}
 
 	return messages, total, nil
-}
-
-// ListByConvIDWithContents 根据会话ID获取消息及内容块列表
-func (d *MessageDAO) ListByConvIDWithContents(ctx context.Context, convID string) ([]*gormModel.Message, error) {
-	var messages []*gormModel.Message
-
-	// 查询消息
-	if err := GetDB().WithContext(ctx).Where("conv_id = ?", convID).Order("create_time ASC").Find(&messages).Error; err != nil {
-		g.Log().Errorf(ctx, "查询消息列表失败: %v", err)
-		return nil, err
-	}
-
-	// 查询每个消息的内容块
-	for _, message := range messages {
-		var contents []*gormModel.MessageContent
-		if err := GetDB().WithContext(ctx).Where("msg_id = ?", message.MsgID).Order("sort_order ASC").Find(&contents).Error; err != nil {
-			g.Log().Errorf(ctx, "查询消息内容块失败: %v", err)
-			return nil, err
-		}
-		// 这里需要在Message结构体中添加Contents字段才能关联
-	}
-
-	return messages, nil
 }
 
 // Update 更新消息
@@ -116,6 +71,15 @@ func (d *MessageDAO) Update(ctx context.Context, message *gormModel.Message) err
 func (d *MessageDAO) Delete(ctx context.Context, msgID string) error {
 	if err := GetDB().WithContext(ctx).Where("msg_id = ?", msgID).Delete(&gormModel.Message{}).Error; err != nil {
 		g.Log().Errorf(ctx, "删除消息失败: %v", err)
+		return err
+	}
+	return nil
+}
+
+// BatchDeleteByConvID 根据会话ID批量删除消息
+func (d *MessageDAO) BatchDeleteByConvID(ctx context.Context, convID string) error {
+	if err := GetDB().WithContext(ctx).Where("conv_id = ?", convID).Delete(&gormModel.Message{}).Error; err != nil {
+		g.Log().Errorf(ctx, "批量删除消息失败: %v", err)
 		return err
 	}
 	return nil

@@ -3,7 +3,7 @@ package common
 import (
 	"testing"
 
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/Malowking/kbgo/core/schema"
 )
 
 func TestRemoveDuplicates(t *testing.T) {

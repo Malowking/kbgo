@@ -2,23 +2,26 @@ package model
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Malowking/kbgo/core/client"
-	"github.com/Malowking/kbgo/core/formatter"
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/Malowking/kbgo/core/errors"
+	formatterPkg "github.com/Malowking/kbgo/core/formatter"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/sashabaranov/go-openai"
 )
 
 // ModelService 统一的模型服务
-// 整合了OpenAI客户端和消息格式适配器
 type ModelService struct {
 	client    *client.OpenAIClient
-	formatter formatter.MessageFormatter
+	formatter formatterPkg.MessageFormatter
 }
 
 // NewModelService 创建模型服务
-func NewModelService(apiKey, baseURL string, formatter formatter.MessageFormatter) *ModelService {
+func NewModelService(apiKey, baseURL string, formatter formatterPkg.MessageFormatter) *ModelService {
+	// 如果formatter为nil，使用默认的OpenAI formatter
+	if formatter == nil {
+		formatter = formatterPkg.NewOpenAIFormatter()
+	}
 	return &ModelService{
 		client:    client.NewOpenAIClient(apiKey, baseURL),
 		formatter: formatter,
@@ -46,7 +49,7 @@ func (s *ModelService) ChatCompletion(ctx context.Context, params ChatCompletion
 	// 使用格式适配器转换消息
 	openaiMessages, err := s.formatter.FormatMessages(params.Messages)
 	if err != nil {
-		return nil, fmt.Errorf("failed to format messages: %w", err)
+		return nil, errors.Newf(errors.ErrInvalidParameter, "failed to format messages: %v", err)
 	}
 
 	// 调用客户端
@@ -73,9 +76,8 @@ func (s *ModelService) ChatCompletionStream(ctx context.Context, params ChatComp
 	// 使用格式适配器转换消息
 	openaiMessages, err := s.formatter.FormatMessages(params.Messages)
 	if err != nil {
-		return nil, fmt.Errorf("failed to format messages: %w", err)
+		return nil, errors.Newf(errors.ErrInvalidParameter, "failed to format messages: %v", err)
 	}
-
 	// 调用客户端
 	req := client.ChatCompletionRequest{
 		Model:               params.ModelName,

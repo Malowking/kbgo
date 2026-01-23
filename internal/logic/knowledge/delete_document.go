@@ -2,17 +2,14 @@ package knowledge
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/core/vector_store"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
 // DeleteDocumentDataOnly deletes the chunks data for the specified document, but keeps the document record
-// This includes:
-// 1. Deleting all chunks related to this document in the knowledge_chunks table
-// 2. Deleting all vector data related to this document in Milvus
 func DeleteDocumentDataOnly(ctx context.Context, documentId string, vectorStore vector_store.VectorStore) error {
 	// Begin transaction
 	tx := dao.GetDB().Begin()
@@ -27,7 +24,7 @@ func DeleteDocumentDataOnly(ctx context.Context, documentId string, vectorStore 
 	if err != nil {
 		g.Log().Errorf(ctx, "DeleteDocumentDataOnly: GetDocumentById failed for id %s, err: %v", documentId, err)
 		tx.Rollback()
-		return fmt.Errorf("failed to get document information: %w", err)
+		return errors.Newf(errors.ErrDocumentNotFound, "failed to get document information: %v", err)
 	}
 
 	// Check if CollectionName exists
@@ -39,23 +36,23 @@ func DeleteDocumentDataOnly(ctx context.Context, documentId string, vectorStore 
 		if err != nil {
 			g.Log().Errorf(ctx, "DeleteDocumentDataOnly: Vector store deleteDocument failed for documentId %s in collection %s, err: %v", documentId, document.CollectionName, err)
 			tx.Rollback()
-			return fmt.Errorf("failed to delete document data in vector store: %w", err)
+			return errors.Newf(errors.ErrVectorDelete, "failed to delete document data in vector store: %v", err)
 		}
 		g.Log().Infof(ctx, "DeleteDocumentDataOnly: Successfully deleted document %s from collection %s", documentId, document.CollectionName)
 	}
 
 	// Only delete chunks data, keep the document record
-	err = DeleteChunksByDocumentId(ctx, tx, documentId)
+	err = DeleteChunksByDocumentIdWithTx(ctx, tx, documentId)
 	if err != nil {
 		g.Log().Errorf(ctx, "DeleteDocumentDataOnly: DeleteChunksByDocumentId failed for id %s, err: %v", documentId, err)
 		tx.Rollback()
-		return fmt.Errorf("failed to delete chunks data: %w", err)
+		return errors.Newf(errors.ErrDatabaseDelete, "failed to delete chunks data: %v", err)
 	}
 
 	// Commit transaction
 	if err = tx.Commit().Error; err != nil {
 		g.Log().Errorf(ctx, "DeleteDocumentDataOnly: transaction commit failed, err: %v", err)
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		return errors.Newf(errors.ErrInternalError, "failed to commit transaction: %v", err)
 	}
 
 	g.Log().Infof(ctx, "DeleteDocumentDataOnly: Successfully deleted chunks data for document id %s", documentId)

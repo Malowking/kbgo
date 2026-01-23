@@ -1,6 +1,7 @@
 """
 FastAPI 应用入口
 """
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +13,26 @@ from app.config import settings
 from app.utils import get_logger
 
 logger = get_logger("file_parse")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    应用生命周期管理器
+
+    在应用启动时执行初始化逻辑，在应用关闭时执行清理逻辑
+    """
+    # 启动逻辑
+    logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
+    logger.info(f"Server running at {settings.base_url}")
+    logger.info(f"Image directory: {settings.IMAGE_DIR}")
+    logger.info(f"Log directory: {settings.LOG_DIR}")
+    logger.info(f"Supported formats: {', '.join(settings.SUPPORTED_FORMATS)}")
+
+    yield
+
+    # 关闭逻辑
+    logger.info(f"Shutting down {settings.APP_NAME}")
 
 
 def create_app() -> FastAPI:
@@ -26,7 +47,8 @@ def create_app() -> FastAPI:
         version=settings.APP_VERSION,
         description="A powerful file parsing service that converts documents to Markdown with chunking and image handling",
         docs_url="/docs",
-        redoc_url="/redoc"
+        redoc_url="/redoc",
+        lifespan=lifespan
     )
 
     # 配置 CORS 中间件
@@ -70,20 +92,6 @@ def create_app() -> FastAPI:
             ).model_dump()
         )
 
-    # 启动事件
-    @app.on_event("startup")
-    async def startup_event():
-        logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
-        logger.info(f"Server running at {settings.base_url}")
-        logger.info(f"Image directory: {settings.IMAGE_DIR}")
-        logger.info(f"Log directory: {settings.LOG_DIR}")
-        logger.info(f"Supported formats: {', '.join(settings.SUPPORTED_FORMATS)}")
-
-    # 关闭事件
-    @app.on_event("shutdown")
-    async def shutdown_event():
-        logger.info(f"Shutting down {settings.APP_NAME}")
-
     return app
 
 
@@ -99,5 +107,10 @@ if __name__ == "__main__":
         host=settings.HOST,
         port=settings.PORT,
         reload=settings.DEBUG,
-        log_level=settings.LOG_LEVEL.lower()
+        log_level=settings.LOG_LEVEL.lower(),
+        # 大文件支持配置
+        timeout_keep_alive=settings.TIMEOUT_KEEP_ALIVE,  # Keep-Alive超时时间
+        timeout_graceful_shutdown=settings.TIMEOUT_GRACEFUL_SHUTDOWN,  # 优雅关闭超时时间
+        limit_concurrency=settings.LIMIT_CONCURRENCY,  # 最大并发连接数
+        backlog=settings.BACKLOG,  # 最大排队连接数
     )

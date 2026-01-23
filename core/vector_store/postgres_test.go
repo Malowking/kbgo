@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Malowking/kbgo/core/common"
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/Malowking/kbgo/core/schema"
+	"github.com/gogf/gf/v2/os/gctx"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
@@ -15,7 +15,7 @@ import (
 // TestPostgresStoreCreation 测试 PostgreSQL 存储实例创建
 func TestPostgresStoreCreation(t *testing.T) {
 	t.Run("创建成功", func(t *testing.T) {
-		ctx := context.Background()
+		ctx := gctx.New()
 		connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 		pool, err := pgxpool.New(ctx, connStr)
 		if err != nil {
@@ -55,7 +55,7 @@ func TestPostgresStoreCreation(t *testing.T) {
 	})
 
 	t.Run("数据库名为空", func(t *testing.T) {
-		ctx := context.Background()
+		ctx := gctx.New()
 		connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 		pool, err := pgxpool.New(ctx, connStr)
 		if err != nil {
@@ -78,7 +78,7 @@ func TestPostgresStoreCreation(t *testing.T) {
 
 // TestPostgresCreateDatabaseIfNotExists 测试创建数据库和扩展
 func TestPostgresCreateDatabaseIfNotExists(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
@@ -106,7 +106,7 @@ func TestPostgresCreateDatabaseIfNotExists(t *testing.T) {
 
 // TestPostgresCollectionOperations 测试 PostgreSQL 集合（表）操作
 func TestPostgresCollectionOperations(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
@@ -132,7 +132,7 @@ func TestPostgresCollectionOperations(t *testing.T) {
 	testTableName := "test_table_" + uuid.New().String()[:8]
 
 	t.Run("创建集合（表）", func(t *testing.T) {
-		err := store.CreateCollection(ctx, testTableName)
+		err := store.CreateCollection(ctx, testTableName, 1024)
 		assert.NoError(t, err)
 	})
 
@@ -150,7 +150,7 @@ func TestPostgresCollectionOperations(t *testing.T) {
 
 	t.Run("重复创建集合", func(t *testing.T) {
 		// 使用 IF NOT EXISTS，不应报错
-		err := store.CreateCollection(ctx, testTableName)
+		err := store.CreateCollection(ctx, testTableName, 1024)
 		assert.NoError(t, err)
 	})
 
@@ -167,7 +167,7 @@ func TestPostgresCollectionOperations(t *testing.T) {
 
 // TestPostgresVectorOperations 测试 PostgreSQL 向量操作
 func TestPostgresVectorOperations(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
@@ -195,7 +195,7 @@ func TestPostgresVectorOperations(t *testing.T) {
 	knowledgeID := uuid.New().String()
 
 	// 创建测试表
-	err = store.CreateCollection(ctx, testTableName)
+	err = store.CreateCollection(ctx, testTableName, 1024)
 	require.NoError(t, err)
 
 	// 清理
@@ -230,8 +230,8 @@ func TestPostgresVectorOperations(t *testing.T) {
 		}
 
 		// 设置上下文
-		ctx = context.WithValue(ctx, common.DocumentId, documentID)
-		ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
+		ctx = context.WithValue(ctx, DocumentId, documentID)
+		ctx = context.WithValue(ctx, KnowledgeId, knowledgeID)
 
 		ids, err := store.InsertVectors(ctx, testTableName, chunks, convertToFloat32(vectors))
 		assert.NoError(t, err)
@@ -246,8 +246,8 @@ func TestPostgresVectorOperations(t *testing.T) {
 		}
 		vectors := [][]float64{{1.0}, {2.0}} // 数量不匹配
 
-		ctx = context.WithValue(ctx, common.DocumentId, documentID)
-		ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
+		ctx = context.WithValue(ctx, DocumentId, documentID)
+		ctx = context.WithValue(ctx, KnowledgeId, knowledgeID)
 
 		ids, err := store.InsertVectors(ctx, testTableName, chunks, convertToFloat32(vectors))
 		assert.Error(t, err)
@@ -262,7 +262,7 @@ func TestPostgresVectorOperations(t *testing.T) {
 		vectors := [][]float64{make([]float64, 1024)}
 
 		// 不设置 DocumentId
-		ctxWithoutDoc := context.WithValue(context.Background(), common.KnowledgeId, knowledgeID)
+		ctxWithoutDoc := context.WithValue(context.Background(), KnowledgeId, knowledgeID)
 
 		ids, err := store.InsertVectors(ctxWithoutDoc, testTableName, chunks, convertToFloat32(vectors))
 		assert.Error(t, err)
@@ -291,7 +291,7 @@ func TestPostgresVectorOperations(t *testing.T) {
 
 // TestPostgresHelperFunctions 测试 PostgreSQL 辅助函数
 func TestPostgresHelperFunctions(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
@@ -366,7 +366,7 @@ func TestPostgresHelperFunctions(t *testing.T) {
 
 // TestPostgresGetClient 测试获取客户端
 func TestPostgresGetClient(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
@@ -398,7 +398,7 @@ func TestPostgresGetClient(t *testing.T) {
 
 // TestPostgresTransactionRollback 测试事务回滚
 func TestPostgresTransactionRollback(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
@@ -426,7 +426,7 @@ func TestPostgresTransactionRollback(t *testing.T) {
 	knowledgeID := uuid.New().String()
 
 	// 创建测试表
-	err = store.CreateCollection(ctx, testTableName)
+	err = store.CreateCollection(ctx, testTableName, 1024)
 	require.NoError(t, err)
 	defer store.DeleteCollection(ctx, testTableName)
 
@@ -442,8 +442,8 @@ func TestPostgresTransactionRollback(t *testing.T) {
 			make([]float64, 100),
 		}
 
-		ctx = context.WithValue(ctx, common.DocumentId, documentID)
-		ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
+		ctx = context.WithValue(ctx, DocumentId, documentID)
+		ctx = context.WithValue(ctx, KnowledgeId, knowledgeID)
 
 		ids, err := store.InsertVectors(ctx, testTableName, chunks, convertToFloat32(vectors))
 		assert.Error(t, err)
@@ -459,7 +459,7 @@ func TestPostgresTransactionRollback(t *testing.T) {
 
 // BenchmarkPostgresInsertVectors 性能测试：插入向量
 func BenchmarkPostgresInsertVectors(b *testing.B) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
@@ -485,7 +485,7 @@ func BenchmarkPostgresInsertVectors(b *testing.B) {
 	}
 
 	testTableName := "bench_table"
-	store.CreateCollection(ctx, testTableName)
+	store.CreateCollection(ctx, testTableName, 1024)
 	defer store.DeleteCollection(ctx, testTableName)
 
 	// 准备测试数据
@@ -499,8 +499,8 @@ func BenchmarkPostgresInsertVectors(b *testing.B) {
 
 	documentID := uuid.New().String()
 	knowledgeID := uuid.New().String()
-	ctx = context.WithValue(ctx, common.DocumentId, documentID)
-	ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
+	ctx = context.WithValue(ctx, DocumentId, documentID)
+	ctx = context.WithValue(ctx, KnowledgeId, knowledgeID)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -514,7 +514,7 @@ func BenchmarkPostgresInsertVectors(b *testing.B) {
 
 // BenchmarkPostgresVectorSearch 性能测试：向量搜索
 func BenchmarkPostgresVectorSearch(b *testing.B) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	connStr := "host=localhost port=5432 user=postgres password=postgres dbname=test_kbgo sslmode=disable"
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
@@ -543,14 +543,14 @@ func BenchmarkPostgresVectorSearch(b *testing.B) {
 	testTableName := "bench_search_" + uuid.New().String()[:8]
 
 	// 创建表并插入一些测试数据
-	store.CreateCollection(ctx, testTableName)
+	store.CreateCollection(ctx, testTableName, 1024)
 	defer store.DeleteCollection(ctx, testTableName)
 
 	// 插入100个测试向量
 	documentID := uuid.New().String()
 	knowledgeID := uuid.New().String()
-	ctx = context.WithValue(ctx, common.DocumentId, documentID)
-	ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
+	ctx = context.WithValue(ctx, DocumentId, documentID)
+	ctx = context.WithValue(ctx, KnowledgeId, knowledgeID)
 
 	for i := 0; i < 100; i++ {
 		chunks := []*schema.Document{

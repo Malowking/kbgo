@@ -4,17 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
+	"strings"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/internal/dao"
-	"github.com/Malowking/kbgo/internal/model/entity"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
 	"gorm.io/gorm"
 )
 
 // SaveChunksData 批量保存知识块数据
-func SaveChunksData(ctx context.Context, documentsId string, chunks []entity.KnowledgeChunks) error {
+func SaveChunksData(ctx context.Context, documentsId string, chunks []gormModel.KnowledgeChunks) error {
 	if len(chunks) == 0 {
 		return nil
 	}
@@ -28,7 +28,7 @@ func SaveChunksData(ctx context.Context, documentsId string, chunks []entity.Kno
 		// 如果原有 ext 不为空，先解析
 		if chunk.Ext != "" {
 			if err := json.Unmarshal([]byte(chunk.Ext), &extData); err != nil {
-				g.Log().Warningf(ctx, "Failed to parse existing ext field for chunk %s: %v", chunk.Id, err)
+				g.Log().Warningf(ctx, "Failed to parse existing ext field for chunk %s: %v", chunk.ID, err)
 				extData = make(map[string]interface{})
 			}
 		}
@@ -39,17 +39,17 @@ func SaveChunksData(ctx context.Context, documentsId string, chunks []entity.Kno
 		// 序列化为 JSON 字符串
 		extJSON, err := json.Marshal(extData)
 		if err != nil {
-			g.Log().Errorf(ctx, "Failed to marshal ext data for chunk %s: %v", chunk.Id, err)
+			g.Log().Errorf(ctx, "Failed to marshal ext data for chunk %s: %v", chunk.ID, err)
 			extJSON = []byte("{}")
 		}
 
 		gormChunks[i] = gormModel.KnowledgeChunks{
-			ID:             chunk.Id,
-			KnowledgeDocID: chunk.KnowledgeDocId,
-			Content:        chunk.Content,
+			ID:             chunk.ID,
+			KnowledgeDocID: chunk.KnowledgeDocID,
+			Content:        sanitizeText(chunk.Content), // 清理NULL字节
 			CollectionName: chunk.CollectionName,
 			Ext:            string(extJSON),
-			Status:         int8(chunk.Status),
+			Status:         chunk.Status,
 		}
 	}
 
@@ -58,10 +58,10 @@ func SaveChunksData(ctx context.Context, documentsId string, chunks []entity.Kno
 
 	result := db.WithContext(ctx).CreateInBatches(&gormChunks, len(gormChunks))
 
-	status := int(v1.StatusIndexing)
+	status := int(v1.ChunkStatusActive)
 	if result.Error != nil {
 		g.Log().Errorf(ctx, "SaveChunksData err=%+v", result.Error)
-		status = int(v1.StatusFailed)
+		status = int(v1.ChunkStatusFailed)
 	}
 
 	err := UpdateDocumentsStatus(ctx, documentsId, status)
@@ -73,26 +73,28 @@ func SaveChunksData(ctx context.Context, documentsId string, chunks []entity.Kno
 }
 
 // GetChunksList 查询知识块列表
-func GetChunksList(ctx context.Context, where entity.KnowledgeChunks, page, size int) (list []entity.KnowledgeChunks, total int, err error) {
-	model := dao.KnowledgeChunks.Ctx(ctx)
+func GetChunksList(ctx context.Context, where gormModel.KnowledgeChunks, page, size int) (list []gormModel.KnowledgeChunks, total int, err error) {
+	query := dao.GetDB().WithContext(ctx).Model(&gormModel.KnowledgeChunks{})
 
 	// 构建查询条件
-	if where.KnowledgeDocId != "" {
-		model = model.Where("knowledge_doc_id", where.KnowledgeDocId)
+	if where.KnowledgeDocID != "" {
+		query = query.Where("knowledge_doc_id = ?", where.KnowledgeDocID)
 	}
-	if where.Id != "" {
-		model = model.Where("chunk_id", where.Id)
+	if where.ID != "" {
+		query = query.Where("id = ?", where.ID)
 	}
 
 	// 获取总数
-	total, err = model.Count()
+	var count int64
+	err = query.Count(&count).Error
+	total = int(count)
 	if err != nil {
 		return
 	}
 
 	// 查询所有数据（不分页），以便按 ext 中的 chunk_order 排序
-	var allList []entity.KnowledgeChunks
-	err = model.Scan(&allList)
+	var allList []gormModel.KnowledgeChunks
+	err = query.Find(&allList).Error
 	if err != nil {
 		return
 	}
@@ -107,7 +109,7 @@ func GetChunksList(ctx context.Context, where entity.KnowledgeChunks, page, size
 
 		if start >= len(allList) {
 			// 起始位置超出范围，返回空列表
-			list = []entity.KnowledgeChunks{}
+			list = []gormModel.KnowledgeChunks{}
 		} else {
 			if end > len(allList) {
 				end = len(allList)
@@ -122,20 +124,20 @@ func GetChunksList(ctx context.Context, where entity.KnowledgeChunks, page, size
 }
 
 // GetChunkById 根据ID查询单个知识块
-func GetChunkById(ctx context.Context, id string) (chunk entity.KnowledgeChunks, err error) {
-	err = dao.KnowledgeChunks.Ctx(ctx).Where("id", id).Scan(&chunk)
+func GetChunkById(ctx context.Context, id string) (chunk gormModel.KnowledgeChunks, err error) {
+	err = dao.GetDB().WithContext(ctx).Where("id = ?", id).First(&chunk).Error
 	return
 }
 
-// DeleteChunkByIdWithTx 根据ID删除知识块（事务版本）
+// DeleteChunkByIdWithTx 根据ID删除知识块
 func DeleteChunkByIdWithTx(ctx context.Context, tx *gorm.DB, id string) error {
-	result := tx.WithContext(ctx).Where("id = ?", id).Delete(&entity.KnowledgeChunks{})
+	result := tx.WithContext(ctx).Where("id = ?", id).Delete(&gormModel.KnowledgeChunks{})
 	return result.Error
 }
 
-// DeleteChunksByDocumentId 根据文档ID删除该文档的所有chunks（事务版本）
-func DeleteChunksByDocumentId(ctx context.Context, tx *gorm.DB, documentId string) error {
-	result := tx.WithContext(ctx).Where("knowledge_doc_id = ?", documentId).Delete(&entity.KnowledgeChunks{})
+// DeleteChunksByDocumentIdWithTx 根据文档ID删除该文档的所有chunks
+func DeleteChunksByDocumentIdWithTx(ctx context.Context, tx *gorm.DB, documentId string) error {
+	result := tx.WithContext(ctx).Where("knowledge_doc_id = ?", documentId).Delete(&gormModel.KnowledgeChunks{})
 	if result.Error != nil {
 		g.Log().Errorf(ctx, "DeleteChunksByDocumentId failed for document %s, err: %v", documentId, result.Error)
 		return result.Error
@@ -144,39 +146,21 @@ func DeleteChunksByDocumentId(ctx context.Context, tx *gorm.DB, documentId strin
 	return nil
 }
 
-// UpdateChunkByIdsWithTx 根据ID更新知识块（事务版本）
-func UpdateChunkByIdsWithTx(ctx context.Context, tx *gorm.DB, ids []string, data entity.KnowledgeChunks) error {
+// UpdateChunkByIdsWithTx 根据ID更新知识块
+func UpdateChunkByIdsWithTx(ctx context.Context, tx *gorm.DB, ids []string, data gormModel.KnowledgeChunks) error {
 	updates := make(map[string]interface{})
 	if data.Content != "" {
 		updates["content"] = data.Content
 	}
-	if data.Status == 0 || data.Status == 1 {
+	if data.Status == int8(v1.ChunkStatusDisable) || data.Status == int8(v1.ChunkStatusActive) {
 		updates["status"] = data.Status
 	}
-	result := tx.WithContext(ctx).Model(&entity.KnowledgeChunks{}).Where("id IN ?", ids).Updates(updates)
+	result := tx.WithContext(ctx).Model(&gormModel.KnowledgeChunks{}).Where("id IN ?", ids).Updates(updates)
 	return result.Error
 }
 
-// GetAllChunksByDocId gets all chunks by document id
-func GetAllChunksByDocId(ctx context.Context, docId string, fields ...string) (list []entity.KnowledgeChunks, err error) {
-	model := dao.KnowledgeChunks.Ctx(ctx).Where("knowledge_doc_id", docId)
-	if len(fields) > 0 {
-		for _, field := range fields {
-			model = model.Fields(field)
-		}
-	}
-	err = model.Scan(&list)
-	if err != nil {
-		return
-	}
-
-	// 按照 ext 中的 chunk_order 字段排序
-	sortChunksByOrder(list)
-	return
-}
-
 // sortChunksByOrder 根据 ext 字段中的 chunk_order 对 chunks 进行排序
-func sortChunksByOrder(chunks []entity.KnowledgeChunks) {
+func sortChunksByOrder(chunks []gormModel.KnowledgeChunks) {
 	sort.Slice(chunks, func(i, j int) bool {
 		orderI := extractChunkOrder(chunks[i].Ext)
 		orderJ := extractChunkOrder(chunks[j].Ext)
@@ -185,7 +169,6 @@ func sortChunksByOrder(chunks []entity.KnowledgeChunks) {
 }
 
 // extractChunkOrder 从 ext 字段中提取 chunk_order 的值
-// 如果提取失败或不存在，返回一个很大的数字以保证排在最后
 func extractChunkOrder(ext string) int {
 	if ext == "" {
 		return 999999
@@ -208,4 +191,10 @@ func extractChunkOrder(ext string) int {
 	}
 
 	return 999999
+}
+
+// sanitizeText 清理文本中的NULL字节和其他PostgreSQL不支持的字符
+func sanitizeText(text string) string {
+	// 移除NULL字节(0x00)
+	return strings.ReplaceAll(text, "\x00", "")
 }

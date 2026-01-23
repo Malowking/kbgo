@@ -4,13 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/core/file_store"
 	"github.com/gogf/gf/v2/net/ghttp"
 )
@@ -43,7 +43,6 @@ func RemoveDuplicates[T any, K comparable](slice []T, keyFunc func(T) K) []T {
 }
 
 // HandleFileUpload 处理文件上传的通用逻辑
-// 返回文件名、文件扩展名、文件SHA256和文件读取器
 func HandleFileUpload(ctx context.Context, file *ghttp.UploadFile, urlStr string) (fileName string, fileExt string, fileSha256 string, fileReader io.ReadSeeker, err error) {
 	if file != nil {
 		fileName = file.Filename
@@ -52,7 +51,7 @@ func HandleFileUpload(ctx context.Context, file *ghttp.UploadFile, urlStr string
 		// 打开上传的文件
 		fileReader, err = file.Open()
 		if err != nil {
-			err = fmt.Errorf("failed to open uploaded file: %w", err)
+			err = errors.Newf(errors.ErrFileUploadFailed, "failed to open uploaded file: %v", err)
 			return
 		}
 
@@ -66,7 +65,7 @@ func HandleFileUpload(ctx context.Context, file *ghttp.UploadFile, urlStr string
 		// 重置文件指针到开头
 		_, err = fileReader.Seek(0, io.SeekStart)
 		if err != nil {
-			err = fmt.Errorf("failed to seek file: %w", err)
+			err = errors.Newf(errors.ErrFileUploadFailed, "failed to seek file: %v", err)
 			return
 		}
 
@@ -98,7 +97,7 @@ func HandleFileUpload(ctx context.Context, file *ghttp.UploadFile, urlStr string
 		fileReader = f
 
 	} else {
-		err = fmt.Errorf("file or url is required")
+		err = errors.New(errors.ErrInvalidParameter, "file or url is required")
 		return
 	}
 
@@ -110,25 +109,25 @@ func downloadURLFile(url, localPath string) error {
 	// 创建文件
 	file, err := os.Create(localPath)
 	if err != nil {
-		return fmt.Errorf("Failed to create file: %w", err)
+		return errors.Newf(errors.ErrFileUploadFailed, "failed to create file %s: %v", localPath, err)
 	}
 	defer file.Close()
 
 	// 下载文件
 	resp, err := http.Get(url)
 	if err != nil {
-		return fmt.Errorf("Failed to download file: %w", err)
+		return errors.Newf(errors.ErrFileUploadFailed, "failed to download file from %s: %v", url, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Failed to download file, status code: %d", resp.StatusCode)
+		return errors.Newf(errors.ErrFileUploadFailed, "failed to download file, status code: %d", resp.StatusCode)
 	}
 
 	// 保存文件内容
 	_, err = io.Copy(file, resp.Body)
 	if err != nil {
-		return fmt.Errorf("Failed to save file: %w", err)
+		return errors.Newf(errors.ErrFileUploadFailed, "failed to save file content: %v", err)
 	}
 
 	return nil
@@ -138,7 +137,7 @@ func downloadURLFile(url, localPath string) error {
 func calculateLocalFileSHA256(filePath string) (string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return "", fmt.Errorf("Failed to open file: %w", err)
+		return "", errors.Newf(errors.ErrFileReadFailed, "failed to open file %s: %v", filePath, err)
 	}
 	defer file.Close()
 

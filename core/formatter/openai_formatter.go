@@ -1,19 +1,19 @@
 package formatter
 
 import (
-	"context"
 	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/gogf/gf/v2/os/gctx"
+
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/sashabaranov/go-openai"
 )
 
 // OpenAIFormatter OpenAI标准消息格式适配器
-// 负责将消息转换为OpenAI标准格式
 type OpenAIFormatter struct{}
 
 // NewOpenAIFormatter 创建OpenAI格式适配器
@@ -28,10 +28,38 @@ func (f *OpenAIFormatter) FormatMessages(messages []*schema.Message) ([]openai.C
 	for _, msg := range messages {
 		openaiMsg, err := f.formatSingleMessage(msg)
 		if err != nil {
-			g.Log().Errorf(context.Background(), "Failed to convert message: %v", err)
+			g.Log().Errorf(gctx.New(), "Failed to convert message: %v", err)
 			continue
 		}
 		result = append(result, openaiMsg)
+
+		// 如果 assistant 消息有 tool_calls，检查 Extra["tool"] 字段
+		// 将其转换为独立的 tool 角色消息
+		if msg.Role == schema.Assistant && len(msg.ToolCalls) > 0 {
+			if msg.Extra != nil {
+				if toolData, exists := msg.Extra["tool"]; exists {
+					toolResults := toolData.([]map[string]interface{})
+					// 处理 tool 结果
+					for _, toolResult := range toolResults {
+						toolMsg := openai.ChatCompletionMessage{
+							Role: "tool",
+						}
+
+						// 提取 content
+						if content, ok := toolResult["content"].(string); ok {
+							toolMsg.Content = content
+						}
+
+						// 提取 tool_call_id
+						if toolCallID, ok := toolResult["tool_call_id"].(string); ok {
+							toolMsg.ToolCallID = toolCallID
+						}
+
+						result = append(result, toolMsg)
+					}
+				}
+			}
+		}
 	}
 
 	return result, nil
@@ -43,12 +71,32 @@ func (f *OpenAIFormatter) formatSingleMessage(msg *schema.Message) (openai.ChatC
 		Role: string(msg.Role),
 	}
 
+	// 如果是 Tool 角色的消息，必须设置 ToolCallID
+	if msg.Role == schema.Tool {
+		openaiMsg.ToolCallID = msg.ToolCallID
+		openaiMsg.Content = msg.Content
+		return openaiMsg, nil
+	}
+
+	// 如果是 Assistant 角色且有 ToolCalls，需要转换
+	if msg.Role == schema.Assistant && len(msg.ToolCalls) > 0 {
+		openaiMsg.Content = msg.Content
+		openaiMsg.ToolCalls = make([]openai.ToolCall, len(msg.ToolCalls))
+		for i, tc := range msg.ToolCalls {
+			openaiMsg.ToolCalls[i] = openai.ToolCall{
+				ID:   tc.ID,
+				Type: openai.ToolType(tc.Type),
+				Function: openai.FunctionCall{
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				},
+			}
+		}
+		return openaiMsg, nil
+	}
+
 	// 检查是否有多模态内容
-	if len(msg.MultiContent) > 0 {
-		contentParts := f.convertMultiContent(msg.MultiContent)
-		openaiMsg.MultiContent = contentParts
-	} else if len(msg.UserInputMultiContent) > 0 {
-		// 也支持UserInputMultiContent
+	if len(msg.UserInputMultiContent) > 0 {
 		contentParts := f.convertUserInputMultiContent(msg.UserInputMultiContent)
 		openaiMsg.MultiContent = contentParts
 	} else {
@@ -59,47 +107,19 @@ func (f *OpenAIFormatter) formatSingleMessage(msg *schema.Message) (openai.ChatC
 	return openaiMsg, nil
 }
 
-// convertMultiContent 转换MultiContent
-func (f *OpenAIFormatter) convertMultiContent(parts []schema.ChatMessagePart) []openai.ChatMessagePart {
-	var contentParts []openai.ChatMessagePart
-
-	for _, part := range parts {
-		switch part.Type {
-		case schema.ChatMessagePartTypeText:
-			contentParts = append(contentParts, openai.ChatMessagePart{
-				Type: openai.ChatMessagePartTypeText,
-				Text: part.Text,
-			})
-
-		case schema.ChatMessagePartTypeImageURL:
-			if part.ImageURL != nil {
-				contentParts = append(contentParts, openai.ChatMessagePart{
-					Type: openai.ChatMessagePartTypeImageURL,
-					ImageURL: &openai.ChatMessageImageURL{
-						URL:    part.ImageURL.URL,
-						Detail: openai.ImageURLDetail(part.ImageURL.Detail),
-					},
-				})
-			}
-		}
-	}
-
-	return contentParts
-}
-
 // convertUserInputMultiContent 转换UserInputMultiContent
 func (f *OpenAIFormatter) convertUserInputMultiContent(parts []schema.MessageInputPart) []openai.ChatMessagePart {
 	var contentParts []openai.ChatMessagePart
 
 	for _, part := range parts {
 		switch part.Type {
-		case schema.ChatMessagePartTypeText:
+		case schema.MessagePartTypeText:
 			contentParts = append(contentParts, openai.ChatMessagePart{
 				Type: openai.ChatMessagePartTypeText,
 				Text: part.Text,
 			})
 
-		case schema.ChatMessagePartTypeImageURL:
+		case schema.MessagePartTypeImageURL:
 			if part.Image != nil {
 				imageURL := f.buildImageURL(part.Image)
 				if imageURL != "" {
@@ -148,7 +168,7 @@ func (f *OpenAIFormatter) buildImageURL(image *schema.MessageInputImage) string 
 func (f *OpenAIFormatter) filePathToDataURI(filePath, mimeType string) string {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		g.Log().Warningf(context.Background(), "Failed to read image file %s: %v, skipping", filePath, err)
+		g.Log().Warningf(gctx.New(), "Failed to read image file %s: %v, skipping", filePath, err)
 		return ""
 	}
 

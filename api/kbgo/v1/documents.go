@@ -1,7 +1,7 @@
 package v1
 
 import (
-	"github.com/Malowking/kbgo/internal/model/entity"
+	"github.com/Malowking/kbgo/internal/model/gorm"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -21,10 +21,10 @@ type DocumentsListReq struct {
 
 type DocumentsListRes struct {
 	g.Meta `mime:"application/json"`
-	Data   []entity.KnowledgeDocuments `json:"data"`
-	Total  int                         `json:"total"`
-	Page   int                         `json:"page"`
-	Size   int                         `json:"size"`
+	Data   []gorm.KnowledgeDocuments `json:"data"`
+	Total  int                       `json:"total"`
+	Page   int                       `json:"page"`
+	Size   int                       `json:"size"`
 }
 
 type DocumentsDeleteReq struct {

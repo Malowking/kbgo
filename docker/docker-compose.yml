@@ -1,5 +1,5 @@
 # 使用说明：
-# 启动所有服务（PostgreSQL + file-parse + kbgo）：
+# 启动所有服务（PostgreSQL + Redis + file-parse + kbgo）：
 #    docker-compose up -d
 
 services:
@@ -22,6 +22,24 @@ services:
       retries: 5
     networks:
       - kbgo-network
+
+  # Redis 缓存服务
+  redis:
+    image: redis:7-alpine
+    container_name: kbgo-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --requirepass "kbgo123"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "kbgo123", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kbgo-network
+    restart: unless-stopped
 
   # Python 文档解析服务
   file-parse:
@@ -50,6 +68,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       file-parse:
         condition: service_started
     ports:
@@ -72,3 +92,4 @@ networks:
 
 volumes:
   postgres_data:
+  redis_data:

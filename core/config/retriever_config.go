@@ -12,7 +12,7 @@ type RetrieverConfigBase struct {
 	RerankModel     string  // Rerank模型名称
 	EnableRewrite   bool    // 是否启用查询重写（默认 false）
 	RewriteAttempts int     // 查询重写尝试次数（默认 3）
-	RetrieveMode    string  // 检索模式: milvus/rerank/rrf（默认 rerank）
+	RetrieveMode    string  // 检索模式: simple（普通检索）/rerank/rrf（默认 rerank）
 	TopK            int     // 默认返回结果数量（默认 5）
 	Score           float64 // 默认分数阈值（默认 0.2）
 }

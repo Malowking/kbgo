@@ -5,8 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gctx"
+
+	"github.com/gogf/gf/v2/frame/g"
 )
 
 // StorageType 存储类型
@@ -30,7 +31,7 @@ func InitUploadDirectories() {
 		return
 	}
 
-	// 查找项目根目录（包含 kbgo 的目录）
+	// 查找项目根目录
 	projectRoot := wd
 	for !strings.HasSuffix(projectRoot, "kbgo") && projectRoot != "/" {
 		projectRoot = filepath.Dir(projectRoot)
@@ -49,14 +50,14 @@ func InitUploadDirectories() {
 		filepath.Join(projectRoot, "upload/audio"),
 		filepath.Join(projectRoot, "upload/file"),
 		filepath.Join(projectRoot, "upload/knowledge_file"),
+		filepath.Join(projectRoot, "upload/nl2sql"),
+		filepath.Join(projectRoot, "upload/export"),
 	}
 
 	// 创建所有目录
 	for _, dir := range uploadDirs {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			g.Log().Warningf(ctx, "Failed to create directory %s: %v", dir, err)
-		} else {
-			g.Log().Debugf(ctx, "Created upload directory: %s", dir)
 		}
 	}
 }

@@ -3,6 +3,7 @@ package kbgo
 import (
 	"context"
 	"fmt"
+	"github.com/gogf/gf/v2/os/gctx"
 
 	v1 "github.com/Malowking/kbgo/api/kbgo/v1"
 	"github.com/Malowking/kbgo/core/indexer"
@@ -10,7 +11,7 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// IndexDocuments 文件索引接口（批量切分并向量化）- 异步接口
+// IndexDocuments 文件索引接口
 func (c *ControllerV1) IndexDocuments(ctx context.Context, req *v1.IndexDocumentsReq) (res *v1.IndexDocumentsRes, err error) {
 	// Log request parameters
 	g.Log().Infof(ctx, "IndexDocuments request received - EmbeddingModelID: %s, DocumentIds: %v, ChunkSize: %d, OverlapSize: %d, Separator: '%s'",
@@ -32,7 +33,7 @@ func (c *ControllerV1) IndexDocuments(ctx context.Context, req *v1.IndexDocument
 
 	// 异步启动批量索引任务
 	go func() {
-		asyncCtx := context.Background()
+		asyncCtx := gctx.New()
 		g.Log().Infof(asyncCtx, "开始异步批量索引文档，文档数量: %d", len(req.DocumentIds))
 
 		// 使用 BatchDocumentIndex 方法处理批量索引

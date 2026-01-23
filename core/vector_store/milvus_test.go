@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Malowking/kbgo/core/common"
-	"github.com/Malowking/kbgo/pkg/schema"
+	"github.com/Malowking/kbgo/core/schema"
+	"github.com/gogf/gf/v2/os/gctx"
 	"github.com/google/uuid"
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
 	"github.com/stretchr/testify/assert"
@@ -27,7 +27,7 @@ func convertToFloat32(vectors [][]float64) [][]float32 {
 // TestMilvusStoreCreation 测试 Milvus 存储实例创建
 func TestMilvusStoreCreation(t *testing.T) {
 	t.Run("创建成功", func(t *testing.T) {
-		ctx := context.Background()
+		ctx := gctx.New()
 		client, err := milvusclient.New(ctx, &milvusclient.ClientConfig{
 			Address: "localhost:19530",
 			DBName:  "test",
@@ -68,7 +68,7 @@ func TestMilvusStoreCreation(t *testing.T) {
 	})
 
 	t.Run("数据库名为空", func(t *testing.T) {
-		ctx := context.Background()
+		ctx := gctx.New()
 		client, err := milvusclient.New(ctx, &milvusclient.ClientConfig{
 			Address: "localhost:19530",
 		})
@@ -91,7 +91,7 @@ func TestMilvusStoreCreation(t *testing.T) {
 
 // TestMilvusCollectionOperations 测试 Milvus 集合操作
 func TestMilvusCollectionOperations(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	client, err := milvusclient.New(ctx, &milvusclient.ClientConfig{
 		Address: "localhost:19530",
 		DBName:  "test",
@@ -112,7 +112,7 @@ func TestMilvusCollectionOperations(t *testing.T) {
 	testCollectionName := "test_collection_" + uuid.New().String()[:8]
 
 	t.Run("创建集合", func(t *testing.T) {
-		err := store.CreateCollection(ctx, testCollectionName)
+		err := store.CreateCollection(ctx, testCollectionName, 1024)
 		assert.NoError(t, err)
 	})
 
@@ -141,7 +141,7 @@ func TestMilvusCollectionOperations(t *testing.T) {
 
 // TestMilvusVectorOperations 测试 Milvus 向量操作
 func TestMilvusVectorOperations(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	client, err := milvusclient.New(ctx, &milvusclient.ClientConfig{
 		Address: "localhost:19530",
 		DBName:  "test",
@@ -164,7 +164,7 @@ func TestMilvusVectorOperations(t *testing.T) {
 	knowledgeID := uuid.New().String()
 
 	// 创建测试集合
-	err = store.CreateCollection(ctx, testCollectionName)
+	err = store.CreateCollection(ctx, testCollectionName, 1024)
 	require.NoError(t, err)
 
 	// 清理
@@ -199,8 +199,8 @@ func TestMilvusVectorOperations(t *testing.T) {
 		}
 
 		// 设置上下文
-		ctx = context.WithValue(ctx, common.DocumentId, documentID)
-		ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
+		ctx = context.WithValue(ctx, DocumentId, documentID)
+		ctx = context.WithValue(ctx, KnowledgeId, knowledgeID)
 
 		ids, err := store.InsertVectors(ctx, testCollectionName, chunks, convertToFloat32(vectors))
 		assert.NoError(t, err)
@@ -215,8 +215,8 @@ func TestMilvusVectorOperations(t *testing.T) {
 		}
 		vectors := [][]float64{{1.0}, {2.0}} // 数量不匹配
 
-		ctx = context.WithValue(ctx, common.DocumentId, documentID)
-		ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
+		ctx = context.WithValue(ctx, DocumentId, documentID)
+		ctx = context.WithValue(ctx, KnowledgeId, knowledgeID)
 
 		ids, err := store.InsertVectors(ctx, testCollectionName, chunks, convertToFloat32(vectors))
 		assert.Error(t, err)
@@ -303,7 +303,7 @@ func TestMilvusHelperFunctions(t *testing.T) {
 
 // TestMilvusGetClient 测试获取客户端
 func TestMilvusGetClient(t *testing.T) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	client, err := milvusclient.New(ctx, &milvusclient.ClientConfig{
 		Address: "localhost:19530",
 		DBName:  "test",
@@ -338,7 +338,7 @@ func TestMilvusGetClient(t *testing.T) {
 
 // BenchmarkMilvusInsertVectors 性能测试：插入向量
 func BenchmarkMilvusInsertVectors(b *testing.B) {
-	ctx := context.Background()
+	ctx := gctx.New()
 	client, err := milvusclient.New(ctx, &milvusclient.ClientConfig{
 		Address: "localhost:19530",
 		DBName:  "test",
@@ -359,7 +359,7 @@ func BenchmarkMilvusInsertVectors(b *testing.B) {
 	}
 
 	testCollectionName := "bench_collection"
-	store.CreateCollection(ctx, testCollectionName)
+	store.CreateCollection(ctx, testCollectionName, 1024)
 	defer store.DeleteCollection(ctx, testCollectionName)
 
 	// 准备测试数据
@@ -373,8 +373,8 @@ func BenchmarkMilvusInsertVectors(b *testing.B) {
 
 	documentID := uuid.New().String()
 	knowledgeID := uuid.New().String()
-	ctx = context.WithValue(ctx, common.DocumentId, documentID)
-	ctx = context.WithValue(ctx, common.KnowledgeId, knowledgeID)
+	ctx = context.WithValue(ctx, DocumentId, documentID)
+	ctx = context.WithValue(ctx, KnowledgeId, knowledgeID)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

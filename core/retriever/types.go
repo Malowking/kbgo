@@ -4,17 +4,15 @@ package retriever
 type RetrieveMode string
 
 const (
-	// RetrieveModeMilvus 仅使用Milvus向量检索，按相似度排序
-	RetrieveModeMilvus RetrieveMode = "milvus"
-	// RetrieveModeRerank 使用Milvus检索后进行Rerank重排序（默认）
+	// RetrieveModeSimple 普通向量检索，按相似度排序
+	RetrieveModeSimple RetrieveMode = "simple"
+	// RetrieveModeRerank 使用向量检索后进行Rerank重排序（默认）
 	RetrieveModeRerank RetrieveMode = "rerank"
 	// RetrieveModeRRF 使用RRF (Reciprocal Rank Fusion) 混合检索
 	RetrieveModeRRF RetrieveMode = "rrf"
 )
 
 // RetrieveReq 检索请求参数
-// Query 和 KnowledgeId 是必需的
-// 其他参数是可选的，如果不提供则使用 RetrieverConfig 中的默认值
 type RetrieveReq struct {
 	Query       string // 检索关键词（必需）
 	KnowledgeId string // 知识库ID（必需）
@@ -26,6 +24,7 @@ type RetrieveReq struct {
 	EnableRewrite   *bool         // 是否启用查询重写（可选）
 	RewriteAttempts *int          // 查询重写尝试次数（可选）
 	RetrieveMode    *RetrieveMode // 检索模式（可选）
+	RerankWeight    *float64      // Rerank权重（可选，0-1范围，默认1.0）当为1.0时仅使用rerank，0.0时仅使用BM25，中间值为混合
 
 	// 内部使用字段
 	optQuery   string   // 优化后的检索关键词（内部使用）
@@ -42,6 +41,7 @@ func (r *RetrieveReq) Copy() *RetrieveReq {
 		EnableRewrite:   r.EnableRewrite,
 		RewriteAttempts: r.RewriteAttempts,
 		RetrieveMode:    r.RetrieveMode,
+		RerankWeight:    r.RerankWeight,
 		optQuery:        r.optQuery,
 		excludeIDs:      r.excludeIDs,
 	}

@@ -2,247 +2,147 @@ package indexer
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"math"
 	"sync"
 	"time"
 
 	"github.com/Malowking/kbgo/core/common"
+	"github.com/Malowking/kbgo/core/errors"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/Malowking/kbgo/core/vector_store"
-	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// VectorStoreEmbedder 向量存储嵌入器实现（增强版，支持重试和并发）
+// VectorStoreEmbedder 向量存储嵌入器实现
 type VectorStoreEmbedder struct {
 	embedding   *common.CustomEmbedder
 	vectorStore vector_store.VectorStore
-	modelConfig interface{} // 保存模型配置，用于提取维度信息
-	configDim   int         // 配置文件中的向量维度（fallback）
-}
-
-// BatchInfo 批次信息
-type BatchInfo struct {
-	Index  int
-	Start  int
-	End    int
-	Chunks []*schema.Document
-	Texts  []string
-}
-
-// BatchResult 批次结果
-type BatchResult struct {
-	BatchIndex int
-	Vectors    [][]float32
-	ChunkIds   []string
-	Error      error
+	dim         int
 }
 
 // NewVectorStoreEmbedder 创建向量存储嵌入器
-func NewVectorStoreEmbedder(ctx context.Context, conf common.EmbeddingConfig, vectorStore vector_store.VectorStore, modelConfig interface{}, configDim int) (*VectorStoreEmbedder, error) {
+func NewVectorStoreEmbedder(ctx context.Context, conf common.EmbeddingConfig, vectorStore vector_store.VectorStore) (*VectorStoreEmbedder, error) {
 	// Create embedding instance
 	embeddingIns, err := common.NewEmbedding(ctx, conf)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create embedding instance: %w", err)
+		return nil, errors.Newf(errors.ErrEmbeddingFailed, "failed to create embedding instance: %v", err)
 	}
 
 	return &VectorStoreEmbedder{
 		embedding:   embeddingIns,
 		vectorStore: vectorStore,
-		modelConfig: modelConfig,
-		configDim:   configDim,
+		dim:         conf.GetDimension(),
 	}, nil
 }
 
-// EmbedAndStore 嵌入向量并存储（增强版，支持重试和并发）
+// EmbedAndStore 嵌入向量并存储
 func (v *VectorStoreEmbedder) EmbedAndStore(ctx context.Context, collectionName string, chunks []*schema.Document) ([]string, error) {
 	if len(chunks) == 0 {
 		return []string{}, nil
 	}
 
-	// 配置参数（可以根据需要调整）
+	// 配置参数
 	const (
-		batchSize    = 30               // 每批30个文本（避免API限制）
-		concurrency  = 3                // 3个并发（避免API限流）
+		concurrency  = 10               // 10个并发（单条处理）
 		maxRetries   = 5                // 最大重试次数
 		initialDelay = 1 * time.Second  // 初始延迟
 		maxDelay     = 30 * time.Second // 最大延迟
 		multiplier   = 2.0              // 指数退避倍数
 	)
 
-	g.Log().Infof(ctx, "Starting enhanced vectorization of %d chunks (BatchSize: %d, Concurrency: %d)",
-		len(chunks), batchSize, concurrency)
+	g.Log().Infof(ctx, "Starting single-chunk concurrent vectorization of %d chunks (Concurrency: %d)",
+		len(chunks), concurrency)
 
-	// 1. 分批处理
-	batches := v.createBatches(chunks, batchSize)
-	g.Log().Infof(ctx, "Split into %d batches", len(batches))
+	// 结果通道和并发控制
+	type ChunkResult struct {
+		Index   int
+		ChunkID string
+		Vector  []float32
+		Error   error
+	}
 
-	// 2. 并发处理批次
-	resultChan := make(chan BatchResult, len(batches))
+	resultChan := make(chan ChunkResult, len(chunks))
 	semaphore := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 
-	// 处理每个批次
-	for _, batch := range batches {
+	// 并发处理每个chunk
+	for i, chunk := range chunks {
 		wg.Add(1)
-		go func(b BatchInfo) {
+		go func(index int, ch *schema.Document) {
 			defer wg.Done()
 
 			// 获取并发许可
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
-			// 处理批次
-			vectors, err := v.embedTextsWithRetry(ctx, b.Texts, maxRetries, initialDelay, maxDelay, multiplier)
+			// 单条embedding调用
+			vector, err := v.embedSingleChunkWithRetry(ctx, ch.Content, maxRetries, initialDelay, maxDelay, multiplier)
 			if err != nil {
-				resultChan <- BatchResult{
-					BatchIndex: b.Index,
-					Error:      fmt.Errorf("batch %d failed: %w", b.Index, err),
+				resultChan <- ChunkResult{
+					Index: index,
+					Error: errors.Newf(errors.ErrEmbeddingFailed, "chunk %d embedding failed: %v", index, err),
 				}
 				return
 			}
 
-			// 存储到向量数据库
-			chunkIds, err := v.vectorStore.InsertVectors(ctx, collectionName, b.Chunks, vectors)
+			// 单条存储到向量数据库
+			chunkIds, err := v.vectorStore.InsertVectors(ctx, collectionName, []*schema.Document{ch}, [][]float32{vector})
 			if err != nil {
-				resultChan <- BatchResult{
-					BatchIndex: b.Index,
-					Error:      fmt.Errorf("batch %d storage failed: %w", b.Index, err),
+				resultChan <- ChunkResult{
+					Index: index,
+					Error: errors.Newf(errors.ErrVectorInsert, "chunk %d storage failed: %v", index, err),
 				}
 				return
 			}
 
-			resultChan <- BatchResult{
-				BatchIndex: b.Index,
-				Vectors:    vectors,
-				ChunkIds:   chunkIds,
-				Error:      nil,
+			if len(chunkIds) != 1 {
+				resultChan <- ChunkResult{
+					Index: index,
+					Error: errors.Newf(errors.ErrVectorInsert, "chunk %d: expected 1 chunkID, got %d", index, len(chunkIds)),
+				}
+				return
 			}
 
-			g.Log().Infof(ctx, "Batch %d completed successfully, chunks: %d", b.Index, len(b.Chunks))
-		}(batch)
+			resultChan <- ChunkResult{
+				Index:   index,
+				ChunkID: chunkIds[0],
+				Vector:  vector,
+				Error:   nil,
+			}
+		}(i, chunk)
 	}
 
-	// 等待所有批次完成
+	// 等待所有chunk完成
 	go func() {
 		wg.Wait()
 		close(resultChan)
 	}()
 
-	// 3. 收集结果
-	allChunkIds := make([]string, len(chunks))
-	batchResults := make([]BatchResult, len(batches))
-
+	// 收集结果
+	results := make([]ChunkResult, len(chunks))
 	for result := range resultChan {
 		if result.Error != nil {
 			return nil, result.Error
 		}
-		batchResults[result.BatchIndex] = result
+		results[result.Index] = result
 	}
 
-	// 4. 按顺序组装结果
-	currentIndex := 0
-	for _, batch := range batches {
-		result := batchResults[batch.Index]
-		copy(allChunkIds[currentIndex:currentIndex+len(result.ChunkIds)], result.ChunkIds)
-		currentIndex += len(result.ChunkIds)
+	// 提取chunkIds
+	allChunkIds := make([]string, len(chunks))
+	for i, result := range results {
+		allChunkIds[i] = result.ChunkID
 	}
 
-	g.Log().Infof(ctx, "Enhanced vectorization completed, total chunks: %d", len(allChunkIds))
 	return allChunkIds, nil
 }
 
-// createBatches 创建批次
-func (v *VectorStoreEmbedder) createBatches(chunks []*schema.Document, batchSize int) []BatchInfo {
-	var batches []BatchInfo
-	batchCount := int(math.Ceil(float64(len(chunks)) / float64(batchSize)))
-
-	for i := 0; i < batchCount; i++ {
-		start := i * batchSize
-		end := start + batchSize
-		if end > len(chunks) {
-			end = len(chunks)
-		}
-
-		batchChunks := chunks[start:end]
-		texts := make([]string, len(batchChunks))
-		for j, chunk := range batchChunks {
-			texts[j] = chunk.Content
-		}
-
-		batches = append(batches, BatchInfo{
-			Index:  i,
-			Start:  start,
-			End:    end,
-			Chunks: batchChunks,
-			Texts:  texts,
-		})
-	}
-
-	return batches
-}
-
-// getDimension 获取embedding维度
-// 1. 首先尝试从模型配置的extra字段中解析dimension
-// 2. 如果没有，使用配置文件中的dim作为fallback
-func (v *VectorStoreEmbedder) getDimension(ctx context.Context) int {
-	// 尝试从模型配置的extra字段中提取dimension
-	if v.modelConfig != nil {
-		// 尝试将modelConfig转换为map类型
-		if configMap, ok := v.modelConfig.(map[string]any); ok {
-			if extra, exists := configMap["Extra"]; exists {
-				if extraMap, ok := extra.(map[string]any); ok {
-					if dim, exists := extraMap["dimension"]; exists {
-						if dimInt, ok := dim.(int); ok {
-							g.Log().Debugf(ctx, "Using dimension from model extra field: %d", dimInt)
-							return dimInt
-						}
-						if dimFloat, ok := dim.(float64); ok {
-							dimInt := int(dimFloat)
-							g.Log().Debugf(ctx, "Using dimension from model extra field: %d", dimInt)
-							return dimInt
-						}
-					}
-				} else if extraStr, ok := extra.(string); ok && extraStr != "" {
-					// 尝试解析字符串形式的JSON
-					var extraMap map[string]any
-					if err := json.Unmarshal([]byte(extraStr), &extraMap); err == nil {
-						if dim, exists := extraMap["dimension"]; exists {
-							if dimFloat, ok := dim.(float64); ok {
-								dimInt := int(dimFloat)
-								g.Log().Debugf(ctx, "Using dimension from model extra JSON: %d", dimInt)
-								return dimInt
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Fallback：使用配置文件中的dim
-	if v.configDim > 0 {
-		g.Log().Debugf(ctx, "Using dimension from config file: %d", v.configDim)
-		return v.configDim
-	}
-
-	// 默认值
-	g.Log().Warningf(ctx, "No dimension found in model config or config file, using default: 1024")
-	return 1024
-}
-
-// embedTextsWithRetry 带重试的文本向量化
-func (v *VectorStoreEmbedder) embedTextsWithRetry(ctx context.Context, texts []string, maxRetries int, initialDelay, maxDelay time.Duration, multiplier float64) ([][]float32, error) {
+// embedSingleChunkWithRetry
+func (v *VectorStoreEmbedder) embedSingleChunkWithRetry(ctx context.Context, text string, maxRetries int, initialDelay, maxDelay time.Duration, multiplier float64) ([]float32, error) {
 	var lastErr error
 	delay := initialDelay
 
-	// 获取维度
-	dimensions := v.getDimension(ctx)
-
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
-			g.Log().Infof(ctx, "Retrying embedding attempt %d/%d after %v delay",
+			g.Log().Infof(ctx, "Retrying single chunk embedding attempt %d/%d after %v delay",
 				attempt, maxRetries, delay)
 
 			select {
@@ -257,15 +157,22 @@ func (v *VectorStoreEmbedder) embedTextsWithRetry(ctx context.Context, texts []s
 			}
 		}
 
-		vectors, err := v.embedding.EmbedStrings(ctx, texts, dimensions)
+		// 单条调用embedding API
+		vectors, err := v.embedding.EmbedStrings(ctx, []string{text})
 		if err != nil {
 			lastErr = err
-			g.Log().Warningf(ctx, "Embedding attempt %d failed: %v", attempt+1, err)
+			g.Log().Warningf(ctx, "Single chunk embedding attempt %d failed: %v", attempt+1, err)
 			continue
 		}
 
-		return vectors, nil
+		if len(vectors) != 1 {
+			lastErr = errors.Newf(errors.ErrEmbeddingFailed, "expected 1 vector, got %d", len(vectors))
+			g.Log().Warningf(ctx, "Single chunk embedding attempt %d failed: %v", attempt+1, lastErr)
+			continue
+		}
+
+		return vectors[0], nil
 	}
 
-	return nil, fmt.Errorf("embedding failed after %d retries, last error: %w", maxRetries, lastErr)
+	return nil, errors.Newf(errors.ErrEmbeddingFailed, "single chunk embedding failed after %d retries, last error: %v", maxRetries, lastErr)
 }

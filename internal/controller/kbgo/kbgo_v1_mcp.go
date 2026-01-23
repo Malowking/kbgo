@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/Malowking/kbgo/api/kbgo/v1"
+	"github.com/Malowking/kbgo/core/agent_tools/executor/mcp"
+	"github.com/Malowking/kbgo/core/errors"
 	"github.com/Malowking/kbgo/internal/dao"
-	"github.com/Malowking/kbgo/internal/mcp/client"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
-	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/google/uuid"
 )
@@ -24,10 +24,10 @@ func (c *ControllerV1) MCPRegistryCreate(ctx context.Context, req *v1.MCPRegistr
 	// 检查名称是否已存在
 	exists, err := dao.MCPRegistry.Exists(ctx, req.Name)
 	if err != nil {
-		return nil, gerror.Wrap(err, "failed to check MCP registry existence")
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to check MCP registry existence: %v", err)
 	}
 	if exists {
-		return nil, gerror.Newf("MCP service name '%s' already exists", req.Name)
+		return nil, errors.New(errors.ErrAlreadyExists, "MCP service name already exists")
 	}
 
 	// 生成ID
@@ -53,7 +53,7 @@ func (c *ControllerV1) MCPRegistryCreate(ctx context.Context, req *v1.MCPRegistr
 	}
 
 	if err := dao.MCPRegistry.Create(ctx, registry); err != nil {
-		return nil, gerror.Wrap(err, "failed to create MCP registry")
+		return nil, errors.Newf(errors.ErrDatabaseInsert, "failed to create MCP registry: %v", err)
 	}
 
 	return &v1.MCPRegistryCreateRes{Id: id}, nil
@@ -68,17 +68,17 @@ func (c *ControllerV1) MCPRegistryUpdate(ctx context.Context, req *v1.MCPRegistr
 	// 查询现有记录
 	registry, err := dao.MCPRegistry.GetByID(ctx, req.Id)
 	if err != nil {
-		return nil, gerror.Wrap(err, "MCP service not found")
+		return nil, errors.Newf(errors.ErrMCPServerNotFound, "MCP service not found: %v", err)
 	}
 
 	// 如果更新名称，检查是否重名
 	if req.Name != nil && *req.Name != registry.Name {
 		exists, err := dao.MCPRegistry.Exists(ctx, *req.Name, req.Id)
 		if err != nil {
-			return nil, gerror.Wrap(err, "failed to check MCP registry existence")
+			return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to check MCP registry existence: %v", err)
 		}
 		if exists {
-			return nil, gerror.Newf("MCP service name '%s' already exists", *req.Name)
+			return nil, errors.New(errors.ErrAlreadyExists, "MCP service name already exists")
 		}
 		registry.Name = *req.Name
 	}
@@ -104,7 +104,7 @@ func (c *ControllerV1) MCPRegistryUpdate(ctx context.Context, req *v1.MCPRegistr
 	}
 
 	if err := dao.MCPRegistry.Update(ctx, registry); err != nil {
-		return nil, gerror.Wrap(err, "failed to update MCP registry")
+		return nil, errors.Newf(errors.ErrDatabaseUpdate, "failed to update MCP registry: %v", err)
 	}
 
 	return &v1.MCPRegistryUpdateRes{}, nil
@@ -118,12 +118,12 @@ func (c *ControllerV1) MCPRegistryDelete(ctx context.Context, req *v1.MCPRegistr
 	// 检查是否存在
 	_, err = dao.MCPRegistry.GetByID(ctx, req.Id)
 	if err != nil {
-		return nil, gerror.Wrap(err, "MCP service not found")
+		return nil, errors.Newf(errors.ErrMCPServerNotFound, "MCP service not found: %v", err)
 	}
 
 	// 删除注册记录
 	if err := dao.MCPRegistry.Delete(ctx, req.Id); err != nil {
-		return nil, gerror.Wrap(err, "failed to delete MCP registry")
+		return nil, errors.Newf(errors.ErrDatabaseDelete, "failed to delete MCP registry: %v", err)
 	}
 
 	return &v1.MCPRegistryDeleteRes{}, nil
@@ -136,7 +136,7 @@ func (c *ControllerV1) MCPRegistryGetOne(ctx context.Context, req *v1.MCPRegistr
 
 	registry, err := dao.MCPRegistry.GetByID(ctx, req.Id)
 	if err != nil {
-		return nil, gerror.Wrap(err, "MCP service not found")
+		return nil, errors.Newf(errors.ErrMCPServerNotFound, "MCP service not found: %v", err)
 	}
 
 	// 脱敏API Key
@@ -171,11 +171,20 @@ func (c *ControllerV1) MCPRegistryGetList(ctx context.Context, req *v1.MCPRegist
 
 	registries, total, err := dao.MCPRegistry.List(ctx, req.Status, req.Page, req.PageSize)
 	if err != nil {
-		return nil, gerror.Wrap(err, "failed to get MCP registry list")
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to get MCP registry list: %v", err)
 	}
 
 	items := make([]*v1.MCPRegistryItem, 0, len(registries))
 	for _, r := range registries {
+		// 解析 Tools JSON 字符串
+		var tools []v1.MCPToolInfo
+		if r.Tools != "" && r.Tools != "[]" {
+			if err := json.Unmarshal([]byte(r.Tools), &tools); err != nil {
+				g.Log().Warningf(ctx, "Failed to unmarshal tools for MCP %s: %v", r.ID, err)
+				tools = []v1.MCPToolInfo{} // 解析失败时使用空数组
+			}
+		}
+
 		items = append(items, &v1.MCPRegistryItem{
 			Id:          r.ID,
 			Name:        r.Name,
@@ -183,6 +192,7 @@ func (c *ControllerV1) MCPRegistryGetList(ctx context.Context, req *v1.MCPRegist
 			Endpoint:    r.Endpoint,
 			Timeout:     r.Timeout,
 			Status:      r.Status,
+			Tools:       tools,
 			CreateTime:  r.CreateTime.Format(time.RFC3339),
 			UpdateTime:  r.UpdateTime.Format(time.RFC3339),
 		})
@@ -201,7 +211,7 @@ func (c *ControllerV1) MCPRegistryUpdateStatus(ctx context.Context, req *v1.MCPR
 	g.Log().Infof(ctx, "MCPRegistryUpdateStatus request received - Id: %s, Status: %d", req.Id, req.Status)
 
 	if err := dao.MCPRegistry.UpdateStatus(ctx, req.Id, req.Status); err != nil {
-		return nil, gerror.Wrap(err, "failed to update MCP registry status")
+		return nil, errors.Newf(errors.ErrDatabaseUpdate, "failed to update MCP registry status: %v", err)
 	}
 	return &v1.MCPRegistryUpdateStatusRes{}, nil
 }
@@ -220,7 +230,7 @@ func (c *ControllerV1) MCPRegistryTest(ctx context.Context, req *v1.MCPRegistryT
 	}
 
 	// 创建客户端并测试连接
-	mcpClient := client.NewMCPClient(registry)
+	mcpClient := mcp.NewMCPClient(registry)
 
 	// 初始化连接
 	err = mcpClient.Initialize(ctx, map[string]interface{}{
@@ -248,7 +258,7 @@ func (c *ControllerV1) MCPListTools(ctx context.Context, req *v1.MCPListToolsReq
 
 	registry, err := dao.MCPRegistry.GetByID(ctx, req.Id)
 	if err != nil {
-		return nil, gerror.Wrap(err, "MCP service not found")
+		return nil, errors.Newf(errors.ErrMCPServerNotFound, "MCP service not found: %v", err)
 	}
 
 	// 检查是否使用缓存
@@ -261,20 +271,13 @@ func (c *ControllerV1) MCPListTools(ctx context.Context, req *v1.MCPListToolsReq
 	if useCache && registry.Tools != "" && registry.Tools != "[]" {
 		var tools []v1.MCPToolInfo
 		if err := json.Unmarshal([]byte(registry.Tools), &tools); err == nil {
-			// 检查缓存是否过期（简单实现，可根据需要增强）
-			// cacheTTL := 300 // 默认5分钟
-			// if req.CacheTTL != nil {
-			// 	cacheTTL = *req.CacheTTL
-			// }
-
-			// 这里可以添加更复杂的缓存过期逻辑
-			// 简单起见，我们直接使用缓存数据
+			// 检查缓存是否过期
 			return &v1.MCPListToolsRes{Tools: tools}, nil
 		}
 	}
 
 	// 创建客户端
-	mcpClient := client.NewMCPClient(registry)
+	mcpClient := mcp.NewMCPClient(registry)
 
 	// 初始化连接
 	err = mcpClient.Initialize(ctx, map[string]interface{}{
@@ -282,13 +285,13 @@ func (c *ControllerV1) MCPListTools(ctx context.Context, req *v1.MCPListToolsReq
 		"version": "1.0.0",
 	})
 	if err != nil {
-		return nil, gerror.Wrap(err, "failed to initialize MCP connection")
+		return nil, errors.Newf(errors.ErrMCPInitFailed, "failed to initialize MCP connection: %v", err)
 	}
 
 	// 获取工具列表
 	tools, err := mcpClient.ListTools(ctx)
 	if err != nil {
-		return nil, gerror.Wrap(err, "failed to list MCP tools")
+		return nil, errors.Newf(errors.ErrMCPCallFailed, "failed to list MCP tools: %v", err)
 	}
 
 	// 转换为响应格式
@@ -321,7 +324,7 @@ func (c *ControllerV1) MCPCallTool(ctx context.Context, req *v1.MCPCallToolReq) 
 
 	startTime := time.Now()
 
-	// 查询MCP服务（支持ID或名称）
+	// 查询MCP服务
 	var registry *gormModel.MCPRegistry
 	if strings.HasPrefix(req.RegistryID, "mcp_") {
 		registry, err = dao.MCPRegistry.GetByID(ctx, req.RegistryID)
@@ -329,16 +332,16 @@ func (c *ControllerV1) MCPCallTool(ctx context.Context, req *v1.MCPCallToolReq) 
 		registry, err = dao.MCPRegistry.GetByName(ctx, req.RegistryID)
 	}
 	if err != nil {
-		return nil, gerror.Wrap(err, "MCP service not found")
+		return nil, errors.Newf(errors.ErrMCPServerNotFound, "MCP service not found: %v", err)
 	}
 
 	// 检查服务是否启用
 	if registry.Status != 1 {
-		return nil, gerror.New("MCP service is disabled")
+		return nil, errors.New(errors.ErrMCPCallFailed, "MCP service is disabled")
 	}
 
 	// 创建客户端
-	mcpClient := client.NewMCPClient(registry)
+	mcpClient := mcp.NewMCPClient(registry)
 
 	// 初始化连接
 	err = mcpClient.Initialize(ctx, map[string]interface{}{
@@ -346,7 +349,7 @@ func (c *ControllerV1) MCPCallTool(ctx context.Context, req *v1.MCPCallToolReq) 
 		"version": "1.0.0",
 	})
 	if err != nil {
-		return nil, gerror.Wrap(err, "failed to initialize MCP connection")
+		return nil, errors.Newf(errors.ErrMCPInitFailed, "failed to initialize MCP connection: %v", err)
 	}
 
 	// 调用工具
@@ -387,7 +390,7 @@ func (c *ControllerV1) MCPCallTool(ctx context.Context, req *v1.MCPCallToolReq) 
 
 	// 如果调用失败，返回错误
 	if err != nil {
-		return nil, gerror.Wrap(err, "failed to call MCP tool")
+		return nil, errors.Newf(errors.ErrMCPCallFailed, "failed to call MCP tool: %v", err)
 	}
 
 	// 转换响应格式
@@ -449,7 +452,7 @@ func (c *ControllerV1) MCPCallLogGetList(ctx context.Context, req *v1.MCPCallLog
 	// 查询日志
 	logs, total, err := dao.MCPCallLog.List(ctx, filter, req.Page, req.PageSize)
 	if err != nil {
-		return nil, gerror.Wrap(err, "failed to get MCP call logs")
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to get MCP call logs: %v", err)
 	}
 
 	// 转换为响应格式
@@ -481,7 +484,7 @@ func (c *ControllerV1) MCPCallLogGetList(ctx context.Context, req *v1.MCPCallLog
 func (c *ControllerV1) MCPCallLogGetByConversation(ctx context.Context, req *v1.MCPCallLogGetByConversationReq) (res *v1.MCPCallLogGetByConversationRes, err error) {
 	logs, total, err := dao.MCPCallLog.ListByConversationID(ctx, req.ConversationID, req.Page, req.PageSize)
 	if err != nil {
-		return nil, gerror.Wrap(err, "failed to get MCP call logs")
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to get MCP call logs: %v", err)
 	}
 
 	items := make([]*v1.MCPCallLogItem, 0, len(logs))
@@ -515,7 +518,7 @@ func (c *ControllerV1) MCPRegistryStats(ctx context.Context, req *v1.MCPRegistry
 
 	stats, err := dao.MCPCallLog.GetStatsByMCPRegistry(ctx, req.Id)
 	if err != nil {
-		return nil, gerror.Wrap(err, "failed to get MCP registry stats")
+		return nil, errors.Newf(errors.ErrDatabaseQuery, "failed to get MCP registry stats: %v", err)
 	}
 
 	return &v1.MCPRegistryStatsRes{

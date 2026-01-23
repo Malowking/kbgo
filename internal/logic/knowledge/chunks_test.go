@@ -3,7 +3,7 @@ package knowledge
 import (
 	"testing"
 
-	"github.com/Malowking/kbgo/internal/model/entity"
+	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
 )
 
 // TestExtractChunkOrder 测试从 ext 字段提取 chunk_order
@@ -52,20 +52,20 @@ func TestExtractChunkOrder(t *testing.T) {
 
 // TestSortChunksByOrder 测试按 chunk_order 排序
 func TestSortChunksByOrder(t *testing.T) {
-	chunks := []entity.KnowledgeChunks{
-		{Id: "3", Ext: `{"chunk_order": 2}`},
-		{Id: "1", Ext: `{"chunk_order": 0}`},
-		{Id: "4", Ext: `{"chunk_order": 3}`},
-		{Id: "2", Ext: `{"chunk_order": 1}`},
-		{Id: "5", Ext: ``}, // 没有 chunk_order，应该排在最后
+	chunks := []gormModel.KnowledgeChunks{
+		{ID: "3", Ext: `{"chunk_order": 2}`},
+		{ID: "1", Ext: `{"chunk_order": 0}`},
+		{ID: "4", Ext: `{"chunk_order": 3}`},
+		{ID: "2", Ext: `{"chunk_order": 1}`},
+		{ID: "5", Ext: ``}, // 没有 chunk_order，应该排在最后
 	}
 
 	sortChunksByOrder(chunks)
 
 	expectedOrder := []string{"1", "2", "3", "4", "5"}
 	for i, chunk := range chunks {
-		if chunk.Id != expectedOrder[i] {
-			t.Errorf("After sorting, chunks[%d].Id = %s, expected %s", i, chunk.Id, expectedOrder[i])
+		if chunk.ID != expectedOrder[i] {
+			t.Errorf("After sorting, chunks[%d].ID = %s, expected %s", i, chunk.ID, expectedOrder[i])
 		}
 	}
 }

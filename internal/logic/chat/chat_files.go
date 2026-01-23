@@ -2,6 +2,9 @@ package chat
 
 import (
 	"context"
+
+	"github.com/gogf/gf/v2/os/gctx"
+
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -13,24 +16,26 @@ import (
 	"strings"
 	"time"
 
+	coreErrors "github.com/Malowking/kbgo/core/errors"
+
 	"github.com/Malowking/kbgo/core/common"
 	"github.com/Malowking/kbgo/core/formatter"
 	"github.com/Malowking/kbgo/core/indexer"
 	coreModel "github.com/Malowking/kbgo/core/model"
+	"github.com/Malowking/kbgo/core/schema"
 	"github.com/Malowking/kbgo/internal/dao"
 	"github.com/Malowking/kbgo/internal/history"
 	gormModel "github.com/Malowking/kbgo/internal/model/gorm"
-	"github.com/Malowking/kbgo/pkg/schema"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/sashabaranov/go-openai"
 )
 
-// GetAnswerWithParsedFiles 使用已解析的文件内容进行多模态对话
-func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, multimodalFiles []*common.MultimodalFile, fileContent string, fileImages []string, jsonFormat bool) (answer string, err error) {
+// GetAnswerWithFiles 使用已解析的文件内容进行多模态对话
+func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, multimodalFiles []*common.MultimodalFile, fileContent string, fileImages []string, customSystemPrompt string, jsonFormat bool) (answer string, reasoningContent string, err error) {
 	// 获取模型配置
-	mc := coreModel.Registry.Get(modelID)
+	mc := coreModel.Registry.GetChatModel(modelID)
 	if mc == nil {
-		return "", fmt.Errorf("model not found: %s", modelID)
+		return "", "", coreErrors.Newf(coreErrors.ErrModelNotFound, "model not found: %s", modelID)
 	}
 
 	// 根据模型类型选择格式适配器
@@ -44,26 +49,45 @@ func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, con
 	// 创建模型服务
 	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
 
-	// 获取聊天历史
-	chatHistory, err := x.eh.GetHistory(convID, 100)
+	// 获取聊天历史（用于构建消息列表）
+	chatHistory, err := x.eh.GetHistory(convID, 50)
 	if err != nil {
-		return "", err
+		g.Log().Warningf(ctx, "Failed to get chat history: %v", err)
+		chatHistory = []*schema.Message{}
 	}
 
 	// 构建多模态消息（只包含用户问题和多模态文件）
 	userMessage, err := buildMultimodalMessageWithImages(ctx, question, multimodalFiles, fileImages, mc.Type)
 	if err != nil {
-		return "", fmt.Errorf("构建多模态消息失败: %w", err)
+		return "", "", coreErrors.Newf(coreErrors.ErrInternalError, "构建多模态消息失败: %v", err)
 	}
 
 	// 保存用户消息
-	err = x.eh.SaveMessage(userMessage, convID)
+	err = x.eh.SaveMessage(userMessage, convID, nil, nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// 构建system提示词
-	systemPrompt := buildSystemPrompt(mc.Type, docs, fileContent, fileImages)
+	var systemPrompt string
+	if customSystemPrompt != "" {
+		// 使用自定义系统提示词
+		systemPrompt = customSystemPrompt
+		// 追加文档和文件信息
+		if len(docs) > 0 {
+			systemPrompt += "\n\n参考资料:\n"
+			for i, doc := range docs {
+				systemPrompt += fmt.Sprintf("[%d] %s\n", i+1, doc.Content)
+			}
+		}
+		if fileContent != "" {
+			cleanedContent := removeImagePlaceholders(fileContent)
+			systemPrompt += "\n文档内容:\n" + cleanedContent + "\n"
+		}
+	} else {
+		// 使用默认系统提示词
+		systemPrompt = buildSystemPrompt(mc.Type, docs, fileContent, fileImages)
+	}
 
 	// 构建消息列表
 	messages := []*schema.Message{
@@ -75,187 +99,52 @@ func (x *Chat) GetAnswerWithParsedFiles(ctx context.Context, modelID string, con
 	messages = append(messages, chatHistory...)
 	messages = append(messages, userMessage)
 
-	// 解析推理参数
-	params := parseModelParams(mc.Extra)
-
-	// 如果需要JSON格式化，设置ResponseFormat
+	// 准备响应格式
+	var responseFormat *openai.ChatCompletionResponseFormat
 	if jsonFormat {
-		params.ResponseFormat = &openai.ChatCompletionResponseFormat{
+		responseFormat = &openai.ChatCompletionResponseFormat{
 			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 		}
 	}
 
-	// 构建请求参数
+	// 构建请求参数，直接使用模型配置中的参数
 	chatParams := coreModel.ChatCompletionParams{
 		ModelName:           mc.Name,
 		Messages:            messages,
-		Temperature:         getFloat32OrDefault(params.Temperature, 0.7),
-		MaxCompletionTokens: getIntOrDefault(params.MaxCompletionTokens, 2000),
-		TopP:                getFloat32OrDefault(params.TopP, 0.9),
-		FrequencyPenalty:    getFloat32OrDefault(params.FrequencyPenalty, 0.0),
-		PresencePenalty:     getFloat32OrDefault(params.PresencePenalty, 0.0),
-		N:                   getIntOrDefault(params.N, 1),
-		Tools:               params.Tools,
-		ToolChoice:          params.ToolChoice,
-		ResponseFormat:      params.ResponseFormat,
+		Temperature:         getFloat32OrDefault(mc.Temperature, 0.7),
+		MaxCompletionTokens: getIntOrDefault(mc.MaxCompletionTokens, 2000),
+		TopP:                getFloat32OrDefault(mc.TopP, 0.9),
+		FrequencyPenalty:    getFloat32OrDefault(mc.FrequencyPenalty, 0.0),
+		PresencePenalty:     getFloat32OrDefault(mc.PresencePenalty, 0.0),
+		N:                   getIntOrDefault(mc.N, 1),
+		ResponseFormat:      responseFormat,
 	}
 
 	// 记录开始时间
 	start := time.Now()
 
-	// 调用模型服务
-	resp, err := modelService.ChatCompletion(ctx, chatParams)
-	if err != nil {
-		return "", fmt.Errorf("API调用失败: %w", err)
-	}
-
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("received empty choices from API")
-	}
-
-	answerContent := resp.Choices[0].Message.Content
-
-	// 计算延迟
-	latencyMs := time.Since(start).Milliseconds()
-
-	// 创建assistant消息
-	assistantMsg := &schema.Message{
-		Role:    schema.Assistant,
-		Content: answerContent,
-	}
-
-	// 创建带指标的消息
-	msgWithMetrics := &history.MessageWithMetrics{
-		Message:    assistantMsg,
-		LatencyMs:  int(latencyMs),
-		TokensUsed: resp.Usage.TotalTokens,
-	}
-
-	err = x.eh.SaveMessageWithMetrics(msgWithMetrics, convID)
-	if err != nil {
-		g.Log().Error(ctx, "save assistant message err: %v", err)
-		return
-	}
-
-	return answerContent, nil
-}
-
-// GetAnswerWithFiles 统一的多模态对话处理（使用新架构）
-func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile) (answer string, err error) {
-	// 获取模型配置
-	mc := coreModel.Registry.Get(modelID)
-	if mc == nil {
-		return "", fmt.Errorf("model not found: %s", modelID)
-	}
-
-	// 根据模型类型选择格式适配器
-	var msgFormatter formatter.MessageFormatter
-	if IsQwenModel(mc.Name) {
-		msgFormatter = formatter.NewQwenFormatter()
-	} else {
-		msgFormatter = formatter.NewOpenAIFormatter()
-	}
-
-	// 创建模型服务
-	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
-
-	// 获取聊天历史
-	chatHistory, err := x.eh.GetHistory(convID, 100)
-	if err != nil {
-		return "", err
-	}
-
-	// 分离多模态文件和文档文件
-	multimodalFiles, documentFiles := separateFilesByType(files)
-
-	// 检查会话中是否已有文档信息（用于多轮对话）
-	existingFileContent, existingFileImages, err := getConversationDocumentInfo(ctx, x.eh, convID)
-	if err != nil {
-		g.Log().Warningf(ctx, "Failed to get existing document info: %v", err)
-	}
-
-	var fileContent string
-	var fileImages []string
-
-	// 如果本次有新的文档文件上传，解析它们
-	if len(documentFiles) > 0 {
-		fileContent, fileImages, err = parseDocumentFiles(ctx, documentFiles)
+	// 使用重试机制调用模型服务
+	retryConfig := coreModel.DefaultSingleModelRetryConfig()
+	result, err := coreModel.RetryWithSameModel(ctx, mc.Name, retryConfig, func(ctx context.Context) (interface{}, error) {
+		resp, err := modelService.ChatCompletion(ctx, chatParams)
 		if err != nil {
-			g.Log().Warningf(ctx, "Failed to parse document files: %v", err)
-			fileContent = ""
+			return nil, err
 		}
 
-		// 保存文档信息到会话metadata（仅第一次）
-		if existingFileContent == "" {
-			err = saveConversationDocumentInfo(ctx, x.eh, convID, documentFiles, fileContent, fileImages)
-			if err != nil {
-				g.Log().Errorf(ctx, "Failed to save document info to conversation: %v", err)
-			}
+		if len(resp.Choices) == 0 {
+			return nil, coreErrors.New(coreErrors.ErrLLMCallFailed, "received empty choices from API")
 		}
-	} else if existingFileContent != "" {
-		// 多轮对话，使用已保存的文档信息
-		fileContent = existingFileContent
-		fileImages = existingFileImages
-		g.Log().Infof(ctx, "Reusing existing document info from conversation metadata")
-	}
 
-	// 构建多模态消息（只包含用户问题和多模态文件）
-	userMessage, err := buildMultimodalMessageWithImages(ctx, question, multimodalFiles, fileImages, mc.Type)
+		return resp, nil
+	})
+
 	if err != nil {
-		return "", fmt.Errorf("构建多模态消息失败: %w", err)
+		return "", "", coreErrors.Newf(coreErrors.ErrLLMCallFailed, "API调用失败: %v", err)
 	}
 
-	// 保存用户消息
-	err = x.eh.SaveMessage(userMessage, convID)
-	if err != nil {
-		return "", err
-	}
-
-	// 构建system提示词
-	systemPrompt := buildSystemPrompt(mc.Type, docs, fileContent, fileImages)
-
-	// 构建消息列表
-	messages := []*schema.Message{
-		{
-			Role:    schema.System,
-			Content: systemPrompt,
-		},
-	}
-	messages = append(messages, chatHistory...)
-	messages = append(messages, userMessage)
-
-	// 解析推理参数
-	params := parseModelParams(mc.Extra)
-
-	// 构建请求参数
-	chatParams := coreModel.ChatCompletionParams{
-		ModelName:           mc.Name,
-		Messages:            messages,
-		Temperature:         getFloat32OrDefault(params.Temperature, 0.7),
-		MaxCompletionTokens: getIntOrDefault(params.MaxCompletionTokens, 2000),
-		TopP:                getFloat32OrDefault(params.TopP, 0.9),
-		FrequencyPenalty:    getFloat32OrDefault(params.FrequencyPenalty, 0.0),
-		PresencePenalty:     getFloat32OrDefault(params.PresencePenalty, 0.0),
-		N:                   getIntOrDefault(params.N, 1),
-		Tools:               params.Tools,
-		ToolChoice:          params.ToolChoice,
-		ResponseFormat:      params.ResponseFormat,
-	}
-
-	// 记录开始时间
-	start := time.Now()
-
-	// 调用模型服务
-	resp, err := modelService.ChatCompletion(ctx, chatParams)
-	if err != nil {
-		return "", fmt.Errorf("API调用失败: %w", err)
-	}
-
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("received empty choices from API")
-	}
-
+	resp := result.(*openai.ChatCompletionResponse)
 	answerContent := resp.Choices[0].Message.Content
+	thinkContent := resp.Choices[0].Message.ReasoningContent
 
 	// 计算延迟
 	latencyMs := time.Since(start).Milliseconds()
@@ -264,6 +153,11 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 	assistantMsg := &schema.Message{
 		Role:    schema.Assistant,
 		Content: answerContent,
+	}
+
+	// 只有当思考内容不为空时才添加到消息中
+	if thinkContent != "" {
+		assistantMsg.ReasoningContent = thinkContent
 	}
 
 	// 创建带指标的消息
@@ -276,18 +170,18 @@ func (x *Chat) GetAnswerWithFiles(ctx context.Context, modelID string, convID st
 	err = x.eh.SaveMessageWithMetrics(msgWithMetrics, convID)
 	if err != nil {
 		g.Log().Error(ctx, "save assistant message err: %v", err)
-		return
+		return "", "", err
 	}
 
-	return answerContent, nil
+	return answerContent, thinkContent, nil
 }
 
 // GetAnswerStreamWithFiles 统一的多模态流式对话处理
-func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, convID string, docs []*schema.Document, question string, files []*common.MultimodalFile, jsonFormat bool) (answer *schema.StreamReader[*schema.Message], err error) {
+func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, convID string, messages []*schema.Message, question string, files []*common.MultimodalFile, jsonFormat bool, traceID ...string) (answer schema.StreamReaderInterface[*schema.Message], err error) {
 	// 获取模型配置
-	mc := coreModel.Registry.Get(modelID)
+	mc := coreModel.Registry.GetChatModel(modelID)
 	if mc == nil {
-		return nil, fmt.Errorf("model not found: %s", modelID)
+		return nil, coreErrors.Newf(coreErrors.ErrModelNotFound, "model not found: %s", modelID)
 	}
 
 	// 根据模型类型选择格式适配器
@@ -301,12 +195,6 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 	// 创建模型服务
 	modelService := coreModel.NewModelService(mc.APIKey, mc.BaseURL, msgFormatter)
 
-	// 获取聊天历史
-	chatHistory, err := x.eh.GetHistory(convID, 100)
-	if err != nil {
-		return nil, err
-	}
-
 	// 分离多模态文件和文档文件
 	multimodalFiles, documentFiles := separateFilesByType(files)
 
@@ -316,27 +204,24 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 		g.Log().Warningf(ctx, "Failed to get existing document info: %v", err)
 	}
 
-	var fileContent string
 	var fileImages []string
 
 	// 如果本次有新的文档文件上传，解析它们
 	if len(documentFiles) > 0 {
-		fileContent, fileImages, err = parseDocumentFiles(ctx, documentFiles)
+		fileContent, fileImages, err := ParseDocumentFiles(ctx, documentFiles)
 		if err != nil {
 			g.Log().Warningf(ctx, "Failed to parse document files: %v", err)
-			fileContent = ""
-		}
-
-		// 保存文档信息到会话metadata（仅第一次）
-		if existingFileContent == "" {
-			err = saveConversationDocumentInfo(ctx, x.eh, convID, documentFiles, fileContent, fileImages)
-			if err != nil {
-				g.Log().Errorf(ctx, "Failed to save document info to conversation: %v", err)
+		} else {
+			// 保存文档信息到会话metadata（仅第一次）
+			if existingFileContent == "" {
+				err = saveConversationDocumentInfo(ctx, x.eh, convID, documentFiles, fileContent, fileImages)
+				if err != nil {
+					g.Log().Errorf(ctx, "Failed to save document info to conversation: %v", err)
+				}
 			}
 		}
 	} else if existingFileContent != "" {
 		// 多轮对话，使用已保存的文档信息
-		fileContent = existingFileContent
 		fileImages = existingFileImages
 		g.Log().Infof(ctx, "Reusing existing document info from conversation metadata")
 	}
@@ -344,64 +229,66 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 	// 构建多模态消息（只包含用户问题和多模态文件）
 	userMessage, err := buildMultimodalMessageWithImages(ctx, question, multimodalFiles, fileImages, mc.Type)
 	if err != nil {
-		return nil, fmt.Errorf("构建多模态消息失败: %w", err)
+		return nil, coreErrors.Newf(coreErrors.ErrInternalError, "构建多模态消息失败: %v", err)
 	}
 
 	// 保存用户消息
-	err = x.eh.SaveMessage(userMessage, convID)
+	err = x.eh.SaveMessage(userMessage, convID, nil, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	// 构建system提示词
-	systemPrompt := buildSystemPrompt(mc.Type, docs, fileContent, fileImages)
-
-	// 构建消息列表
-	messages := []*schema.Message{
-		{
-			Role:    schema.System,
-			Content: systemPrompt,
-		},
-	}
-	messages = append(messages, chatHistory...)
+	// 将用户消息添加到消息列表
 	messages = append(messages, userMessage)
 
-	// 解析推理参数
-	params := parseModelParams(mc.Extra)
-
-	// 如果需要JSON格式化，设置ResponseFormat
+	// 准备响应格式
+	var responseFormat *openai.ChatCompletionResponseFormat
 	if jsonFormat {
-		params.ResponseFormat = &openai.ChatCompletionResponseFormat{
+		responseFormat = &openai.ChatCompletionResponseFormat{
 			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 		}
 	}
 
-	// 构建请求参数
+	// 构建请求参数，直接使用模型配置中的参数
 	chatParams := coreModel.ChatCompletionParams{
 		ModelName:           mc.Name,
 		Messages:            messages,
-		Temperature:         getFloat32OrDefault(params.Temperature, 0.7),
-		MaxCompletionTokens: getIntOrDefault(params.MaxCompletionTokens, 2000),
-		TopP:                getFloat32OrDefault(params.TopP, 0.9),
-		FrequencyPenalty:    getFloat32OrDefault(params.FrequencyPenalty, 0.0),
-		PresencePenalty:     getFloat32OrDefault(params.PresencePenalty, 0.0),
-		N:                   getIntOrDefault(params.N, 1),
-		Tools:               params.Tools,
-		ToolChoice:          params.ToolChoice,
-		ResponseFormat:      params.ResponseFormat,
+		Temperature:         getFloat32OrDefault(mc.Temperature, 0.7),
+		MaxCompletionTokens: getIntOrDefault(mc.MaxCompletionTokens, 2000),
+		TopP:                getFloat32OrDefault(mc.TopP, 0.9),
+		FrequencyPenalty:    getFloat32OrDefault(mc.FrequencyPenalty, 0.0),
+		PresencePenalty:     getFloat32OrDefault(mc.PresencePenalty, 0.0),
+		N:                   getIntOrDefault(mc.N, 1),
+		ResponseFormat:      responseFormat,
 	}
 
 	// 记录开始时间
 	start := time.Now()
 
-	// 调用模型服务流式接口
-	stream, err := modelService.ChatCompletionStream(ctx, chatParams)
+	// 使用重试机制调用模型服务流式接口（仅在连接阶段重试）
+	retryConfig := coreModel.DefaultSingleModelRetryConfig()
+	streamResult, err := coreModel.RetryWithSameModel(ctx, mc.Name, retryConfig, func(ctx context.Context) (interface{}, error) {
+		stream, err := modelService.ChatCompletionStream(ctx, chatParams)
+		if err != nil {
+			return nil, err
+		}
+		return stream, nil
+	})
+
 	if err != nil {
-		return nil, fmt.Errorf("API调用失败: %w", err)
+		return nil, coreErrors.Newf(coreErrors.ErrLLMCallFailed, "API调用失败: %v", err)
 	}
 
+	stream := streamResult.(*openai.ChatCompletionStream)
+
 	// 创建 Pipe 用于流式传输
-	streamReader, streamWriter := schema.Pipe[*schema.Message](10)
+	// 优先使用 Redis Stream，Redis 不可用时回退到内存 channel
+	streamReader, streamWriter := CreateStreamPipe(ctx, convID)
+
+	// 保留原始 context 用于取消控制
+	originalCtx := ctx
+	// 使用 Background context 避免父 context 取消影响流式处理的完整性
+	ctx = gctx.New()
 
 	// 启动goroutine处理流式响应
 	go func() {
@@ -409,15 +296,29 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 		defer stream.Close()
 
 		var fullContent strings.Builder
+		var fullReasoningContent strings.Builder
 		var tokenCount int
 
 		for {
+			// 检查客户端是否断开连接
+			select {
+			case <-originalCtx.Done():
+				g.Log().Warning(ctx, "Stream cancelled by client, stopping goroutine")
+				return
+			default:
+			}
+
 			response, err := stream.Recv()
 			if errors.Is(err, io.EOF) {
 				// 流结束，保存完整消息
 				assistantMsg := &schema.Message{
 					Role:    schema.Assistant,
 					Content: fullContent.String(),
+				}
+
+				// 只有当思考内容不为空时才添加到消息中
+				if fullReasoningContent.Len() > 0 {
+					assistantMsg.ReasoningContent = fullReasoningContent.String()
 				}
 
 				// 计算延迟
@@ -428,6 +329,13 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 					Message:    assistantMsg,
 					LatencyMs:  int(latencyMs),
 					TokensUsed: tokenCount,
+				}
+
+				// 提取 traceID（如果有）
+				var tid string
+				if len(traceID) > 0 {
+					tid = traceID[0]
+					msgWithMetrics.TraceID = tid
 				}
 
 				// 异步保存消息
@@ -451,14 +359,27 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 			// 处理流式响应
 			if len(response.Choices) > 0 {
 				delta := response.Choices[0].Delta.Content
+				rdelta := response.Choices[0].Delta.ReasoningContent
+
+				// 创建增量消息
+				chunk := &schema.Message{
+					Role: schema.Assistant,
+				}
+
+				// 处理普通内容
 				if delta != "" {
 					fullContent.WriteString(delta)
+					chunk.Content = delta
+				}
 
-					// 创建增量消息并发送到流
-					chunk := &schema.Message{
-						Role:    schema.Assistant,
-						Content: delta,
-					}
+				// 处理思考内容
+				if rdelta != "" {
+					fullReasoningContent.WriteString(rdelta)
+					chunk.ReasoningContent = rdelta
+				}
+
+				// 只有当有内容或思考内容时才发送
+				if delta != "" || rdelta != "" {
 					closed := streamWriter.Send(chunk, nil)
 					if closed {
 						g.Log().Warningf(ctx, "stream writer closed unexpectedly")
@@ -466,7 +387,7 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 					}
 				}
 
-				// 累计token数量（如果有usage信息）
+				// 累计token数量
 				if response.Usage != nil {
 					tokenCount = response.Usage.TotalTokens
 				}
@@ -475,20 +396,6 @@ func (x *Chat) GetAnswerStreamWithFiles(ctx context.Context, modelID string, con
 	}()
 
 	return streamReader, nil
-}
-
-// formatDocumentsForQwen 格式化文档为可读的字符串
-func formatDocumentsForQwen(docs []*schema.Document) string {
-	if len(docs) == 0 {
-		return ""
-	}
-
-	var builder strings.Builder
-	builder.WriteString("参考资料:\n")
-	for i, doc := range docs {
-		builder.WriteString(fmt.Sprintf("[%d] %s\n", i+1, doc.Content))
-	}
-	return builder.String()
 }
 
 // IsQwenModel 判断是否为Qwen模型
@@ -503,7 +410,7 @@ func buildMultimodalMessageWithImages(ctx context.Context, text string, files []
 	// 添加文本部分
 	if text != "" {
 		userInputParts = append(userInputParts, schema.MessageInputPart{
-			Type: schema.ChatMessagePartTypeText,
+			Type: schema.MessagePartTypeText,
 			Text: text,
 		})
 	}
@@ -528,7 +435,7 @@ func buildMultimodalMessageWithImages(ctx context.Context, text string, files []
 			}
 
 			imagePart := schema.MessageInputPart{
-				Type: schema.ChatMessagePartTypeImageURL,
+				Type: schema.MessagePartTypeImageURL,
 				Image: &schema.MessageInputImage{
 					MessagePartCommon: schema.MessagePartCommon{
 						URL:        &imgURL,
@@ -562,19 +469,19 @@ func buildFilePart(file *common.MultimodalFile) (schema.MessageInputPart, error)
 		// 读取图片文件
 		data, err := os.ReadFile(file.FilePath)
 		if err != nil {
-			return schema.MessageInputPart{}, fmt.Errorf("failed to read image file: %w", err)
+			return schema.MessageInputPart{}, coreErrors.Newf(coreErrors.ErrFileReadFailed, "failed to read image file: %v", err)
 		}
 
 		// 获取MIME类型
 		ext := filepath.Ext(file.FileName)
-		mimeType := getMimeTypeForFile(ext)
+		mimeType := common.GetMimeType(ext)
 
 		// 编码为base64
 		base64Data := base64.StdEncoding.EncodeToString(data)
 
 		// 使用MessageInputPart，存储文件路径到URL，base64用于API调用
 		return schema.MessageInputPart{
-			Type: schema.ChatMessagePartTypeImageURL,
+			Type: schema.MessagePartTypeImageURL,
 			Image: &schema.MessageInputImage{
 				MessagePartCommon: schema.MessagePartCommon{
 					URL:        &file.FilePath, // 存储文件路径
@@ -586,27 +493,10 @@ func buildFilePart(file *common.MultimodalFile) (schema.MessageInputPart, error)
 
 	default:
 		return schema.MessageInputPart{
-			Type: schema.ChatMessagePartTypeText,
+			Type: schema.MessagePartTypeText,
 			Text: fmt.Sprintf("[文件: %s]", file.FileName),
 		}, nil
 	}
-}
-
-// getMimeTypeForFile 获取MIME类型
-func getMimeTypeForFile(ext string) string {
-	mimeTypes := map[string]string{
-		".jpg":  "image/jpeg",
-		".jpeg": "image/jpeg",
-		".png":  "image/png",
-		".gif":  "image/gif",
-		".bmp":  "image/bmp",
-		".webp": "image/webp",
-	}
-
-	if mime, ok := mimeTypes[ext]; ok {
-		return mime
-	}
-	return "image/jpeg"
 }
 
 // 辅助函数
@@ -638,13 +528,8 @@ func separateFilesByType(files []*common.MultimodalFile) (multimodalFiles []*com
 	return
 }
 
-// ParseDocumentFiles 解析文档文件，调用Python服务获取全文和图片（公开函数）
+// ParseDocumentFiles 解析文档文件，调用Python服务获取全文和图片
 func ParseDocumentFiles(ctx context.Context, files []*common.MultimodalFile) (string, []string, error) {
-	return parseDocumentFiles(ctx, files)
-}
-
-// parseDocumentFiles 解析文档文件，调用Python服务获取全文和图片（内部函数）
-func parseDocumentFiles(ctx context.Context, files []*common.MultimodalFile) (string, []string, error) {
 	if len(files) == 0 {
 		return "", nil, nil
 	}
@@ -655,7 +540,7 @@ func parseDocumentFiles(ctx context.Context, files []*common.MultimodalFile) (st
 	// 创建文件解析加载器，chunk_size=-1表示不切分，imageURLFormat=false表示返回相对路径
 	loader, err := indexer.NewFileParseLoaderForChat(ctx, -1, 0, "")
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to create file parse loader: %w", err)
+		return "", nil, coreErrors.Newf(coreErrors.ErrDocumentParseFailed, "failed to create file parse loader: %v", err)
 	}
 
 	// 获取项目根目录（用于拼接图片路径）
@@ -735,7 +620,7 @@ func buildSystemPrompt(modelType coreModel.ModelType, docs []*schema.Document, f
 		}
 	}
 
-	// 如果有文件内容，移除其中的图片占位符（因为图片已通过user消息传入）
+	// 如果有文件内容，移除其中的图片占位符
 	if fileContent != "" {
 		// 移除图片占位符Markdown语法
 		cleanedContent := removeImagePlaceholders(fileContent)
@@ -782,7 +667,7 @@ func getConversationDocumentInfo(ctx context.Context, eh *history.Manager, convI
 	var metadata map[string]interface{}
 	err = json.Unmarshal(conv.Metadata, &metadata)
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to unmarshal conversation metadata: %w", err)
+		return "", nil, coreErrors.Newf(coreErrors.ErrInternalError, "failed to unmarshal conversation metadata: %v", err)
 	}
 
 	fileContent, _ := metadata["file_content"].(string)
@@ -835,7 +720,7 @@ func saveConversationDocumentInfo(ctx context.Context, eh *history.Manager, conv
 	// 序列化metadata
 	metadataJSON, err := json.Marshal(metadata)
 	if err != nil {
-		return fmt.Errorf("failed to marshal metadata: %w", err)
+		return coreErrors.Newf(coreErrors.ErrInternalError, "failed to marshal metadata: %v", err)
 	}
 
 	// 更新conversation
@@ -860,7 +745,7 @@ func downloadImageFromURL(ctx context.Context, imageURL string) (string, string,
 		g.Log().Infof(ctx, "Reading local image file: %s", imageURL)
 		data, err := os.ReadFile(imageURL)
 		if err != nil {
-			return "", "", fmt.Errorf("failed to read local image file: %w", err)
+			return "", "", coreErrors.Newf(coreErrors.ErrFileReadFailed, "failed to read local image file: %v", err)
 		}
 
 		// 编码为base64
@@ -868,7 +753,7 @@ func downloadImageFromURL(ctx context.Context, imageURL string) (string, string,
 
 		// 从文件路径获取扩展名并确定MIME类型
 		ext := filepath.Ext(imageURL)
-		mimeType := getMimeTypeForFile(ext)
+		mimeType := common.GetMimeType(ext)
 
 		g.Log().Infof(ctx, "Successfully read local image: %s, size: %d bytes, mime: %s", imageURL, len(data), mimeType)
 		return base64Data, mimeType, nil
@@ -878,18 +763,18 @@ func downloadImageFromURL(ctx context.Context, imageURL string) (string, string,
 	g.Log().Infof(ctx, "Downloading image from URL: %s", imageURL)
 	resp, err := http.Get(imageURL)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to download image: %w", err)
+		return "", "", coreErrors.Newf(coreErrors.ErrFileReadFailed, "failed to download image: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("failed to download image: status code %d", resp.StatusCode)
+		return "", "", coreErrors.Newf(coreErrors.ErrFileReadFailed, "failed to download image: status code %d", resp.StatusCode)
 	}
 
 	// 读取图片数据
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to read image data: %w", err)
+		return "", "", coreErrors.Newf(coreErrors.ErrFileReadFailed, "failed to read image data: %v", err)
 	}
 
 	// 编码为base64
@@ -897,7 +782,7 @@ func downloadImageFromURL(ctx context.Context, imageURL string) (string, string,
 
 	// 从URL获取文件扩展名并确定MIME类型
 	ext := filepath.Ext(imageURL)
-	mimeType := getMimeTypeForFile(ext)
+	mimeType := common.GetMimeType(ext)
 
 	g.Log().Infof(ctx, "Successfully downloaded image: %s, size: %d bytes, mime: %s", imageURL, len(data), mimeType)
 	return base64Data, mimeType, nil

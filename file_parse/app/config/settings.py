@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     PORT: int = 8002
     DEBUG: bool = False
 
+    # 超时配置（用于大文件处理，如30MB+的文档）
+    TIMEOUT_KEEP_ALIVE: int = 600  # Keep-Alive超时时间（秒），默认600秒（10分钟）
+    TIMEOUT_GRACEFUL_SHUTDOWN: int = 30  # 优雅关闭超时时间（秒）
+    LIMIT_CONCURRENCY: int = 100  # 最大并发连接数
+    BACKLOG: int = 100  # 最大排队连接数
+
     # 路径配置
     IMAGE_DIR: str = ""  # 图片存储目录，必须在 .env 中配置
 

@@ -77,7 +77,7 @@ func (d *MCPCallLogDAO) ListByMCPRegistry(ctx context.Context, registryID string
 	return logs, total, nil
 }
 
-// List 查询MCP调用日志列表（支持多条件过滤）
+// List 查询MCP调用日志列表
 func (d *MCPCallLogDAO) List(ctx context.Context, filter *MCPCallLogFilter, page, pageSize int) ([]*gormModel.MCPCallLog, int64, error) {
 	var logs []*gormModel.MCPCallLog
 	var total int64
